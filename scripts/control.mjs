@@ -226,8 +226,9 @@ function keypress() {
       process.stdin.setRawMode(false);
       process.stdin.pause();
       const key = String(d);
-      if (key === '\u0003') shutdown(130);   // Ctrl+C
-      else resolve(key.toLowerCase());
+      if (key === '\u0003') shutdown(130);                 // Ctrl+C
+      else if (key.startsWith('\u001b[')) resolve('?');    // arrow/function keys: ignore
+      else resolve(key[0].toLowerCase());
     });
   });
 }
