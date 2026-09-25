@@ -146,22 +146,33 @@ async function waitFor(test, timeoutMs, everyMs = 3000) {
   return null;
 }
 
-let ghReady = null;
+/** Runs the GitHub CLI, retrying a few times when the network (not GitHub's answer) was the problem. */
+async function gh(args) {
+  let r;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    r = await sh('gh', args);
+    if (r.code === 0 || !/timeout|timed out|connection|EOF|reset by peer|TLS|x509|dial tcp|no such host/i.test(r.out)) break;
+    await sleep(2000 * (attempt + 1));
+  }
+  return r;
+}
+
+let ghReady = false;
 async function hasGitHub() {
-  if (ghReady === null) ghReady = (await sh('gh', ['auth', 'status'])).code === 0;
+  if (!ghReady) ghReady = (await gh(['auth', 'status'])).code === 0;
   return ghReady;
 }
 
 /** true / false, or null when GitHub can't be asked. */
 async function pagesEnabled() {
   if (!REPO || !(await hasGitHub())) return null;
-  const r = await sh('gh', ['api', `repos/${REPO}/pages`, '--jq', '.status']);
+  const r = await gh(['api', `repos/${REPO}/pages`, '--jq', '.status']);
   if (r.code === 0) return true;
   return /404|Not Found/i.test(r.out) ? false : null;
 }
 
 async function latestPagesRun(sha) {
-  const r = await sh('gh', ['run', 'list', '--repo', REPO, '--workflow', 'pages.yml', '--limit', '10',
+  const r = await gh(['run', 'list', '--repo', REPO, '--workflow', 'pages.yml', '--limit', '10',
     '--json', 'databaseId,headSha,status,conclusion,createdAt']);
   if (r.code !== 0) return null;
   try {
@@ -323,7 +334,7 @@ async function goOnline() {
     if (pagesOn) {
       ok('GitHub Pages is on');
     } else {
-      const r = await sh('gh', ['api', '-X', 'POST', `repos/${REPO}/pages`, '-f', 'build_type=workflow']);
+      const r = await gh(['api', '-X', 'POST', `repos/${REPO}/pages`, '-f', 'build_type=workflow']);
       pagesOn = r.code === 0;
       pagesTurnedOn = pagesOn;
       if (pagesOn) ok('GitHub Pages turned on');
@@ -339,7 +350,7 @@ async function goOnline() {
   if (pagesOn && !pushed) {
     const run = await latestPagesRun(head);
     if (pagesTurnedOn || !run || run.conclusion === 'failure') {
-      const r = await sh('gh', ['workflow', 'run', 'pages.yml', '--repo', REPO, '--ref', 'main']);
+      const r = await gh(['workflow', 'run', 'pages.yml', '--repo', REPO, '--ref', 'main']);
       if (r.code === 0) info('Started a GitHub Pages build');
       else warn("Couldn't start the GitHub Pages build.");
     }
@@ -392,7 +403,12 @@ async function saveToGitHub() {
     ok('Nothing new to save — GitHub already has everything');
     return false;
   }
-  const push = await sh('git', ['push']);
+  let push;
+  for (let attempt = 0; attempt < 3; attempt++) {   // retry flaky connections
+    push = await sh('git', ['push']);
+    if (push.code === 0) break;
+    await sleep(3000);
+  }
   if (push.code !== 0) {
     bad('Uploading to GitHub (git push) failed:');
     tail(push.out);
@@ -431,7 +447,7 @@ async function goOffline({ yes = false } = {}) {
   } else if (!pagesOn) {
     ok('GitHub Pages was already off');
   } else {
-    const del = await sh('gh', ['api', '-X', 'DELETE', `repos/${REPO}/pages`]);
+    const del = await gh(['api', '-X', 'DELETE', `repos/${REPO}/pages`]);
     if (del.code !== 0) {
       bad("Couldn't turn off GitHub Pages.");
       tail(del.out);
