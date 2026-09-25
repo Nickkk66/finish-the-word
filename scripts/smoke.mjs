@@ -110,6 +110,8 @@ async function game() {
   bob.send({ t: 'sit', seat: 1 });
   check((await bob.next((m) => m.t === 'error')).code === 'seat_taken', 'Bob cannot take Alice’s seat');
   bob.send({ t: 'sit', seat: 2 });
+  // Over the internet Alice's "start" could otherwise overtake Bob's "sit" and begin the match without him.
+  await bob.next((m) => m.t === 'player' && m.p.id === bob.id && m.p.seat === 2);
   const countdown = await alice.next((m) => m.t === 'match' && m.m.phase === 'countdown');
   check(countdown.m.phaseEndsIn > 0, 'seated players start the countdown');
   alice.send({ t: 'host', action: 'start' });
