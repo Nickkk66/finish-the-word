@@ -14,6 +14,21 @@ Coins buy chairs and lucky blocks (pets with abilities).
 **Controls:** WASD / arrows move, Space jumps (or stands up from a seat), E interacts, drag to orbit the camera,
 scroll to zoom, `/` to chat. Phones get a joystick and a jump button.
 
+## Double-click launchers (macOS)
+
+No terminal commands needed. Double-click these in Finder:
+
+| File | What it does |
+|---|---|
+| `Finish The Word.command` | A menu with live status: play locally, put online, take offline, check everything |
+| `Play Locally.command` | Runs the game on this computer and opens it in your browser (close the window to stop) |
+| `Put Game Online.command` | Runs the tests, uploads to Cloudflare, saves your changes to GitHub, turns GitHub Pages on |
+| `Take Game Offline.command` | Turns off the Cloudflare site and GitHub Pages (asks first; nothing is deleted) |
+
+They all run `scripts/control.mjs` (`node scripts/control.mjs [menu|play|online|offline|check]`).
+The first run installs dependencies automatically. Needs Node.js, and for online/offline: `npx wrangler login`
+and `gh auth login` once.
+
 ## Run locally
 
 ```bash
