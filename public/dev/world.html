@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>World harness · Finish The Word!</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #6ec3f4; font-family: Fredoka, sans-serif; }
+    #game, #labels { position: fixed; inset: 0; }
+    #dev { position: fixed; top: 8px; left: 8px; z-index: 10; display: flex; flex-wrap: wrap; gap: 6px; max-width: min(620px, calc(100vw - 16px)); }
+    #dev button, #dev input { font: 600 13px Fredoka, sans-serif; padding: 5px 10px; border-radius: 10px; border: 2px solid #1b1b1b; background: #fff; }
+    #dev button { cursor: pointer; box-shadow: 0 3px 0 rgba(0, 0, 0, .25); }
+    #dev button:active { transform: translateY(2px); box-shadow: none; }
+    #dev input { width: 120px; }
+    #log { position: fixed; left: 8px; bottom: 8px; z-index: 10; color: #fff; font: 600 13px Fredoka, sans-serif; text-shadow: 0 1px 2px #000; }
+  </style>
+  <script>
+    // ?stub maps the cosmetics module to a throwaway placeholder (for testing the world while
+    // cosmetics.js is broken or missing). The import map must exist before any module loads.
+    {
+      const imports = { three: '/vendor/three/three.module.js', 'three/addons/': '/vendor/three/addons/' };
+      if (new URLSearchParams(location.search).has('stub')) imports['/js/world/cosmetics.js'] = '/dev/cosmetics-stub.js';
+      const map = document.createElement('script');
+      map.type = 'importmap';
+      map.textContent = JSON.stringify({ imports });
+      document.head.append(map);
+      import('/dev/world-harness.js');
+    }
+  </script>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="labels"></div>
+  <div id="dev">
+    <button data-act="menu">Menu mode</button>
+    <button data-act="camera">Camera: follow/table</button>
+    <button data-act="quality">Quality: high/low</button>
+    <button data-act="sit">Sit / stand</button>
+    <button data-act="match">Match sim: on/off</button>
+    <button data-fx="correct">correct</button>
+    <button data-fx="wrong">wrong</button>
+    <button data-fx="heart">heart</button>
+    <button data-fx="eliminated">eliminated</button>
+    <button data-fx="win">win</button>
+    <button data-fx="hatch">hatch</button>
+    <button data-act="out">Out</button>
+    <input placeholder="focus: WASD off" id="chatInput">
+  </div>
+  <div id="log"></div>
+</body>
+</html>

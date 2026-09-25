@@ -1,0 +1,226 @@
+/* Menu screen: logo, cards (play / avatar / how to play). */
+
+.menu {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: auto;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255, 255, 255, .25), transparent 70%),
+    linear-gradient(180deg, transparent 55%, rgba(10, 30, 60, .35) 100%);
+  animation: fade-in .35s ease both;
+}
+.menu-scroll {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(18px + var(--sat)) calc(16px + var(--sar)) calc(28px + var(--sab)) calc(16px + var(--sal));
+}
+.menu-head { margin: 6px 0 34px; }
+.menu-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 34px 20px;
+  width: 100%;
+  max-width: 1200px;
+}
+@keyframes fade-in { from { opacity: 0; } }
+
+/* ---------------------------------------------------------------- logo */
+.logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: rotate(-4deg);
+  filter: drop-shadow(0 8px 0 rgba(0, 0, 0, .18));
+  pointer-events: none;
+}
+.logo-top { display: flex; gap: .3em; font: 700 clamp(34px, 6.2vw, 60px) / 1 var(--font); margin-bottom: -.08em; }
+.logo-main { font: 700 clamp(70px, 14vw, 132px) / .92 var(--font); letter-spacing: .01em; }
+.ll {
+  display: inline-block;
+  color: var(--c);
+  -webkit-text-stroke: .22em var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 0 .1em 0 var(--ink);
+  transform: rotate(var(--r));
+  animation: logo-bob 2.6s ease-in-out infinite;
+  animation-delay: calc(var(--i) * -.17s);
+}
+@keyframes logo-bob {
+  0%, 100% { transform: translateY(0) rotate(var(--r)); }
+  50% { transform: translateY(-.07em) rotate(var(--r)); }
+}
+.logo-chain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  font: 700 clamp(17px, 2.6vw, 25px) / 1 var(--font);
+  transform: rotate(3deg);
+}
+.lc {
+  padding: .22em .5em .2em;
+  color: var(--ink);
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 4px 0 var(--ink);
+  letter-spacing: .04em;
+}
+.lc-hi { color: var(--good); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+.lc-arrow { color: #fff; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; font-size: 1.2em; }
+
+/* ---------------------------------------------------------------- cards */
+.card {
+  position: relative;
+  padding: 26px 18px 18px;
+  color: var(--ink);
+  background: linear-gradient(180deg, #ffffff 0%, #e8f2ff 100%);
+  border: 4px solid var(--ink);
+  border-radius: 24px;
+  box-shadow: 0 6px 0 var(--ink), 0 16px 34px rgba(0, 20, 60, .22);
+}
+.card-title {
+  position: absolute;
+  top: -22px;
+  left: 16px;
+  margin: 0;
+  padding: 6px 16px 7px;
+  font: 700 24px / 1 var(--font);
+  background: linear-gradient(180deg, var(--tc-hi, var(--blue-hi)), var(--tc, var(--blue)));
+  border: 4px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 4px 0 var(--ink);
+  transform: rotate(-2.5deg);
+}
+.play-card { width: 350px; order: 2; --tc: var(--green); --tc-hi: var(--green-hi); }
+.avatar-card { width: 500px; order: 1; --tc: var(--purple); --tc-hi: var(--purple-hi); }
+.howto-card { width: 300px; order: 3; --tc: var(--orange); --tc-hi: var(--orange-hi); }
+
+.field-label { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; font: 700 14px var(--font); color: #3a4452; }
+.card-note { margin: 14px 0 0; font: 600 13px / 1.35 var(--font); color: #5b6573; text-align: center; }
+
+.invite-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 2px 0 4px;
+  padding: 10px 10px 14px;
+  background: linear-gradient(180deg, #fff7d1, #ffe07a);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+}
+.invite-title { font: 700 19px / 1 var(--font); text-align: center; }
+.invite-code { color: #ffe45c; letter-spacing: .08em; }
+.btn.pulse { animation: btn-pulse 1.5s ease-in-out infinite; }
+.btn.pulse:active { animation: none; }
+@keyframes btn-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+
+.or { display: flex; align-items: center; gap: 10px; margin: 10px 0; font: 700 14px var(--font); color: #6b7684; }
+.or::before, .or::after { content: ''; flex: 1; height: 3px; border-radius: 3px; background: #c9d4e2; }
+
+.join-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 14px; }
+.code-input { text-align: center; text-transform: uppercase; letter-spacing: .14em; font-size: 20px; }
+.code-hint { margin-top: 6px; font: 600 13px var(--font); color: var(--red-lo); text-align: center; }
+.shake { animation: shake .45s ease; }
+
+/* ---------------------------------------------------------------- avatar editor */
+.avatar-wrap { display: flex; gap: 14px; align-items: center; }
+.avatar-stage {
+  flex: 0 0 150px;
+  height: 214px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 38%, #ffffff 0%, #d4e9ff 72%);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, .06);
+}
+.avatar-preview { width: 118px; height: auto; animation: avatar-idle 3.2s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes avatar-idle { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-4px) rotate(-1.5deg); } }
+
+.avatar-editor { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.ae-row { display: grid; grid-template-columns: 74px 1fr; align-items: center; gap: 6px; }
+.ae-label { font: 700 14px / 1.1 var(--font); color: #3a4452; }
+.ae-options { display: flex; flex-wrap: wrap; gap: 5px; }
+.ae-options .seg-btn { flex: 0 1 auto; min-width: 0; min-height: 30px; padding: .3em .55em; font-size: 14px; border-width: 2.5px; border-radius: 9px; }
+.swatch {
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  background: var(--sw);
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: 0 2px 0 var(--ink);
+  cursor: pointer;
+  transition: transform .1s ease;
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch[aria-pressed="true"] { transform: scale(1.12); box-shadow: 0 0 0 3px #fff, 0 0 0 5.5px var(--ink); }
+.ae-presets { display: flex; gap: 8px; margin-top: 4px; }
+
+/* ---------------------------------------------------------------- how to play */
+.rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.rules li { display: grid; grid-template-columns: 28px 1fr; gap: 6px; align-items: start; font: 600 15px / 1.3 var(--font); color: #2b3440; }
+.rule-icon { font-size: 19px; line-height: 1.1; text-align: center; }
+.rules-example { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin-top: 14px; font: 700 16px / 1 var(--font); color: var(--ink); }
+.ex-word { padding: 5px 8px; background: #fff; border: 3px solid var(--ink); border-radius: 10px; box-shadow: 0 3px 0 var(--ink); letter-spacing: .04em; }
+.ex-word b { color: var(--good); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+
+/* ---------------------------------------------------------------- corner chips */
+.menu-corner {
+  position: absolute;
+  top: calc(12px + var(--sat));
+  right: calc(12px + var(--sar));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 9px;
+  font: 700 18px / 1 var(--font);
+  color: #fff;
+  -webkit-text-stroke: 4px var(--ink);
+  paint-order: stroke fill;
+  background: rgba(20, 28, 40, .55);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+}
+.round-btn {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 6px;
+  background: linear-gradient(180deg, #ffffff, #d9e6f7);
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: pointer;
+}
+.round-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.round-btn .icon { width: 100%; height: 100%; }
+
+/* ---------------------------------------------------------------- small screens */
+@media (max-width: 1180px) {
+  .play-card { order: 1; }
+  .avatar-card { order: 2; }
+}
+@media (max-width: 720px) {
+  .menu-scroll { padding-top: calc(66px + var(--sat)); }
+  .menu-head { margin-bottom: 30px; }
+  .menu-cards { gap: 36px; }
+  .play-card, .avatar-card, .howto-card { width: min(100%, 440px); }
+  .avatar-wrap { flex-direction: column; }
+  .avatar-stage { flex-basis: auto; width: 140px; height: 180px; }
+  .avatar-preview { width: 100px; }
+  .avatar-editor { width: 100%; }
+}

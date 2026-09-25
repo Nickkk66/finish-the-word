@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cosmetics Showroom</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #9fd8f7; font-family: Fredoka, system-ui, sans-serif; }
+    canvas { display: block; touch-action: none; }
+    #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+    .label {
+      position: absolute; left: 0; top: 0; white-space: nowrap; text-align: center;
+      color: #fff; font-weight: 700; font-size: 14px; line-height: 1.1;
+      -webkit-text-stroke: 3px #1b1b1b; paint-order: stroke fill;
+    }
+    .label small { display: block; font-size: 11px; }
+    #panel {
+      position: fixed; left: 10px; top: 10px; max-width: min(460px, calc(100vw - 20px));
+      background: rgba(27, 27, 27, 0.78); color: #fff; border-radius: 12px; padding: 8px 10px;
+      font: 12px/1.35 ui-monospace, Menlo, monospace;
+    }
+    #panel button {
+      font: 600 12px Fredoka, system-ui, sans-serif; margin: 0 4px 4px 0; padding: 3px 9px; cursor: pointer;
+      color: #1b1b1b; background: #fff; border: 2px solid #1b1b1b; border-radius: 8px; box-shadow: 0 2px 0 #1b1b1b;
+    }
+    #panel button.on { background: #3ddc54; }
+    #checks { margin: 4px 0 0; white-space: pre; max-height: 40vh; overflow: auto; }
+    #checks .bad { color: #ff6b6b; }
+  </style>
+  <script type="importmap">
+  { "imports": { "three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <div id="labels"></div>
+  <div id="panel"><div id="views"></div><div id="toggles"></div><div id="checks"></div></div>
+  <script type="module" src="/dev/cosmetics-harness.js"></script>
+</body>
+</html>

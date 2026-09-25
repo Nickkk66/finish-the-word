@@ -1,0 +1,19 @@
+name = "finish-the-word"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# Static client. The Worker only runs for requests that do not match a file
+# (/api/health, /api/room/<CODE>); public/.assetsignore keeps dev pages out of deploys.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# One Durable Object per room code.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "GameRoom"
+
+# SQLite-backed classes are required on the Workers free plan (no storage is used).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
