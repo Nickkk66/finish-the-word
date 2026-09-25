@@ -50,4 +50,8 @@ if (!bots.words.every((w) => dictionary.has(w))) throw new Error('bot words must
 
 write('words.js', 'Full dictionary (SCOWL english+american+british+canadian, sizes 10-70)', full.words);
 write('botwords.js', 'Common words for bots (SCOWL english+american, sizes 10-35, 3-9 letters)', bots.words);
+for (const [level, maxTier, maxLength] of [['easy', 10, 6], ['normal', 20, 7]]) {
+  const list = collect({ variants: ['english', 'american'], maxTier, minLength: MIN_WORD_LENGTH, maxLength });
+  write(`botwords-${level}.js`, `${level} bot vocabulary (SCOWL through tier ${maxTier})`, list.words);
+}
 console.log(`blocklisted and removed: ${full.blocked.join(', ')}`);

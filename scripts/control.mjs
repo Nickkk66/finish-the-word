@@ -128,6 +128,24 @@ async function get(url, timeoutMs = 10000) {
   }
 }
 
+async function checkPublicApis(baseUrl, pass, fail) {
+  const checks = [
+    ['/api/leaderboard', (v) => Array.isArray(v.top), 'The global leaderboard responds'],
+    ['/api/public', (v) => Array.isArray(v.rooms) && Number.isFinite(v.players), 'The public room list responds'],
+    ['/api/quickplay', (v) => typeof v.code === 'string' && /^[A-Z0-9]{4,8}$/.test(v.code), 'Public matchmaking responds'],
+  ];
+  const replies = await Promise.all(checks.map(async ([route, valid, label]) => {
+    const res = await get(`${baseUrl}${route}`);
+    let okay = false;
+    try { okay = res.status === 200 && valid(JSON.parse(res.text)); } catch { /* malformed response */ }
+    return { route, label, okay, status: res.status };
+  }));
+  for (const r of replies) {
+    if (r.okay) pass(r.label);
+    else fail(`${r.route} returned an invalid response (HTTP ${r.status})`);
+  }
+}
+
 /** Polls `test` until it returns truthy or time runs out, printing a dot every few seconds. */
 async function waitFor(test, timeoutMs, everyMs = 3000) {
   const end = Date.now() + timeoutMs;
@@ -478,6 +496,7 @@ async function check() {
   const localUp = await waitFor(async () => server.child.exitCode !== null
     || (await get(`http://127.0.0.1:${CHECK_PORT}/api/health`, 1500)).status === 200, 90000, 1000);
   if (localUp && server.child.exitCode === null) {
+    await checkPublicApis(`http://127.0.0.1:${CHECK_PORT}`, pass, fail);
     const smoke = await sh('node', ['scripts/smoke.mjs'], { env: { SMOKE_URL: `ws://127.0.0.1:${CHECK_PORT}` } });
     if (/SMOKE OK/.test(smoke.out)) pass('A full test game (2 players + a bot) works locally');
     else { fail('The local test game failed:'); tail(smoke.out); }
@@ -490,6 +509,7 @@ async function check() {
   step(`Online game (Cloudflare) — ${CLOUDFLARE_URL}`);
   const health = await get(`${CLOUDFLARE_URL}/api/health`);
   if (health.status === 200) {
+    await checkPublicApis(CLOUDFLARE_URL, pass, fail);
     const home = await get(CLOUDFLARE_URL);
     if (home.status === 200 && /Finish The Word/.test(home.text)) pass('The website loads');
     else fail(`The website returned an error (HTTP ${home.status})`);

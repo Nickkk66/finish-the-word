@@ -126,6 +126,7 @@ const RESERVED = [
   { x: CENTER_X, z: CENTER_Z, r: 19 }, // table + deck
   { x: SPAWN_PAD.x, z: SPAWN_PAD.z, r: 9 },
   { x: -16, z: 16, r: 10 }, // lucky blocks
+  { x: -29, z: 23, r: 12 }, // card crate plaza
   { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, r: 11 },
 ];
 const RESERVED_RECTS = [

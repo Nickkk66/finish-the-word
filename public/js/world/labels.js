@@ -82,9 +82,17 @@ export class LabelLayer {
           if (_v.x < -1.25 || _v.x > 1.25 || _v.y < -1.3 || _v.y > 1.45) {
             visible = false;
           } else {
-            const x = (_v.x * 0.5 + 0.5) * width + this.offsetX;
-            const y = (0.5 - _v.y * 0.5) * height + this.offsetY;
+            let x = (_v.x * 0.5 + 0.5) * width + this.offsetX;
+            let y = (0.5 - _v.y * 0.5) * height + this.offsetY;
             const s = clamp(l.scaleRef / depth, l.minScale, l.maxScale);
+            if (l.viewportMargin && (x < l.viewportMargin * s || x > width - l.viewportMargin * s || y < 75 || y > height - 20)) {
+              visible = false;
+            }
+            if (l.clampToViewport) {
+              const half = l.el.offsetWidth * s / 2;
+              x = clamp(x, half + 10, width - half - 10);
+              y = clamp(y, l.el.offsetHeight * s + 85, height - 95);
+            }
             if (Math.abs(x - l._x) > 0.2 || Math.abs(y - l._y) > 0.2 || Math.abs(s - l._s) > 0.003) {
               l.el.style.transform = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0) ${l.align} scale(${s.toFixed(3)})`;
               l._x = x;
@@ -108,7 +116,7 @@ export class LabelLayer {
 }
 
 /** A DOM element pinned to a world position, scaled by distance within limits. */
-class Label {
+export class Label {
   constructor(layer, className, { maxDist = 90, scaleRef = 22, minScale = 0.5, maxScale = 1.1, centered = false } = {}) {
     this.layer = layer;
     this.el = div('w-lbl ' + className);
@@ -141,7 +149,9 @@ export class HeadStack extends Label {
     this.name = span('w-name');
     this.hearts = span('w-hearts');
     this.out = span('w-out', 'OUT');
-    this.nameRow.append(this.name, this.hearts, this.out);
+    this.level = span('w-level');
+    this.combo = span('w-combo');
+    this.nameRow.append(this.level, this.name, this.combo, this.hearts, this.out);
     this.arrow = div('w-arrow', '▼');
     this.tile = div('w-tile');
     this.bubble = div('w-bubble');
@@ -157,6 +167,16 @@ export class HeadStack extends Label {
 
   setName(name) {
     this.name.textContent = name;
+  }
+  setBadges(level = 1, admin = false, combo = 0) {
+    this.level.textContent = admin ? '[ADMIN]' : `Lv ${level}`;
+    this.combo.textContent = combo >= 3 ? `🔥 ${combo}` : '';
+  }
+  flair(text, color = '#ffd43b') {
+    const el = div('w-flair', String(text).slice(0, 70));
+    el.style.color = color;
+    this.el.append(el);
+    setTimeout(() => el.remove(), 2100);
   }
 
   /** The local player's own name tag is hidden (like Roblox). */
@@ -203,7 +223,12 @@ export class HeadStack extends Label {
     }
     const text = String(bubble.text ?? '').toUpperCase().slice(0, 40);
     const n = clamp(bubble.highlight | 0, 0, text.length);
-    if (text) {
+    if (text && Number.isInteger(bubble.prefixIndex) && bubble.prefixIndex >= 0 && bubble.prefixIndex < text.length) {
+      this.bubbleMain.textContent = '';
+      const index = bubble.prefixIndex;
+      this.bubbleMain.append(document.createTextNode(text.slice(0, index)), span('w-hl', text[index]), document.createTextNode(text.slice(index + 1)));
+      this.bubbleHl.textContent = '';
+    } else if (text) {
       this.bubbleMain.className = '';
       this.bubbleMain.textContent = text.slice(0, text.length - n);
       this.bubbleHl.textContent = text.slice(text.length - n);
@@ -228,7 +253,8 @@ export class HeadStack extends Label {
 /** Floating sign above a shop chair or lucky block: name, optional colored line, price. */
 export class Sign extends Label {
   constructor(layer, { name, sub = null, subColor = '#fff' }) {
-    super(layer, 'w-sign', { maxDist: 52, scaleRef: 20, minScale: 0.45, maxScale: 1 });
+    super(layer, 'w-sign', { maxDist: 42, scaleRef: 20, minScale: 0.45, maxScale: 1 });
+    this.viewportMargin = 200;
     this.el.append(div('w-sign-name', name));
     if (sub) {
       const s = div('w-sign-sub', sub);

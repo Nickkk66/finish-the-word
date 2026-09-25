@@ -8,6 +8,8 @@ import { icons } from './icons.js';
 import { createWordInput, createLetterPicker } from './turnControls.js';
 import { countdownPop } from './fx.js';
 import { sfx } from '../audio.js';
+import { MODES, HINT_PRICE } from '../shared/constants.js';
+import { profile } from '../profile.js';
 
 const TIMER_R = 42;
 const TIMER_C = 2 * Math.PI * TIMER_R;
@@ -28,13 +30,14 @@ function overlap(word, next) {
   return next[0] === word[word.length - 1] ? 1 : 0;
 }
 
-export function createHud({ onSubmit, onTyping, onPick }) {
+export function createHud({ onSubmit, onTyping, onPick, onHint, onCards }) {
   // ---- top
   const statusText = h('span', { class: 'status-text stroke' });
   const statusTiles = h('span', { class: 'status-tiles' });
   const statusSub = h('div', { class: 'status-sub stroke', hidden: true });
   const chainEl = h('div', { class: 'chain', hidden: true });
-  const top = h('div', { class: 'hud-top' }, h('div', { class: 'status', role: 'status' }, statusText, statusTiles), statusSub, chainEl);
+  const badges = h('div', { class: 'match-badges stroke' });
+  const top = h('div', { class: 'hud-top' }, badges, h('div', { class: 'status', role: 'status' }, statusText, statusTiles), statusSub, chainEl);
 
   // ---- bottom center
   const ring = s('circle', { class: 'timer-ring', cx: 50, cy: 50, r: TIMER_R, 'stroke-dasharray': TIMER_C.toFixed(2) });
@@ -51,8 +54,13 @@ export function createHud({ onSubmit, onTyping, onPick }) {
   const turnRow = h('div', { class: 'turn-row' }, heartsEl, timer, mistakesEl);
   const wordInput = createWordInput({ onSubmit, onTyping });
   const picker = createLetterPicker({ onPick });
+  const hintButton = h('button', { type: 'button', class: 'btn small yellow', onClick: onHint }, `Hint · ${HINT_PRICE}`);
+  const cardsButton = h('button', { type: 'button', class: 'btn small purple', onClick: onCards }, 'Use a card');
+  const tools = h('div', { class: 'turn-tools', hidden: true }, hintButton, cardsButton);
+  const hintAnswer = h('div', { class: 'hint-answer', hidden: true, role: 'status' });
+  const combo = h('div', { class: 'combo-meter stroke', hidden: true });
 
-  const el = h('div', { class: 'hud', hidden: true }, top, h('div', { class: 'hud-bottom' }, turnRow, picker.el, wordInput.el));
+  const el = h('div', { class: 'hud', hidden: true }, top, h('div', { class: 'hud-bottom' }, combo, turnRow, picker.el, hintAnswer, tools, wordInput.el));
 
   let st = null;           // latest app state
   let turnKey = '';
@@ -123,7 +131,8 @@ export function createHud({ onSubmit, onTyping, onPick }) {
 
   function renderSub(m, part) {
     let text = '';
-    if (m && ACTIVE_PHASES.has(m.phase)) {
+    if (st.zone === 'obby' && m && ACTIVE_PHASES.has(m.phase)) text = 'Match starting — take the portal back to play next round!';
+    else if (m && ACTIVE_PHASES.has(m.phase)) {
       if (part && !part.alive) text = "You're out! Cheer on the others 📣";
       else if (!part) text = (st.players.get(st.you)?.seat ?? -1) >= 0 ? "You'll play in the next match" : 'Sit at the table to join the next match';
     }
@@ -219,6 +228,7 @@ export function createHud({ onSubmit, onTyping, onPick }) {
       }
     } else if (isMyClock(m) && secondsLeft >= 1 && secondsLeft <= 5) {
       sfx.tick(secondsLeft === 1);
+      if (secondsLeft <= 3) sfx.heartbeat();
     }
   }
 
@@ -246,7 +256,7 @@ export function createHud({ onSubmit, onTyping, onPick }) {
     const m = st.match;
     const phase = m ? m.phase : 'lobby';
     const part = m && m.participants.find((p) => p.id === st.you);
-    const key = m ? `${phase}|${m.round}|${m.typerId}|${m.chooserId}|${m.wordCount}` : 'lobby';
+    const key = m ? `${phase}|${m.turnId}|${m.round}|${m.typerId}|${m.chooserId}|${m.wordCount}` : 'lobby';
     if (key !== turnKey) {
       turnKey = key;
       // Seed with the current second so a phase change never fires a stale tick / countdown pop.
@@ -255,6 +265,19 @@ export function createHud({ onSubmit, onTyping, onPick }) {
 
     renderStatus(m?.phase === 'countdown' ? lastSecond : null);
     renderSub(m, part);
+    badges.textContent = `${st.public ? 'Public' : 'Private'} · ${MODES.find((v) => v.id === (m?.mode || st.settings.mode))?.name || 'Classic'}${m?.minLength > 3 ? ` · ${m.minLength}+ letters` : ''}${m?.wordCount ? ` · Chain ${m.wordCount}` : ''}`;
+    const comboCount = m?.participants.find((p) => p.id === (m.typerId || st.you))?.combo || 0;
+    combo.hidden = comboCount < 3;
+    const multiplier = comboCount >= 8 ? 3 : comboCount >= 5 ? 2 : 1.5;
+    const comboText = `${multiplier}× COMBO · ${comboCount} fast words`;
+    if (combo.textContent !== comboText) { combo.textContent = comboText; combo.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 220 }); }
+    const myTyping = phase === 'typing' && m.typerId === st.you && part?.alive;
+    tools.hidden = !myTyping;
+    hintButton.disabled = !!st.hintPending || st.hintTurn === m?.turnId || profile.coins < HINT_PRICE;
+    hintButton.textContent = st.hintPending ? 'Finding hint…' : st.hintTurn === m?.turnId ? 'Hint purchased' : `Hint · ${HINT_PRICE}`;
+    cardsButton.disabled = !!st.cardPending || st.cardUsedTurn === m?.turnId || !Object.values(profile.cards).some((n) => n > 0);
+    hintAnswer.hidden = !myTyping || !st.hintWord;
+    hintAnswer.textContent = st.hintWord ? `Your hint: ${st.hintWord.toUpperCase()}` : '';
 
     timer.hidden = !(phase === 'typing' || phase === 'choosing');
     mistakesEl.hidden = phase !== 'typing';

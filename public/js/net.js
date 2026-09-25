@@ -9,11 +9,16 @@ const BACKOFF_MIN_MS = 500;
 const BACKOFF_MAX_MS = 8000;
 const CLOSE_REPLACED = 4000;              // server: same id connected from another tab
 const CLOSE_REJECTED = 1008;              // server: after error room_full / bad_hello / bad_code
-const FATAL_ERRORS = new Set(['room_full', 'bad_hello', 'bad_code']);
+const FATAL_ERRORS = new Set(['room_full', 'bad_hello', 'bad_code', 'banned']);
 
 // The Cloudflare Worker serves both the game and its rooms. Static copies of the client (GitHub Pages)
 // have no server of their own, so they connect to the Worker's rooms instead.
 const GAME_SERVER = 'finish-the-word.nickkk66.workers.dev';
+
+export function apiUrl(path) {
+  const base = location.hostname.endsWith('.github.io') ? `https://${GAME_SERVER}` : location.origin;
+  return new URL(path.replace(/^\//, ''), `${base}/`).href;
+}
 
 function roomUrl(code) {
   const staticHost = location.hostname.endsWith('.github.io');
@@ -126,6 +131,8 @@ export function createNet() {
       socket = null;
       stopTimers();
       if (ev.code === CLOSE_REPLACED) setState('closed', 'replaced');
+      else if (ev.code === 4001) setState('closed', 'kicked');
+      else if (ev.code === 4002) setState('closed', 'banned');
       else if (ev.code === CLOSE_REJECTED) setState('closed', 'rejected');
       else scheduleRetry();
     };

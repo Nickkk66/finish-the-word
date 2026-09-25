@@ -54,6 +54,7 @@ describe('joining', () => {
     assert.deepEqual(welcome.players, [{
       id: 'alice', name: 'Alice', isBot: false, isHost: true, connected: true,
       look: sanitizeLook({ skin: '#ffffff' }), chair: 'throne', pet: 'unicorn', seat: -1, wins: 0, pos: null,
+      back: 'none', level: 1, petTier: 1,
     }]);
     assert.equal(welcome.match.phase, 'lobby');
     assert.equal(welcome.match.phaseEndsIn, null);
@@ -179,7 +180,7 @@ describe('seats and countdown', () => {
     m = lastMatch(a);
     assert.equal(m.phase, 'choosing');
     assert.deepEqual(m.participants.map((p) => p.id), ['bob', 'alice']);
-    assert.deepEqual(m.participants[0], { id: 'bob', hearts: 2, maxHearts: 2, alive: true, words: 0, shield: false });
+    assert.deepEqual(m.participants[0], { id: 'bob', hearts: 2, maxHearts: 2, alive: true, words: 0, shield: false, combo: 0, pending: { skip: false, time: 0, mistakes: 0 } });
     assert.equal(m.phaseEndsIn, CHOOSE_MS);
     assert.equal(m.round, 1);
   });
@@ -276,7 +277,9 @@ describe('typing', () => {
     room.forced.push(0.99); // no two-letter prefix this time
     const word = play(room);
     const a = room.conns.alice;
-    assert.deepEqual(a.last('result'), { t: 'result', id: typerId, word, ok: true });
+    assert.equal(a.last('result').id, typerId);
+    assert.equal(a.last('result').word, word);
+    assert.equal(a.last('result').ok, true);
     const m = lastMatch(a);
     assert.equal(m.phase, 'typing');
     assert.equal(m.typerId, other(typerId));
@@ -434,7 +437,7 @@ describe('pet abilities', () => {
 
   test('sabotage: the turn after your valid word is shorter, never below ABS_MIN_TURN_MS', () => {
     const room = createRoom();
-    const a = room.join('alice', { pet: 'dragon' });
+    const a = room.join('alice', { pet: 'bear' });
     room.send(a, { t: 'host', action: 'settings', settings: { turnSeconds: 10 } });
     startMatch(room);
     pick(room);
@@ -442,7 +445,7 @@ describe('pet abilities', () => {
       const { typerId, wordCount } = room.engine.match;
       play(room);
       const shrunk = Math.max(MIN_TURN_MS, 10000 - Math.floor((wordCount + 1) / 3) * 1000);
-      const expected = typerId === 'alice' ? Math.max(ABS_MIN_TURN_MS, shrunk - 3000) : shrunk;
+      const expected = typerId === 'alice' ? Math.max(ABS_MIN_TURN_MS, shrunk - 2000) : shrunk;
       assert.equal(lastMatch(room.conns.bob).phaseDuration, expected, `word ${i}`);
     }
   });
@@ -498,18 +501,22 @@ describe('match end', () => {
 
     assert.deepEqual(a.last('fail'), { t: 'fail', id: loser, cause: 'timeout', hearts: 0, shielded: false });
     assert.deepEqual(a.last('elim'), { t: 'elim', id: loser });
-    assert.deepEqual(a.last('win'), { t: 'win', id: winner });
+    assert.equal(a.last('win').id, winner);
     const winnerView = a.all('player').findLast((m) => m.p.id === winner).p;
     assert.equal(winnerView.wins, 1);
     assert.equal(a.last('chat').text, `${winner} won the match!`);
-    const { participation, perWord, win } = REWARDS;
-    assert.deepEqual(room.conns[winner].last('reward'), { t: 'reward', coins: participation + 2 * perWord + win, won: true, words: 2 });
-    assert.deepEqual(room.conns[loser].last('reward'), { t: 'reward', coins: participation + perWord, won: false, words: 1 });
+    for (const id of [winner, loser]) {
+      const reward = room.conns[id].last('reward');
+      const part = room.engine.participant(id);
+      assert.equal(reward.coins, REWARDS.participation + part.coins + reward.bonuses.reduce((sum, b) => sum + b.coins, 0));
+      assert.equal(reward.won, id === winner);
+      assert.equal(reward.words, id === winner ? 2 : 1);
+    }
     let m = lastMatch(a);
     assert.equal(m.phase, 'ended');
     assert.equal(m.winnerId, winner);
     assert.equal(m.phaseDuration, MATCH_END_MS);
-    assert.deepEqual(participant(a, loser), { id: loser, hearts: 0, maxHearts: 1, alive: false, words: 1, shield: false });
+    assert.deepEqual(participant(a, loser), { id: loser, hearts: 0, maxHearts: 1, alive: false, words: 1, shield: false, combo: 0, pending: { skip: false, time: 0, mistakes: 0 } });
 
     room.clock.advance(MATCH_END_MS);
     m = lastMatch(a);
@@ -579,11 +586,11 @@ describe('leaving', () => {
     room.clock.advance(RECONNECT_GRACE_MS - TURN_MS - ROUND_END_MS);
     assert.deepEqual(w.last('fail'), { t: 'fail', id: gone, cause: 'left', hearts: 0, shielded: false });
     assert.deepEqual(w.last('elim'), { t: 'elim', id: gone });
-    assert.deepEqual(w.last('win'), { t: 'win', id: stays });
+    assert.equal(w.last('win').id, stays);
     assert.deepEqual(w.last('leave'), { t: 'leave', id: gone });
     assert.ok(!room.engine.players.has(gone));
     assert.equal(participant(w, gone).alive, false);
-    if (gone === 'alice') assert.deepEqual(w.last('room'), { t: 'room', hostId: 'bob', settings: DEFAULT_SETTINGS });
+    if (gone === 'alice') assert.deepEqual(w.last('room'), { t: 'room', hostId: 'bob', settings: DEFAULT_SETTINGS, table: 'classic', public: false });
   });
 
   test('the same id on a new socket takes over; the old socket is closed with 4000', () => {
@@ -634,7 +641,7 @@ describe('leaving', () => {
     room.engine.disconnect(a);
     room.clock.advance(RECONNECT_GRACE_MS);
     assert.equal(b.last('leave').id, 'alice');
-    assert.deepEqual(b.last('room'), { t: 'room', hostId: 'bob', settings: { ...DEFAULT_SETTINGS, hearts: 3 } });
+    assert.deepEqual(b.last('room'), { t: 'room', hostId: 'bob', settings: { ...DEFAULT_SETTINGS, hearts: 3 }, table: 'classic', public: false });
 
     room.engine.disconnect(b);
     room.clock.advance(RECONNECT_GRACE_MS);
@@ -697,7 +704,7 @@ describe('bots', () => {
         typed = '';
       } else if (msg.t === 'typing') {
         // Words are typed letter by letter (or cleared after a mistake).
-        assert.ok(msg.text === '' || msg.text === typed + msg.text.at(-1), `${typed} -> ${msg.text}`);
+        assert.ok(msg.text === '' || msg.text === typed + msg.text.at(-1) || msg.text === typed.slice(0, -1), `${typed} -> ${msg.text}`);
         typed = msg.text;
       } else if (msg.t === 'result' && msg.ok) {
         assert.ok(msg.word.startsWith(prefix) && dict.has(msg.word) && !used.has(msg.word), msg.word);

@@ -15,6 +15,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BLOCKS, PETS, PETS_BY_ID } from '../shared/catalog.js';
 import { LAYOUT } from '../shared/constants.js';
+export { buildTable, buildBackBling, buildPortal, buildCardBox } from './cosmetics-v2.js';
 
 const SEAT_Y = LAYOUT.seatHeight;
 const TAU = Math.PI * 2;

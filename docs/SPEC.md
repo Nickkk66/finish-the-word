@@ -1,4 +1,95 @@
-# Finish The Word! (web) — Build Spec & Contracts
+# Finish The Word! (web) — v2 Build Spec & Contracts
+
+## v2 implementation contract (September 25, 2026)
+
+This section supersedes conflicting v1 details below. The owner authorized the entire 28-item handoff.
+Lead owns shared constants/catalog, cosmetics.js/cosmetics-v2.js, documentation and integration; server,
+world and UI agents own the remaining areas as assigned. All API calls work from GitHub Pages through
+`net.apiUrl(path)` and all public JSON endpoints have CORS. Protocol version is 2.
+
+### Shared catalog and behavior
+
+`MODES` is an array of `{id,name,description,hearts,turnSeconds}`; `BOT_LEVELS` is an object keyed by difficulty;
+`EMOTES` is an array of seven allowed names; `FLAIRS` maps IDs to `{label,coins,color}`. All are in constants.js.
+`TABLES`, `BACK_BLING`, `CARDS`, `CARD_BOXES` are arrays in catalog.js, with `TABLE_IDS`, `BACK_IDS`,
+`CARD_IDS`, `CARDS_BY_ID`. Catalog prices and odds are authoritative display data. `rollBlock` also rolls cards.
+Tier merging consumes 3 identical same-tier pets and produces one at tier+1, capped at 3. Tiers are cosmetic:
+pet abilities remain unchanged. Existing dragon pet Blaze uses `{type:'dragon',value:3,chance:.5}`: roll once
+after its accepted word, on success cap the next typing turn at 3000ms after other modifiers. Other sabotage
+pets still subtract seconds. Hints cost `HINT_PRICE=250`.
+
+Winner bonus replaces the fixed 50 with `floor(min(1800, eligibleMs / 60000 * 15))`; word/combo/participation
+and flair earnings remain separate. Only award the duration bonus when at least two human participants each
+played a valid word. `eligibleMs` cannot exceed actual match duration or 30 seconds per accepted word.
+This gives a 15-coin win bonus for a meaningful minute, up to 1800 for two hours. Coins/inventories remain the
+existing casual localStorage economy; they cannot be made cheat-proof by trusting client counts. Cards have
+server-enforced turn/target/count limits, but no account or server wallet migration is included in this release.
+
+### Protocol additions
+
+- Settings: `{hearts,turnSeconds,petAbilities,mode:'classic',botLevel:'normal',public:false}`; valid turn values
+  8,10,15,20. Selecting a mode supplies its default hearts and turnSeconds before host overrides.
+- `hello` and `loadout` add `back`, `table`, `level` (1–999), `petTier` (1–3), `cards:{cardId:count}`.
+  `hello` additionally accepts `adminToken` and `public`. Card counts are registered outside active matches;
+  the room's copy is consumed on successful use, never incremented by in-match loadouts.
+- Player adds `back`, `level`, `petTier`, and `isAdmin` only if the admin tag is shown. Own admin authority is
+  delivered privately as `welcome.isAdmin` and in `unlock` replies; do not expose hidden admins to other clients.
+- `welcome` / `room` add `table` and `public`.
+- MatchState adds `turnId` (unique increasing number across a room's matches), `mode`, `minLength`,
+  `prefixIndex`, `twist:{id,name}|null`, `startedAt`, plus participant `combo` and pending card effects.
+- `result ok:true` adds `{wpm,combo,coins,flairs:[{id,label,coins,color}]}`. `win` adds `flairs` in the same shape.
+  `reward` adds `{matchId,durationMs,eligibleMs,bestWpm,bestCombo,bonuses:[{label,coins}]}`. Only credit once.
+- C→S `hint {turnId,requestId,balance}` → private S→C
+  `hint {ok,turnId,requestId,word?,cost?,reason?}`. Validate phase, current typer, balance>=250, unused answer,
+  current mode min length and once per turn. Repeated request ID returns same result. No charge for failure;
+  UI reserves the purchase while pending and debits once on an accepted, current-turn response.
+- C→S `useCard {turnId,requestId,cardId,targetId}` → private
+  `cardResult {ok,turnId,requestId,cardId,targetId,reason?}`, and on success broadcast
+  `cardUsed {actorId,targetId,cardId,effect}`. One card per actor turn; alive other-player targets only.
+  `skip` queues skipping the target's next typing turn; `time_tax` removes 2 seconds (normal floor applies);
+  `pressure` removes 2 allowed mistakes (floor 1); `heart` removes 1 heart immediately through shield/elim logic.
+  Repeated IDs cannot spend twice. Invalid uses do not consume cards. Clear pending effects on match end.
+- C→S `emote {name}` → S→C `emote {id,name}` to others; sender animates locally. At most once/second.
+- C→S `unlock {code}` → private `unlock {ok,token?}`. Code lives only in env.ADMIN_CODE; disabled if absent.
+  Five attempts/connection and hashed IP/10min. Persist HMAC admin token locally; verify on hello. No code logs.
+- C→S `mod {action:'kick'|'ban'|'unban',id}`; owner/admin. Owner cannot moderate an admin.
+  S→C `kicked {reason}`, close 4001 or 4002; no automatic reconnect. Ban ID and hashed IP for room lifetime.
+- C→S `admin {action,...}` where actions are `takeHost`, `forceStart`, `endMatch`, `reset`, `announce` (text),
+  `grant` (id,coins<=100000), `removeLeaderboard` (id), `tag` (on), `table` (table).
+  S→C `announce {text}`, `grant {coins,reason}`. Admin teleport is local. Admin UI lives in Settings.
+- C→S `obby {event:'start'|'finish',ms?}`; grant 50 once/10min/player, minimum legitimate run 30s.
+- New errors include `banned`, `not_allowed`; default rate limits apply to every new message type.
+- `GET /api/leaderboard` → `{top:[{name,wins}]}` (30s edge cache), global human wins only with 2+ humans.
+- `GET /api/public` → `{rooms:[{code,humans}],players}`; `GET /api/quickplay` → `{code}`.
+  Public room heartbeat <=once/2s, keep alive while inhabited, entries expire in 60s. Private rooms stay unlisted.
+
+### World additions
+
+`setTable(id)`, `renderThumbnail(kind,id,size=160) → Promise<dataURL>` (kind chair/table/pet/back/block/cardBox),
+`setFirstPerson(on)`, `onViewChange(cb)`, `playEmote(id,name)`, `playEffect(id,'flair',{text,color})`,
+`setPlayerStatus(id,{combo,...})`, `teleportLocal(pos)`, `setZone('island'|'obby')`,
+`setPetCollection(ownedIds)` (ever-discovered pet IDs), `setLeaderboardTitle(text)`.
+`onInteract` adds `{type:'portal',to:'obby'|'island'}`, `{type:'obbyFinish',ms}`, `{type:'obbyRespawn'}`,
+and `{type:'cardBox',boxId}`. Portal runs automatically on entry; UI owns 1.4s overlay and halfway teleport.
+`OBBY.spawn`, `.finish`, `.killY` are shared; world/obby.js owns platform layout and motion/collision data.
+Root cosmetics exports `buildTable`, `buildBackBling`, `buildPortal`, `buildCardBox` via cosmetics.js;
+returned groups use `userData.update(t,dt,seated=false)`. Back bling origin is torso center, geometry behind z=-.5.
+Table origin is deck-top center, its surface at LAYOUT.tableHeight; models have distinct details/animations.
+
+### UI and profile
+
+Migrate profiles without losing coins/pets: retain `pets` as derived total counts and add `petTiers[id][tier]`,
+`equippedPetTier`, `discoveredPets` (ever obtained; deletion does not re-hide discoveries), `cards`, owned/equipped
+table/back, `xp`, `bestWpm`, `bestCombo`, `bestObbyMs`, and settings `prefillPrefix:true`, `view`.
+Every paid action uses the existing confirmation dialog; equipped owned items don't charge. Merge/delete also
+confirm. Hint/Card pending state is bound to turnId; buttons hidden when unavailable. Prefix prefills once per
+turn and remains editable. Programmatic prefill must not start WPM's first-keystroke clock.
+Settings retains sound/graphics/personal preferences and a prominent non-host notice. Separate Game Settings
+appears only for owner/admin. Hidden admin entry opens after 5 version taps/3s. Shop tabs chairs/tables/back;
+Cards separate from Pets. All inventory/odds art uses model or vector art; hatch reveal retains the pet emoji.
+Profile uses two columns at desktop with tabs for Look/Back Bling/Pets and fits at 700px height.
+
+---
 
 A 3D, Roblox-style, browser multiplayer copy of the Roblox game **"Finish The Word!"** (by Table Game X).
 Up to **8 players per room**, joined via an **invite link** (`https://<host>/?room=CODE`).

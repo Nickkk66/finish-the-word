@@ -3,11 +3,11 @@
 
 import * as THREE from 'three';
 import { LAYOUT, SEAT_COUNT } from '../shared/constants.js';
-import { CHAIR_IDS } from '../shared/catalog.js';
-import { buildChair, disposeObject } from './cosmetics.js';
+import { CHAIR_IDS, TABLE_IDS } from '../shared/catalog.js';
+import { buildChair, buildTable, disposeObject } from './cosmetics.js';
 import { CENTER_X, CENTER_Z, DECK, seatX, seatYaw, seatZ } from './layout.js';
 import { colorMaterial, enableShadows } from './materials.js';
-import { tableTopTexture, woodTexture } from './textures.js';
+import { woodTexture } from './textures.js';
 import { easeOutBack } from './math.js';
 
 const POP_TIME = 0.4;
@@ -31,22 +31,20 @@ export function createTable(scene) {
   deck.receiveShadow = true;
   group.add(deck);
 
-  // Table: top at DECK.top + tableHeight, central pedestal (seated legs fit underneath).
-  const topY = DECK.top + LAYOUT.tableHeight;
-  const edge = colorMaterial('#6f4526');
-  const tableTop = new THREE.Mesh(
-    new THREE.CylinderGeometry(LAYOUT.tableRadius, LAYOUT.tableRadius - 0.1, 0.36, 64),
-    [edge, new THREE.MeshLambertMaterial({ map: tableTopTexture() }), edge],
-  );
-  tableTop.position.y = topY - 0.18;
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(LAYOUT.tableRadius, 0.1, 8, 64).rotateX(Math.PI / 2), edge);
-  rim.position.y = topY - 0.04;
-  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.1, LAYOUT.tableHeight, 24), edge);
-  pedestal.position.y = DECK.top + LAYOUT.tableHeight / 2;
-  const foot = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.4, 0.3, 32), edge);
-  foot.position.y = DECK.top + 0.15;
-  group.add(tableTop, rim, pedestal, foot);
-  [tableTop, rim, pedestal, foot].forEach((m) => enableShadows(m));
+  let tableId = null;
+  let tableModel = null;
+  let tablePop = 1;
+  function setTable(id) {
+    id = TABLE_IDS.has(id) ? id : 'classic';
+    if (id === tableId) return;
+    if (tableModel) { tableModel.removeFromParent(); disposeObject(tableModel); }
+    tableModel = buildTable(id);
+    tableModel.position.y = DECK.top;
+    enableShadows(tableModel); group.add(tableModel);
+    tablePop = tableId === null ? 1 : 0;
+    tableId = id;
+  }
+  setTable('classic');
 
   const slots = [];
   for (let i = 0; i < SEAT_COUNT; i++) {
@@ -87,7 +85,11 @@ export function createTable(scene) {
   return {
     colliders,
     setChair,
+    setTable,
     update(t, dt) {
+      tablePop = Math.min(1, tablePop + dt / POP_TIME);
+      tableModel.scale.setScalar(Math.max(.01, easeOutBack(tablePop)));
+      tableModel.userData.update?.(t, dt);
       for (const slot of slots) {
         if (slot.pop < 1) {
           slot.pop = Math.min(1, slot.pop + dt / POP_TIME);

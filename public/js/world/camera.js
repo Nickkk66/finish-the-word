@@ -28,6 +28,9 @@ export class CameraRig {
     this.wantPos = new THREE.Vector3();
     this.wantLook = new THREE.Vector3();
     this.snapTarget = true;
+    this.firstPerson = false;
+    this.firstPitch = 0;
+    this.seatedYaw = 0;
   }
 
   setMode(mode) {
@@ -50,6 +53,12 @@ export class CameraRig {
   }
 
   orbit(dx, dy) {
+    if (this.firstPerson && this.mode !== 'menu') {
+      if (this.mode === 'table') this.seatedYaw = clamp(this.seatedYaw - dx * 0.004, -Math.PI * 5 / 12, Math.PI * 5 / 12);
+      else this.yaw -= dx * 0.004;
+      this.firstPitch = clamp(this.firstPitch + dy * 0.004, -1.15, 1.15);
+      return;
+    }
     if (this.mode === 'follow') {
       this.yaw -= dx * 0.0055;
       this.pitch = clamp(this.pitch + dy * 0.0045, -0.3, 1.25);
@@ -81,6 +90,11 @@ export class CameraRig {
       const r = 67 + Math.sin(t * 0.07) * 5;
       P.set(CENTER_X + Math.sin(a) * r, 30 + Math.sin(t * 0.11) * 4, CENTER_Z + Math.cos(a) * r);
       L.set(CENTER_X - Math.sin(a) * 6, 5, CENTER_Z - Math.cos(a) * 6);
+    } else if (this.firstPerson) {
+      const yaw = this.mode === 'table' ? seatAngle(seat) + this.seatedYaw : this.yaw;
+      P.copy(focus); P.y += this.mode === 'table' ? 5.4 : 4.9;
+      L.set(P.x - Math.sin(yaw) * Math.cos(this.firstPitch), P.y - Math.sin(this.firstPitch), P.z - Math.cos(yaw) * Math.cos(this.firstPitch));
+      this.target.copy(P);
     } else if (this.mode === 'table') {
       // Far enough that the whole table (±11 units wide incl. chairs) fits horizontally.
       const halfH = Math.atan(Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * cam.aspect);

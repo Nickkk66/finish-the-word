@@ -44,6 +44,7 @@ export class Input {
     this.drag = null; // mouse orbit
     this.touches = new Map(); // orbit / pinch touches: id -> {x, y}
     this.pinch = 0;
+    this.firstPerson = false;
 
     this.touchUI = document.createElement('div');
     this.touchUI.className = 'w-touch';
@@ -98,6 +99,7 @@ export class Input {
   setActive(on, showTouch) {
     this.active = on;
     if (!on) this.releaseAll();
+    if (!on && document.pointerLockElement === this.canvas) document.exitPointerLock?.();
     this.touchUI.classList.toggle('w-on', on && showTouch);
   }
 
@@ -133,6 +135,9 @@ export class Input {
     if (!this.active) return;
     if (e.pointerType === 'mouse') {
       if (e.button !== 0 && e.button !== 2) return;
+      if (this.firstPerson && e.button === 0 && document.pointerLockElement !== this.canvas) {
+        try { this.canvas.requestPointerLock?.()?.catch?.(() => {}); } catch { /* Drag remains available. */ }
+      }
       this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
     } else {
       const rect = this.canvas.getBoundingClientRect();
@@ -152,6 +157,11 @@ export class Input {
   }
 
   onPointerMove(e) {
+    if (this.active && this.firstPerson && document.pointerLockElement === this.canvas) {
+      this.orbitX += e.movementX;
+      this.orbitY += e.movementY;
+      return;
+    }
     if (this.drag && e.pointerId === this.drag.id) {
       this.orbitX += e.clientX - this.drag.x;
       this.orbitY += e.clientY - this.drag.y;
@@ -248,6 +258,9 @@ export class CharacterMotor {
     this.grounded = true;
     this.speed = 0;
     this.anim = 'idle';
+    this.platforms = null;
+    this.standingOn = null;
+    this.contact = null;
   }
 
   teleport(x, y, z, yaw) {
@@ -257,6 +270,8 @@ export class CharacterMotor {
     this.grounded = true;
     this.speed = 0;
     this.anim = 'idle';
+    this.standingOn = null;
+    this.contact = null;
   }
 
   /** move: Vector2 (x = right, y = forward) relative to the camera yaw. */
@@ -277,6 +292,10 @@ export class CharacterMotor {
     this.vel.y -= GRAVITY * dt;
 
     const p = this.pos;
+    const oldY = p.y;
+    if (this.platforms && this.grounded && this.standingOn) {
+      p.x += this.standingOn.dx; p.z += this.standingOn.dz;
+    }
     p.x += this.vel.x * dt;
     p.z += this.vel.z * dt;
     for (let pass = 0; pass < 2; pass++) {
@@ -292,10 +311,33 @@ export class CharacterMotor {
         }
       }
     }
-    clampWalkable(p);
+    if (!this.platforms) clampWalkable(p);
 
     p.y += this.vel.y * dt;
-    const ground = groundHeight(p.x, p.z);
+    let ground = this.platforms ? -Infinity : groundHeight(p.x, p.z);
+    this.contact = null;
+    this.standingOn = null;
+    if (this.platforms) {
+      for (const box of this.platforms) {
+        const ox = p.x - box.x, oz = p.z - box.z;
+        const cos = Math.cos(box.angle || 0), sin = Math.sin(box.angle || 0);
+        const lx = ox * cos - oz * sin, lz = ox * sin + oz * cos;
+        const top = box.y + box.h / 2, bottom = box.y - box.h / 2;
+        const inside = Math.abs(lx) < box.w / 2 + RADIUS * .65 && Math.abs(lz) < box.d / 2 + RADIUS * .65;
+        if (!inside) continue;
+        if (box.kind === 'kill') {
+          if (p.y < top && p.y + 4.8 > bottom) this.contact = box;
+          continue;
+        }
+        if (top <= oldY + .6 && top > ground && this.vel.y <= 0) { ground = top; this.standingOn = box; }
+        else if (p.y < top - .1 && p.y + 4.5 > bottom && oldY < top - .6) {
+          const pushX = box.w / 2 + RADIUS - Math.abs(lx);
+          const pushZ = box.d / 2 + RADIUS - Math.abs(lz);
+          if (pushX < pushZ) { p.x += Math.sign(lx || 1) * pushX * cos; p.z -= Math.sign(lx || 1) * pushX * sin; }
+          else { p.x += Math.sign(lz || 1) * pushZ * sin; p.z += Math.sign(lz || 1) * pushZ * cos; }
+        }
+      }
+    }
     if (p.y <= ground || (this.grounded && this.vel.y <= 0 && p.y - ground < 0.6)) {
       // Land, or stick to the ground when walking down slopes / off small steps.
       p.y = ground;

@@ -2,8 +2,8 @@
 // two boards behind the table ("Most Wins" leaderboard + "How to Play").
 
 import * as THREE from 'three';
-import { BLOCKS, CHAIRS, RARITIES } from '../shared/catalog.js';
-import { buildChair, buildLuckyBlock } from './cosmetics.js';
+import { BLOCKS, CHAIRS, CARD_BOXES, RARITIES } from '../shared/catalog.js';
+import { buildChair, buildLuckyBlock, buildCardBox } from './cosmetics.js';
 import { BLOCK_BASE, BLOCK_SPOTS, BOARDS, PEDESTAL, SHOP_ROW } from './layout.js';
 import { colorMaterial, enableShadows, shadeHex } from './materials.js';
 import { canvasTexture, makeCanvas, woodTexture } from './textures.js';
@@ -89,6 +89,15 @@ export function createLobby(scene) {
     return { blockId: spot.blockId, x: spot.x, z: spot.z, labelY: top + BLOCK_BASE.height + 2.2, promptY: 2.4 };
   });
 
+  const cardBoxes = CARD_BOXES.map(def => {
+    const model = buildCardBox(def.id);
+    model.position.set(def.x, 0, def.z); scene.add(model); enableShadows(model);
+    if (model.userData.update) animated.push(model);
+    colliders.push({ x: def.x, z: def.z, r: 2.2 });
+    return { boxId: def.id, x: def.x, z: def.z, labelY: modelTop(model, 4) + 1.2, promptY: 2.4 };
+  });
+  let boardTitle = 'MOST WINS · ALL TIME';
+  let boardRows = [];
   // ---- Boards ----
   let winsCanvas = null;
   let winsTexture = null;
@@ -108,8 +117,14 @@ export function createLobby(scene) {
     colliders,
     shopItems,
     blocks,
+    cardBoxes,
+    setLeaderboardTitle(title) {
+      boardTitle = String(title).slice(0, 40);
+      drawLeaderboard(winsCanvas, boardRows, boardTitle); winsTexture.needsUpdate = true;
+    },
     setLeaderboard(rows) {
-      drawLeaderboard(winsCanvas, Array.isArray(rows) ? rows : []);
+      boardRows = Array.isArray(rows) ? rows : [];
+      drawLeaderboard(winsCanvas, boardRows, boardTitle);
       winsTexture.needsUpdate = true;
     },
     update(t, dt) {
@@ -209,13 +224,13 @@ function trophy(g, x, y, s) {
 
 const MEDALS = ['#ffc83d', '#d4dde8', '#e08f5a'];
 
-function drawLeaderboard(canvas, rows) {
+function drawLeaderboard(canvas, rows, title = 'MOST WINS · ALL TIME') {
   const g = canvas.getContext('2d');
   const { width: w, height: h } = canvas;
   boardBackground(g, w, h, '#2554a8', '#16326b');
-  trophy(g, w / 2 - 250, 78, 1.25);
-  trophy(g, w / 2 + 250, 78, 1.25);
-  outlinedText(g, 'MOST WINS', w / 2, 82, 84, '#ffffff', 'center', 14);
+  trophy(g, 70, 78, .8);
+  trophy(g, w - 70, 78, .8);
+  outlinedText(g, title, w / 2, 82, 50, '#ffffff', 'center', 9);
   const list = rows
     .filter((r) => r && typeof r.name === 'string')
     .slice()

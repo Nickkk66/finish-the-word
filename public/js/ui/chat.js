@@ -3,14 +3,14 @@
 // Messages are rendered with textContent only.
 
 import { h, nameColor, isTextField, replay } from './dom.js';
-import { CHAT_MAX } from '../shared/constants.js';
+import { CHAT_MAX, EMOTES } from '../shared/constants.js';
 
 const MAX_MESSAGES = 60;
 const IDLE_MS = 6000;            // background fades out
 const FADE_TEXT_MS = 30000;      // messages fade out
 const MIN_SEND_INTERVAL_MS = 650;
 
-export function createChat({ onSend }) {
+export function createChat({ onSend, onEmote }) {
   const log = h('div', { class: 'chat-log scroll', role: 'log', 'aria-live': 'polite' });
   const input = h('input', {
     class: 'chat-input', type: 'text', maxlength: CHAT_MAX, placeholder: 'To chat click here or press "/" key',
@@ -18,7 +18,9 @@ export function createChat({ onSend }) {
   });
   const badge = h('span', { class: 'chat-badge', hidden: true });
   const toggle = h('button', { type: 'button', class: 'chat-toggle', 'aria-label': 'Open chat' }, '💬', badge);
-  const el = h('div', { class: 'chat' }, toggle, h('div', { class: 'chat-box' }, log, input));
+  const emotes = h('div', { class: 'emote-grid', hidden: true }, EMOTES.map((name) => h('button', { type: 'button', class: 'seg-btn', onClick: () => { onEmote(name); emotes.hidden = true; } }, name)));
+  const emoteButton = h('button', { type: 'button', class: 'emote-button', 'aria-label': 'Emotes', onClick: () => { emotes.hidden = !emotes.hidden; } }, '☺');
+  const el = h('div', { class: 'chat' }, toggle, h('div', { class: 'chat-box' }, log, h('div', { class: 'chat-entry' }, input, emoteButton), emotes));
 
   const compact = matchMedia('(max-width: 720px), (max-height: 520px)');
   let unread = 0;

@@ -288,6 +288,7 @@ export class Avatar {
     this.landT = 0;
     this.stars = null;
     this.look = null;
+    this.emote = null;
     this.setLook(look);
   }
 
@@ -314,11 +315,13 @@ export class Avatar {
 
   /** anim: 'idle' | 'walk' | 'jump' | 'fall'; speed in units/s (drives the walk cycle). */
   setLocomotion(anim, speed) {
+    if (anim !== 'idle' && speed > 0.5 || anim === 'jump' || anim === 'fall') this.emote = null;
     this.loco = LOCO[anim] ?? IDLE;
     this.speed = speed;
   }
 
   setSeated(on) {
+    if (on !== this.seated) this.emote = null;
     this.seated = on;
   }
 
@@ -335,6 +338,11 @@ export class Avatar {
 
   cheer(seconds = 3) {
     this.cheerT = Math.max(this.cheerT, seconds);
+  }
+  playEmote(name) {
+    if (!['dance', 'dance2', 'dance3', 'wave', 'point', 'cheer', 'laugh'].includes(name)) return;
+    if (this.seated && name.startsWith('dance')) name = 'cheer';
+    this.emote = { name, t: 0, loop: name.startsWith('dance') };
   }
   shakeHead() {
     this.shakeT = 0.6;
@@ -431,6 +439,34 @@ export class Avatar {
   }
 
   applyModifiers(dt, t, o) {
+    if (this.emote) {
+      const em = this.emote;
+      em.t += dt;
+      const s = Math.sin(em.t * Math.PI * 4);
+      const k = Math.min(1, em.t * 6, em.loop ? 1 : (2.5 - em.t) * 5);
+      if (k <= 0) this.emote = null;
+      else {
+        if (em.name === 'dance') {
+          o[BZ] += s * 0.21 * k; o[LAX] = s * 1.05 * k; o[RAX] = -s * 1.05 * k;
+          o[HX] += Math.abs(s) * 0.15 * k;
+        } else if (em.name === 'dance2') {
+          const a = Math.sin(em.t * Math.PI * 6);
+          o[LAX] = (-1.57 + a * 0.4) * k; o[RAX] = (-1.57 - a * 0.4) * k;
+          o[BY] += Math.abs(a) * 0.15 * k;
+        } else if (em.name === 'dance3') {
+          o[RAX] = (-1.5 - Math.sin(em.t * Math.PI * 3) * 1.1) * k;
+          o[RAZ] = 0.65 * k; o[LAZ] = 0.7 * k; o[LAX] = -0.5 * k; o[BZ] += s * 0.26 * k;
+        } else if (em.name === 'wave') {
+          o[RAX] = -2.6 * k; o[RAZ] = (0.4 + Math.sin(em.t * Math.PI * 6) * 0.44) * k;
+        } else if (em.name === 'point') o[RAX] = -1.57 * k;
+        else if (em.name === 'cheer') {
+          o[LAX] = o[RAX] = -2.8 * k; o[LAZ] = o[RAZ] = 0.35 * k;
+          if (!this.seated) o[BY] += Math.abs(Math.sin(em.t * Math.PI * 2)) * 0.6 * k;
+        } else if (em.name === 'laugh') {
+          o[BX] += Math.sin(em.t * Math.PI * 12) * 0.12 * k; o[HX] -= 0.3 * k;
+        }
+      }
+    }
     this.wType = damp(this.wType, this.typing && this.seated ? 1 : 0, 8, dt);
     this.wDizzy = damp(this.wDizzy, this.out ? 1 : 0, 4, dt);
     this.cheerT = Math.max(0, this.cheerT - dt);
@@ -515,7 +551,9 @@ export class Avatar {
     this.rLeg.rotation.set(o[RLX], 0, o[RLZ]);
     this.head.rotation.set(o[HX], o[HY], o[HZ]);
     this.spin.rotation.set(o[BX] + spinX, spinY, o[BZ]);
-    this.body.position.set(0, o[BY] + fy, fz);
+    const em = this.emote;
+    this.body.position.set(em?.name === 'dance' ? Math.sin(em.t * Math.PI * 4) * 0.3 : 0, o[BY] + fy, fz);
+    if (em?.name === 'dance2') this.spin.rotation.y += Math.sin(em.t * Math.PI * 4) * 0.26;
     this.body.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
 
     this.updateStars(t);

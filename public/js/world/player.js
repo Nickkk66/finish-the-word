@@ -8,6 +8,7 @@ import { Avatar } from './avatar.js';
 import { PetFollower } from './pet.js';
 import { HeadStack } from './labels.js';
 import { TurnRing } from './effects.js';
+import { buildBackBling, disposeObject } from './cosmetics.js';
 import { DECK, groundHeight, seatAngle, seatX, seatYaw, seatZ } from './layout.js';
 import { clamp, damp, lerp, lerpAngle, wrapAngle } from './math.js';
 
@@ -30,6 +31,10 @@ export class PlayerEntity {
     this.stack = new HeadStack(ctx.labels);
     this.stack.setName(player.name);
     this.stack.setConnected(player.connected !== false);
+    this.stack.setBadges(player.level, player.isAdmin);
+    this.back = null;
+    this.setBack(player.back);
+    this.aura = null;
     this.pet = null;
     this.setPet(player.pet);
 
@@ -64,11 +69,22 @@ export class PlayerEntity {
     if (old.name !== player.name) this.stack.setName(player.name);
     this.stack.setConnected(player.connected !== false);
     if (old.pet !== player.pet) this.setPet(player.pet);
+    if (old.back !== player.back) this.setBack(player.back);
+    this.stack.setBadges(player.level, player.isAdmin, this.status.combo);
   }
 
   setLocal(on) {
     this.isLocal = on;
     this.stack.setLocal(on);
+  }
+
+  setBack(id) {
+    if (this.back) { this.back.removeFromParent(); disposeObject(this.back); this.back = null; }
+    if (id && id !== 'none') {
+      this.back = buildBackBling(id);
+      this.back.position.set(0, 3, 0);
+      this.avatar.rig.add(this.back);
+    }
   }
 
   setPet(petId) {
@@ -192,6 +208,16 @@ export class PlayerEntity {
     if (typeof status.turn === 'boolean') st.turn = status.turn;
     if (typeof status.out === 'boolean') st.out = status.out;
     if ('hearts' in status) st.hearts = status.hearts;
+    if ('combo' in status) st.combo = status.combo;
+    this.stack.setBadges(this.data.level, this.data.isAdmin, st.combo);
+    if (st.combo >= 3 && !this.aura) {
+      const positions = new Float32Array(24 * 3);
+      for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; positions[i * 3] = Math.sin(a) * 1.7; positions[i * 3 + 1] = (i % 6) * .5; positions[i * 3 + 2] = Math.cos(a) * 1.7; }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      this.aura = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#ff9f20', size: .5, transparent: true, opacity: .85, blending: THREE.AdditiveBlending, depthWrite: false }));
+      this.ctx.scene.add(this.aura);
+    }
+    if (this.aura) this.aura.visible = st.combo >= 3;
     this.avatar.setOut(st.out);
     this.avatar.setTyping(st.turn);
     this.stack.setOut(st.out);
@@ -225,6 +251,9 @@ export class PlayerEntity {
     root.rotation.y = this.renderYaw;
     this.avatar.setLocomotion(this.seat >= 0 ? 'idle' : this.anim, this.speed);
     this.avatar.update(dt, t);
+    this.back?.userData.update?.(t, dt, this.seat >= 0);
+    if (this.back && !this.back.userData.update) this.back.scale.setScalar(this.seat >= 0 ? .7 : 1);
+    if (this.aura?.visible) { this.aura.position.copy(r); this.aura.rotation.y = t * 1.5; this.aura.position.y += Math.sin(t * 4) * .2; }
 
     this.stack.anchor.set(r.x, r.y + this.avatar.headTop() + 0.55, r.z);
     if (this.pet) this.updatePet(dt, t);
@@ -252,7 +281,7 @@ export class PlayerEntity {
       // Right-behind the owner, at shoulder height.
       x = this.render.x + c * 2.3 + s * -1.4;
       z = this.render.z - s * 2.3 + c * -1.4;
-      y = groundHeight(x, z) + 2.1;
+      y = Math.max(groundHeight(x, z), this.render.y) + 2.1;
       const moving = this.speed > 1.5;
       yaw = moving ? this.renderYaw : this.renderYaw + wrapAngle(Math.atan2(this.render.x - x, this.render.z - z) - this.renderYaw) * 0.5;
     }
@@ -265,6 +294,8 @@ export class PlayerEntity {
   }
 
   dispose() {
+    if (this.back) disposeObject(this.back);
+    if (this.aura) { this.aura.removeFromParent(); this.aura.geometry.dispose(); this.aura.material.dispose(); }
     this.avatar.dispose();
     this.stack.destroy();
     this.pet?.dispose();

@@ -36,14 +36,16 @@ function createCounter(emoji, cls, label) {
 }
 
 /** onInvite() copies the link; openPanel(id) with id in chairs|pets|free|profile|settings. */
-export function createSidebar({ onInvite, openPanel }) {
+export function createSidebar({ onInvite, openPanel, onView }) {
   const freeBadge = h('span', { class: 'side-badge', hidden: true });
   const defs = [
     ['invite', 'Invite', 'green', icons.invite, onInvite],
-    ['chairs', 'Chairs', 'orange', icons.chair, () => openPanel('chairs')],
+    ['chairs', 'Shop', 'orange', icons.chair, () => openPanel('chairs')],
     ['pets', 'Pets', 'purple', icons.paw, () => openPanel('pets')],
+    ['cards', 'Cards', 'blue', icons.gift, () => openPanel('cards')],
     ['free', 'Free', 'pink', icons.gift, () => openPanel('free'), freeBadge],
     ['profile', 'Profile', 'blue', icons.face, () => openPanel('profile')],
+    ['gameSettings', 'Game Settings', 'orange', icons.gear, () => openPanel('gameSettings')],
     ['settings', 'Settings', 'grey', icons.gear, () => openPanel('settings')],
   ];
   const buttons = Object.fromEntries(defs.map(([id, label, color, icon, onClick, badge]) => [id,
@@ -71,10 +73,12 @@ export function createSidebar({ onInvite, openPanel }) {
 
   const wins = createCounter('🏆', 'wins', 'Wins');
   const coins = createCounter('💵', 'coins', 'Coins');
+  const view = h('button', { type: 'button', class: 'view-button', onClick: onView }, '1st Person (P)');
+  buttons.gameSettings.hidden = true;
 
   const el = h('div', { class: 'sidebar' },
     h('nav', { class: 'side', 'aria-label': 'Menu' }, Object.values(buttons), pop),
-    h('div', { class: 'counters' }, wins.el, coins.el));
+    h('div', { class: 'counters' }, wins.el, coins.el), view);
 
   function updateFree() {
     const wait = freeReadyIn();
@@ -95,6 +99,8 @@ export function createSidebar({ onInvite, openPanel }) {
     el,
     update,
     coinsEl: coins.el,
+    setRole(allowed) { buttons.gameSettings.hidden = !allowed; },
+    setView(on) { view.setAttribute('aria-pressed', String(on)); view.textContent = `${on ? '✓ ' : ''}1st Person (P)`; },
     showInvite({ code, link, copied }) {
       popCode.replaceChildren(...[...code].map((ch) => h('span', { class: 'mini-tile' }, ch)));
       popMsg.textContent = copied ? '✅ Link copied!' : 'Copy this link:';

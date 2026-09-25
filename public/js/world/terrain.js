@@ -19,7 +19,7 @@ export function createTerrain(scene) {
   scene.background = new THREE.Color(SKY_HORIZON);
   scene.fog = new THREE.Fog(SKY_HORIZON, 150, 720);
 
-  scene.add(buildSky());
+  const sky = buildSky(); scene.add(sky);
   const hemi = new THREE.HemisphereLight('#e2f2ff', '#a9bf8e', 1.6);
   scene.add(hemi);
 
@@ -49,6 +49,7 @@ export function createTerrain(scene) {
 
   return {
     sun,
+    setSkyFocus(position) { sky.position.copy(position); },
     /** Centers the (tight) shadow frustum on `focus`, covering ±`halfSize` units. */
     setShadowFocus(focus, halfSize) {
       const cam = sun.shadow.camera;

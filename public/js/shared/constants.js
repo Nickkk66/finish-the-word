@@ -1,7 +1,7 @@
 // Shared constants used by BOTH the server (src/) and the browser client (public/js/).
 // Keep this file dependency-free (plain ES module, no DOM / no Node APIs).
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 // ---- Rooms -------------------------------------------------------------------
 export const MAX_PLAYERS = 8;            // humans + bots per room
@@ -38,11 +38,48 @@ export const DEFAULT_SETTINGS = Object.freeze({
   hearts: 2,          // 1..3
   turnSeconds: 15,    // 10 | 15 | 20
   petAbilities: true,
+  mode: 'classic',
+  botLevel: 'normal',
+  public: false,
 });
+
+export const MODES = [
+  { id: 'classic', name: 'Classic', description: 'The original word chain.', hearts: 2, turnSeconds: 15 },
+  { id: 'blitz', name: 'Blitz', description: 'Eight seconds, getting faster.', hearts: 1, turnSeconds: 8 },
+  { id: 'long', name: 'Long Words', description: 'Five letters minimum, then longer.', hearts: 2, turnSeconds: 20 },
+  { id: 'double', name: 'Double Trouble', description: 'Carry the last two letters.', hearts: 2, turnSeconds: 15 },
+  { id: 'sudden', name: 'Sudden Death', description: 'One heart. One mistake.', hearts: 1, turnSeconds: 15 },
+  { id: 'random', name: 'Random Letter', description: 'Any letter in the last word can be next.', hearts: 2, turnSeconds: 15 },
+  { id: 'chaos', name: 'Chaos', description: 'A new twist every round.', hearts: 2, turnSeconds: 15 },
+];
+export const MODE_IDS = new Set(MODES.map((m) => m.id));
+export const BOT_LEVELS = {
+  easy: { name: 'Easy', minLength: 3, maxLength: 6, think: [3000, 7000], wpm: [25, 35], wrongChance: .20, blankChance: .12, pressureBelow: 8, pressurePerSecond: .04 },
+  normal: { name: 'Normal', minLength: 3, maxLength: 7, think: [2000, 5000], wpm: [35, 50], wrongChance: .12, blankChance: .07, pressureBelow: 7, pressurePerSecond: .03 },
+  hard: { name: 'Hard', minLength: 3, maxLength: 9, think: [1500, 4000], wpm: [55, 75], wrongChance: .06, blankChance: .03, pressureBelow: 6, pressurePerSecond: .02 },
+};
+export const EMOTES = ['dance', 'dance2', 'dance3', 'wave', 'point', 'cheer', 'laugh'];
+export const FLAIRS = {
+  first_word: { label: 'FIRST WORD!', coins: 2, color: '#ffd43b' },
+  close_call: { label: 'CLOSE CALL!', coins: 5, color: '#ffb347' },
+  buzzer: { label: 'BUZZER BEATER!', coins: 10, color: '#ff615e' },
+  huge_word: { label: 'HUGE WORD!', coins: 0, color: '#b88bff' },
+  rare_letter: { label: 'RARE LETTER!', coins: 3, color: '#d0a0ff' },
+  double_clear: { label: 'DOUBLE CLEAR!', coins: 3, color: '#5edfff' },
+  speed_demon: { label: 'SPEED DEMON!', coins: 5, color: '#ffb347' },
+  combo_3: { label: 'COMBO x3!', coins: 0, color: '#ffb347' },
+  combo_5: { label: 'ON FIRE!', coins: 0, color: '#ff684b' },
+  combo_8: { label: 'UNSTOPPABLE!', coins: 0, color: '#fa5aca' },
+  flawless: { label: 'FLAWLESS!', coins: 25, color: '#ffe070' },
+  comeback: { label: 'COMEBACK!', coins: 15, color: '#78ebc2' },
+};
 
 // ---- Economy -----------------------------------------------------------------
 export const START_COINS = 300;
-export const REWARDS = Object.freeze({ participation: 5, perWord: 10, win: 50 });
+export const REWARDS = Object.freeze({ participation: 5, perWord: 10, win: 0, winPerMinute: 15, maxWin: 1800 });
+export const HINT_PRICE = 250;
+export const PET_MERGE_COUNT = 3;
+export const PET_MAX_TIER = 3;
 
 // ---- World layout (owned by the world module; server does not use these) ----
 // 1 unit = 1 Roblox stud. Y is up. Ground is y = 0.
@@ -54,4 +91,14 @@ export const LAYOUT = {
   seatHeight: 2.0,       // top of chair seat; seated avatar hips sit here
   spawn: { x: 0, y: 0, z: 26 },
   islandRadius: 70,
+  portal: { x: 0, z: 77.5 },
+};
+
+export const OBBY = {
+  spawn: { x: 600, y: 20, z: 0 },
+  finish: { x: 600, y: 30, z: -150 },
+  killY: 0,
+  reward: 50,
+  cooldownMs: 10 * 60 * 1000,
+  minFinishMs: 30000,
 };

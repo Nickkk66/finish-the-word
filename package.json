@@ -1,6 +1,6 @@
 {
   "name": "finish-the-word",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "3D Roblox-style browser multiplayer word-chain game (Finish The Word!) on Cloudflare Workers + Durable Objects",
   "type": "module",

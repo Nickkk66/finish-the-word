@@ -4,6 +4,8 @@ import { createDictionary } from '../src/dictionary.js';
 import { GameEngine } from '../src/engine.js';
 import WORDS from '../src/words.js';
 import BOT_WORDS from '../src/botwords.js';
+import EASY_WORDS from '../src/botwords-easy.js';
+import NORMAL_WORDS from '../src/botwords-normal.js';
 
 export const dict = createDictionary(WORDS);
 export const botDict = createDictionary(BOT_WORDS);
@@ -79,7 +81,7 @@ export const lastMatch = (conn) => conn.last('match')?.m;
  * A room with a fake clock. `forced` values are returned by random() before the seeded
  * PRNG takes over, to steer specific rolls. Internal errors are collected in `errors`.
  */
-export function createRoom({ seed = 1 } = {}) {
+export function createRoom({ seed = 1, ...options } = {}) {
   const clock = new FakeClock();
   const rng = seeded(seed);
   const forced = [];
@@ -88,11 +90,13 @@ export function createRoom({ seed = 1 } = {}) {
     code: 'TEST1',
     dict,
     botDict,
+    botDicts: { easy: createDictionary(EASY_WORDS), normal: createDictionary(NORMAL_WORDS), hard: botDict },
     now: clock.now,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
     random: () => (forced.length ? forced.shift() : rng()),
     onError: (err) => errors.push(err),
+    ...options,
   });
   const conns = {};
   const send = (conn, msg) => engine.receive(conn, JSON.stringify(msg));

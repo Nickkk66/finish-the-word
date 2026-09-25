@@ -1,14 +1,15 @@
 // Boot + glue: profile → world (menu mode) → menu → connect → wire net <-> world <-> UI.
 
-import { DEFAULT_SETTINGS, MAX_PLAYERS, PROTOCOL_VERSION, ROOM_CODE_REGEX, makeRoomCode } from './shared/constants.js';
-import { BLOCKS, CHAIRS, PETS_BY_ID, rollBlock } from './shared/catalog.js';
+import { DEFAULT_SETTINGS, MAX_PLAYERS, PROTOCOL_VERSION, ROOM_CODE_REGEX, makeRoomCode, EMOTES, HINT_PRICE, OBBY } from './shared/constants.js';
+import { BLOCKS, CHAIRS, PETS_BY_ID, TABLES, BACK_BLING, CARDS_BY_ID, CARD_BOXES, rollBlock } from './shared/catalog.js';
 import {
   profile, onProfileChange, setName, setLook, buyOrEquipChair, payForBlock, addPet, equipPet,
   recordWord, recordMatch, setSetting, claimFree, FREE_COINS,
+  buyOrEquip, mergePet, deletePet, addCard, consumeCard, spendCoins, grantCoins, recordObby, level,
 } from './profile.js';
-import { createNet } from './net.js';
+import { createNet, apiUrl } from './net.js';
 import { initAudio, setSoundEnabled, sfx } from './audio.js';
-import { h, fmt, isTextField } from './ui/dom.js';
+import { h, fmt, isTextField, formatDuration, replay } from './ui/dom.js';
 import { trackViewport } from './ui/viewport.js';
 import { createMenu, cleanCode } from './ui/menu.js';
 import { createHud } from './ui/hud.js';
@@ -19,11 +20,13 @@ import { createPanelHost } from './ui/panel.js';
 import { chairsPanel } from './ui/panels/chairs.js';
 import { petsPanel } from './ui/panels/pets.js';
 import { freePanel } from './ui/panels/free.js';
-import { settingsPanel } from './ui/panels/settings.js';
+import { settingsPanel, gameSettingsPanel } from './ui/panels/settings.js';
+import { cardsPanel } from './ui/panels/cards.js';
 import { profilePanel } from './ui/panels/profile.js';
 import { initFx, toast, banner, confetti, countdownPop, rewardPop } from './ui/fx.js';
-import { initOverlays, setBusy, showError, confirmDialog } from './ui/overlays.js';
+import { initOverlays, setBusy, showError, confirmDialog, cancelConfirmation } from './ui/overlays.js';
 import { playHatch } from './ui/hatch.js';
+import { cardArt } from './ui/art.js';
 
 const RECONNECT_OVERLAY_DELAY_MS = 700;
 const LOADOUT_DEBOUNCE_MS = 250;
@@ -56,6 +59,9 @@ const state = {
   inRoom: false,           // welcome received
   lastFail: null,          // last `fail` message (for the roundEnd status line)
   roundStartCount: null,   // match.wordCount when the current round started (null = unknown)
+  isAdmin: false, public: false, table: 'classic', zone: 'island',
+  hintPending: null, hintWord: null, hintTurn: null, cardPending: null, cardUsedTurn: null,
+  bannedPlayers: new Map(),
 };
 
 const net = createNet();
@@ -71,6 +77,26 @@ let leaderboardKey = '';
 let shopKey = '';
 let lastKeySound = 0;
 let standPending = false;
+let purchasePending = false;
+let requestedPublic = false;
+let teleporting = false;
+let lastEmoteAt = 0;
+let turnConfirmation = null;
+let unlockToken = '';
+try { unlockToken = localStorage.getItem('ftw_admin_v1') || ''; } catch {}
+
+async function purchase(item, commit, stillValid = () => true) {
+  if (purchasePending || state.hintPending) return false;
+  if (profile.coins < item.price) { toast(`You need ${fmt(item.price - profile.coins)} more coins.`, 'bad'); return false; }
+  purchasePending = true;
+  try {
+    const yes = await confirmDialog({ title: `Buy ${item.name}?`, message: `Price: ${fmt(item.price)} coins. Your balance: ${fmt(profile.coins)} coins.`, ok: 'Buy', tone: 'green' });
+    if (!yes || !stillValid() || profile.coins < item.price) return false;
+    return commit();
+  } finally { purchasePending = false; }
+}
+
+function syncLoadout() { sendLoadout({ chair: profile.equippedChair, pet: profile.equippedPet, petTier: profile.equippedPetTier, table: profile.equippedTable, back: profile.equippedBack, level: level(), cards: { ...profile.cards } }); }
 
 // ------------------------------------------------------------------ UI
 
@@ -81,46 +107,106 @@ initAudio();
 setSoundEnabled(profile.settings.sound);
 
 const actions = {
-  chair(chairId) {
-    const chair = CHAIRS.find((c) => c.id === chairId);
-    const result = buyOrEquipChair(chairId);
-    if (result === 'invalid') return;
-    if (result === 'poor') {
-      sfx.wrong();
-      toast(`Not enough 💵! You need ${fmt(chair.price - profile.coins)} more.`, 'bad');
-      return;
-    }
-    if (result === 'bought') {
-      sfx.coin();
-      toast(`🪑 You bought the ${chair.name} chair!`, 'good');
-    } else {
-      toast(`🪑 ${chair.name} chair equipped!`, 'good');
-    }
-    sendLoadout({ chair: profile.equippedChair });
+  chair(chairId) { return actions.cosmetic('chair', chairId); },
+  async cosmetic(kind, id) {
+    const catalog = kind === 'chair' ? CHAIRS : kind === 'table' ? TABLES : BACK_BLING;
+    const item = catalog.find((v) => v.id === id);
+    if (!item) return;
+    const owned = kind === 'chair' ? profile.ownedChairs : kind === 'table' ? profile.ownedTables : profile.ownedBacks;
+    const finish = () => {
+      const result = buyOrEquip(kind, id);
+      if (result === 'poor' || result === 'invalid') return false;
+      syncLoadout(); sfx.coin(); toast(`${item.name} ${result === 'bought' ? 'purchased and equipped' : 'equipped'}!`, 'good'); return true;
+    };
+    if (owned.includes(id)) return finish();
+    return purchase(item, finish);
   },
-  openBlock(blockId) {
+  async openBlock(blockId) {
     const block = BLOCKS.find((b) => b.id === blockId);
     if (!block) return;
     if (isAliveParticipant()) {
       toast('Finish your match first!', 'bad');
       return;
     }
-    if (!payForBlock(block)) {
-      sfx.wrong();
-      toast(`Not enough 💵! The ${block.name} costs ${fmt(block.price)}.`, 'bad');
-      return;
-    }
+    return purchase(block, () => {
+    if (!payForBlock(block)) return false;
     const petId = rollBlock(block);
     addPet(petId);
     panels.close();
     world.playEffect(state.you, 'hatch');
     playHatch(uiRoot, { block, petId, count: profile.pets[petId], onEquip: () => actions.equipPet(petId) });
+    return true;
+    }, () => !isAliveParticipant() && state.inRoom);
   },
-  equipPet(petId) {
-    equipPet(petId);
-    sendLoadout({ pet: profile.equippedPet });
+  equipPet(petId, tier = 1) {
+    equipPet(petId, tier);
+    syncLoadout();
     const pet = PETS_BY_ID[profile.equippedPet];
-    toast(pet ? `${pet.emoji} ${pet.name} is following you!` : 'Pet unequipped.', pet ? 'good' : 'info');
+    toast(pet ? `${pet.name}, tier ${tier}, is following you!` : 'Pet unequipped.', pet ? 'good' : 'info');
+  },
+  async mergePet(id, tier) {
+    const pet = PETS_BY_ID[id];
+    if (!pet || tier >= 3 || profile.petTiers[id]?.[tier] < 3) return;
+    if (await confirmDialog({ title: `Merge ${pet.name}?`, message: `Use 3 tier ${tier} copies to make 1 tier ${tier + 1} ${pet.name}. You own ${profile.petTiers[id][tier]} at this tier. Abilities stay the same.`, ok: 'Merge 3', tone: 'purple' })) {
+      if (mergePet(id, tier)) { syncLoadout(); toast(`${pet.name} is now tier ${tier + 1}!`, 'good'); }
+    }
+  },
+  async deletePet(id, tier) {
+    if (await confirmDialog({ title: `Delete ${PETS_BY_ID[id].name}?`, message: `Remove 1 tier ${tier} copy permanently. You own ${profile.petTiers[id]?.[tier] || 0}.`, ok: 'Delete one' })) {
+      if (deletePet(id, tier)) syncLoadout();
+    }
+  },
+  async openCardBox(boxId) {
+    const box = CARD_BOXES.find((v) => v.id === boxId);
+    const available = () => state.inRoom && !MATCH_PHASES.has(state.match?.phase);
+    if (!box || !available()) { toast('Open card boxes between matches.', 'info'); return; }
+    return purchase(box, () => {
+      if (!payForBlock(box)) return false;
+      const id = rollBlock(box); addCard(id); syncLoadout(); panels.close();
+      const card = CARDS_BY_ID[id]; sfx.hatch();
+      const close = () => overlay.remove();
+      const overlay = h('div', { class: 'overlay card-reveal' }, h('div', { class: 'overlay-card' },
+        h('div', { class: 'overlay-title stroke' }, card.name), cardArt(card),
+        h('p', { class: 'overlay-text' }, `${card.rarity} · ${card.description}`),
+        h('button', { type: 'button', class: 'btn green', onClick: close }, 'Collect')));
+      uiRoot.append(overlay); return true;
+    }, available);
+  },
+  async hint() {
+    const m = state.match;
+    if (m?.phase !== 'typing' || m.typerId !== state.you || state.hintPending || state.hintTurn === m.turnId) return;
+    const turnId = m.turnId;
+    turnConfirmation = turnId;
+    await purchase({ name: 'Exact-answer hint', price: HINT_PRICE }, () => {
+      const requestId = crypto.randomUUID();
+      state.hintPending = { requestId, turnId };
+      if (!net.send({ t: 'hint', turnId, requestId, balance: profile.coins })) state.hintPending = null;
+      hud.update(state);
+      return true;
+    }, () => state.match?.phase === 'typing' && state.match.typerId === state.you && state.match.turnId === turnId);
+    turnConfirmation = null;
+  },
+  async useCard(cardId, targetId) {
+    const m = state.match;
+    if (m?.phase !== 'typing' || m.typerId !== state.you || state.cardPending || state.cardUsedTurn === m.turnId || !profile.cards[cardId]) return;
+    const turnId = m.turnId;
+    turnConfirmation = turnId;
+    const card = CARDS_BY_ID[cardId];
+    const yes = await confirmDialog({ title: `Use ${card.name}?`, message: `Target: ${nameOf(targetId)}. ${card.description} This consumes one card.`, ok: 'Use card', tone: 'purple' });
+    turnConfirmation = null;
+    if (!yes || state.match?.turnId !== turnId || state.match?.phase !== 'typing') return;
+    state.cardPending = { requestId: crypto.randomUUID(), turnId, cardId };
+    if (!net.send({ t: 'useCard', ...state.cardPending, targetId })) state.cardPending = null;
+    panels.refresh();
+  },
+  thumbnail: (kind, id, size) => world ? world.renderThumbnail(kind, id, size) : Promise.reject(new Error('World not ready')),
+  preference: setSetting,
+  unlock: (code) => net.send({ t: 'unlock', code }),
+  admin: (action, fields = {}) => net.send({ t: 'admin', action, ...fields }),
+  teleportToPlayer: (id) => world.teleportToPlayer(id),
+  async moderate(action, id) {
+    if (action === 'unban' || await confirmDialog({ title: `${action === 'ban' ? 'Ban' : 'Kick'} ${nameOf(id)}?`, message: action === 'ban' ? 'They cannot rejoin this room.' : 'They will leave this room and the current match.', ok: action === 'ban' ? 'Ban' : 'Kick' })) return net.send({ t: 'mod', action, id });
+    return false;
   },
   claimFree(anchor) {
     if (!claimFree()) return;
@@ -162,19 +248,21 @@ const PANELS = {
   free: freePanel(panelCtx),
   profile: profilePanel(panelCtx),
   settings: settingsPanel(panelCtx),
+  gameSettings: gameSettingsPanel(panelCtx),
+  cards: cardsPanel(panelCtx),
 };
 
-const hud = createHud({ onSubmit: submitWord, onTyping: sendTyping, onPick: (letter) => net.send({ t: 'pick', letter }) });
+const hud = createHud({ onSubmit: submitWord, onTyping: sendTyping, onPick: (letter) => net.send({ t: 'pick', letter }), onHint: actions.hint, onCards: () => panels.open(PANELS.cards) });
 const playerList = createPlayerList();
-const chat = createChat({ onSend: (text) => net.send({ t: 'chat', text }) });
+const chat = createChat({ onSend: sendChat, onEmote: playEmote });
 const panels = createPanelHost(uiRoot);
-const sidebar = createSidebar({ onInvite: invite, openPanel: (id) => panels.open(PANELS[id]) });
+const sidebar = createSidebar({ onInvite: invite, openPanel: (id) => panels.open(PANELS[id]), onView: toggleView });
 const gameUi = h('div', { class: 'game-ui', hidden: true }, hud.el, playerList.el, chat.el, sidebar.el);
 
 const invited = cleanCode(new URLSearchParams(location.search).get('room'));
 const menu = createMenu({
   invitedCode: ROOM_CODE_REGEX.test(invited) ? invited : null,
-  actions: { play: joinRoom, toggleSound: () => actions.setSound(!profile.settings.sound) },
+  actions: { play: joinRoom, quickplay, toggleSound: () => actions.setSound(!profile.settings.sound) },
 });
 uiRoot.prepend(gameUi, menu.el);
 
@@ -189,6 +277,10 @@ function syncWorldInput() {
 }
 document.addEventListener('focusin', syncWorldInput);
 document.addEventListener('focusout', () => setTimeout(syncWorldInput, 0));
+document.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() !== 'p' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || !state.inRoom || isTextField(document.activeElement) || isMyTurn(state.match || {}) || state.match?.phase === 'choosing' || document.querySelector('.overlay')) return;
+  e.preventDefault(); toggleView();
+});
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) document.title = TITLE;
@@ -200,6 +292,8 @@ onProfileChange(() => {
   panels.refresh();
   setSoundEnabled(profile.settings.sound);
   syncShop();
+  world?.setPetCollection(profile.discoveredPets);
+  if (state.inRoom) hud.update(state);
 });
 
 // ------------------------------------------------------------------ world
@@ -214,6 +308,11 @@ async function loadWorld() {
     world = w;
     w.setQuality(profile.settings.quality);
     w.setMenuMode(true);
+    w.setFirstPerson(profile.settings.view === 'first');
+    sidebar.setView(profile.settings.view === 'first');
+    w.onViewChange((on) => { setSetting('view', on ? 'first' : 'third'); sidebar.setView(on); });
+    w.setPetCollection(profile.discoveredPets);
+    w.setLeaderboardTitle('MOST WINS · ALL TIME');
     w.onLocalMove((move) => net.send({ t: 'move', ...move }));
     w.onInteract(onInteract);
     w.setPromptResolver(resolvePrompt);
@@ -239,14 +338,47 @@ function syncShop() {
   world.setShopState({ ownedChairs: [...profile.ownedChairs], equippedChair: profile.equippedChair });
 }
 
-function syncLeaderboard() {
-  const rows = [...state.players.values()]
-    .map((p) => ({ name: p.name, wins: p.wins }))
-    .sort((a, b) => b.wins - a.wins || a.name.localeCompare(b.name));
-  const key = JSON.stringify(rows);
-  if (key === leaderboardKey) return;
-  leaderboardKey = key;
-  world.setLeaderboard(rows);
+async function syncLeaderboard() {
+  if (!world || !state.inRoom || Date.now() - Number(leaderboardKey || 0) < 10000) return;
+  leaderboardKey = String(Date.now());
+  try {
+    const response = await fetch(apiUrl('/api/leaderboard'));
+    if (!response.ok) return;
+    const { top } = await response.json();
+    if (Array.isArray(top)) world.setLeaderboard(top);
+  } catch { /* keep last known board while offline */ }
+}
+setInterval(syncLeaderboard, 60000);
+
+function toggleView() {
+  if (!state.inRoom) return;
+  const on = profile.settings.view !== 'first';
+  world.setFirstPerson(on); setSetting('view', on ? 'first' : 'third'); sidebar.setView(on);
+}
+
+function playEmote(name) {
+  if (!EMOTES.includes(name)) return;
+  if (performance.now() - lastEmoteAt < 1000) return;
+  lastEmoteAt = performance.now();
+  world.playEmote(state.you, name); net.send({ t: 'emote', name });
+}
+
+function sendChat(text) {
+  const command = text.match(/^\/(?:emote\s+|e\s*)(.*)$/i);
+  if (!command) { net.send({ t: 'chat', text }); return; }
+  const name = command[1].toLowerCase().replace(/\s+/g, '');
+  if (EMOTES.includes(name)) playEmote(name);
+  else chat.add({ system: true, text: `Emotes: ${EMOTES.join(', ')}. Try /e dance.` });
+}
+
+async function quickplay() {
+  try {
+    const response = await fetch(apiUrl('/api/quickplay'));
+    if (!response.ok) throw new Error('Unavailable');
+    const { code } = await response.json();
+    if (!ROOM_CODE_REGEX.test(code)) throw new Error('Invalid room');
+    await joinRoom(code, true);
+  } catch { toast('Public games are unavailable. Try again shortly.', 'bad'); }
 }
 
 function setBubble(id, bubble) {
@@ -273,7 +405,7 @@ function syncStatuses(m) {
   if (MATCH_PHASES.has(m.phase) || m.phase === 'ended') {
     for (const p of m.participants) {
       const turn = (m.phase === 'typing' && p.id === m.typerId) || (m.phase === 'choosing' && p.id === m.chooserId);
-      next.set(p.id, { turn, out: !p.alive, hearts: p.hearts });
+      next.set(p.id, { turn, out: !p.alive, hearts: p.hearts, combo: p.combo || 0 });
     }
   }
   for (const id of statusKeys.keys()) {
@@ -329,6 +461,25 @@ async function onInteract(i) {
     actions.chair(i.chairId);
   } else if (i.type === 'block') {
     actions.openBlock(i.blockId);
+  } else if (i.type === 'cardBox') {
+    actions.openCardBox(i.boxId);
+  } else if (i.type === 'portal') {
+    if (teleporting || isAliveParticipant()) return;
+    teleporting = true;
+    const overlay = h('div', { class: 'teleport-overlay' }, h('div', { class: 'teleport-spinner' }), h('div', { class: 'stroke' }, i.to === 'obby' ? 'Traveling to the obby…' : 'Returning to the island…'));
+    uiRoot.append(overlay);
+    setTimeout(() => {
+      state.zone = i.to;
+      world.setZone(i.to); world.teleportLocal(i.to === 'obby' ? OBBY.spawn : { x: 0, y: .25, z: 72 });
+      if (i.to === 'obby') net.send({ t: 'obby', event: 'start' });
+      hud.update(state);
+    }, 700);
+    setTimeout(() => { overlay.remove(); teleporting = false; }, 1400);
+  } else if (i.type === 'obbyFinish') {
+    recordObby(i.ms); net.send({ t: 'obby', event: 'finish', ms: i.ms });
+    toast(`Obby finished in ${formatDuration(i.ms)}!`, 'good');
+  } else if (i.type === 'obbyRespawn') {
+    const flash = h('div', { class: 'respawn-flash' }); uiRoot.append(flash); setTimeout(() => flash.remove(), 450);
   }
 }
 
@@ -353,6 +504,11 @@ function resolvePrompt(i) {
     const block = BLOCKS.find((b) => b.id === i.blockId);
     return block ? { text: `Open $${fmt(block.price)}`, key: 'E', enabled: profile.coins >= block.price } : null;
   }
+  if (i.type === 'cardBox') {
+    const box = CARD_BOXES.find((v) => v.id === i.boxId);
+    return box ? { text: `Cards · $${fmt(box.price)}`, key: 'E', enabled: profile.coins >= box.price && !MATCH_PHASES.has(state.match?.phase) } : null;
+  }
+  if (i.type === 'portal') return { text: i.to === 'obby' ? 'Travel to obby' : 'Return to island', key: 'E', enabled: !isAliveParticipant() };
   return null;
 }
 
@@ -417,6 +573,8 @@ function hello() {
     look: profile.look,
     chair: profile.equippedChair,
     pet: profile.equippedPet,
+    petTier: profile.equippedPetTier, table: profile.equippedTable, back: profile.equippedBack, level: level(),
+    cards: { ...profile.cards }, adminToken: unlockToken || undefined, public: requestedPublic,
     v: PROTOCOL_VERSION,
   };
 }
@@ -428,7 +586,8 @@ function setUrlRoom(code) {
   history.replaceState(null, '', url);
 }
 
-async function joinRoom(code) {
+async function joinRoom(code, isPublic = false) {
+  requestedPublic = isPublic;
   const roomCode = code || makeRoomCode();
   if (!world) setBusy('Loading...');
   try {
@@ -445,10 +604,13 @@ async function joinRoom(code) {
 
 /** Tears the room down locally and returns to the menu (the socket must already be closed). */
 function exitRoom() {
+  cancelConfirmation(); state.hintPending = null; state.cardPending = null;
+  state.bannedPlayers.clear();
   for (const id of [...state.players.keys()]) removePlayer(id);
   Object.assign(state, {
     code: null, hostId: null, settings: { ...DEFAULT_SETTINGS }, match: null, deadline: 0,
     inRoom: false, lastFail: null, roundStartCount: null,
+    isAdmin: false, public: false, zone: 'island', hintWord: null, hintTurn: null, cardUsedTurn: null,
   });
   bubbles.clear();
   statusKeys = new Map();
@@ -457,6 +619,7 @@ function exitRoom() {
   leaderboardKey = '';
   world.setLeaderboard([]);
   world.setMenuMode(true);
+  world.setZone('island');
   panels.close();
   hud.hide();
   chat.clear();
@@ -473,6 +636,8 @@ function leaveRoom() {
 }
 
 const CLOSE_REASONS = {
+  kicked: { title: 'Removed from room', message: 'You were kicked by the room owner.' },
+  banned: { title: 'Banned from room', message: 'You were banned by the room owner. You can join another room.' },
   room_full: {
     title: 'Room is full',
     message: `This table already has ${MAX_PLAYERS} players. Try another room or create your own!`,
@@ -529,12 +694,17 @@ function refreshRoom() {
   playerList.update(state);
   panels.refresh();
   syncLeaderboard();
+  sidebar.setRole(state.hostId === state.you || state.isAdmin);
 }
 
 net.on('welcome', (msg) => {
   state.you = msg.you;
   state.code = msg.code;
   state.hostId = msg.hostId;
+  state.isAdmin = !!msg.isAdmin;
+  state.public = !!msg.public;
+  state.table = msg.table || 'classic';
+  world.setTable(state.table);
   state.settings = { ...DEFAULT_SETTINGS, ...msg.settings };
   const incoming = new Set(msg.players.map((p) => p.id));
   for (const id of [...state.players.keys()]) if (!incoming.has(id)) removePlayer(id);
@@ -566,10 +736,12 @@ net.on('leave', ({ id }) => {
   refreshRoom();
 });
 
-net.on('room', ({ hostId, settings }) => {
+net.on('room', ({ hostId, settings, table, public: isPublic }) => {
   const becameHost = hostId === state.you && state.hostId !== state.you;
   state.hostId = hostId;
   state.settings = { ...DEFAULT_SETTINGS, ...settings };
+  state.public = !!isPublic;
+  if (table) { state.table = table; world.setTable(table); }
   if (becameHost) toast("👑 You're the host now!", 'good');
   refreshRoom();
 });
@@ -588,7 +760,7 @@ net.on('typing', ({ id, text }) => {
   }
 });
 
-net.on('result', ({ id, word, ok, reason, mistakes }) => {
+net.on('result', ({ id, word, ok, reason, mistakes, wpm = 0, combo = 0, coins = 0, flairs = [] }) => {
   const mine = id === state.you;
   if (ok) {
     if (lastWord && lastWord.id !== id) setBubble(lastWord.id, null);
@@ -597,10 +769,19 @@ net.on('result', ({ id, word, ok, reason, mistakes }) => {
     const next = m?.phase === 'typing' && m.chain.at(-1)?.word === word ? m.prefix.length : 1;
     setBubble(id, { text: word.toUpperCase(), highlight: next, tone: 'good' });
     world.playEffect(id, 'correct');
+    world.playEffect(id, 'flair', { text: `${wpm} WPM`, color: '#8deaff' });
+    flairs.forEach((flair, index) => setTimeout(() => world.playEffect(id, 'flair', { text: flair.label, color: flair.color }), 450 + index * 550));
+    world.setPlayerStatus(id, { combo });
     sfx.correct();
     if (mine) {
       hud.wordResult(true);
-      if (/^[a-z]+$/.test(word)) recordWord(word);   // the server may mask words (e.g. '####')
+      if (/^[a-z]+$/.test(word)) {
+        const result = recordWord(word, wpm, combo);
+        if (result.record) { banner('NEW RECORD!', { sub: `${word.toUpperCase()} · ${wpm} WPM`, tone: 'win' }); confetti(); }
+        if (result.levelUp) { banner(`LEVEL ${level()}!`, { tone: 'win' }); sfx.levelUp(); }
+        syncLoadout();
+      }
+      if (coins) { rewardPop(`+${coins} 💵`, sidebar.coinsEl); sfx.coin(combo); }
     }
     return;
   }
@@ -630,6 +811,7 @@ net.on('fail', (msg) => {
     world.playEffect(id, 'heart');
     sfx.heart();
     if (mine && hearts > 0) {
+      replay(gameUi, 'heart-hit');
       banner(cause === 'timeout' ? "⏰ Time's up!" : '❌ Too many mistakes!', { sub: `−1 ❤️ (${hearts} left)`, tone: 'bad' });
     } else if (!mine) {
       toast(`💔 ${nameOf(id)} lost a heart!`, 'bad');
@@ -645,8 +827,11 @@ net.on('elim', ({ id }) => {
   else toast(`💥 ${nameOf(id)} was knocked out!`);
 });
 
-net.on('win', ({ id }) => {
+net.on('win', ({ id, flairs = [] }) => {
   if (id) world.playEffect(id, 'win');
+  if (id) world.playEmote(id, 'dance');
+  flairs.forEach((flair, i) => setTimeout(() => world.playEffect(id, 'flair', { text: flair.label, color: flair.color }), 500 + i * 600));
+  leaderboardKey = ''; syncLeaderboard();
   sfx.win();
   confetti();
   banner(id ? `${nameOf(id).toUpperCase()} WINS!` : 'NO WINNER!', {
@@ -656,13 +841,18 @@ net.on('win', ({ id }) => {
   });
 });
 
-net.on('reward', ({ coins, won, words }) => {
-  recordMatch({ won, coins });
+net.on('reward', (reward) => {
+  const { coins, won, words, durationMs = 0, eligibleMs = 0, bonuses = [] } = reward;
+  const before = level();
+  if (!recordMatch(reward)) return;
+  if (level() > before) { sfx.levelUp(); toast(`Level ${level()}!`, 'good'); }
+  syncLoadout();
   setTimeout(() => {
     sfx.coin();
     rewardPop(`+${fmt(coins)} 💵`, sidebar.coinsEl);
     const why = words > 0 ? `${words} word${words === 1 ? '' : 's'}${won ? ' and the WIN' : ''}` : (won ? 'the WIN' : 'playing');
     toast(`💵 +${fmt(coins)} for ${why}!`, 'good', 3000);
+    chat.add({ system: true, text: `Match ${formatDuration(durationMs)} · rewarded play ${formatDuration(eligibleMs)} · ${bonuses.map((b) => `${b.label}: ${b.coins}`).join(' · ')} · total ${coins} coins` });
   }, 1400);
 });
 
@@ -686,9 +876,53 @@ net.on('error', ({ code, message }) => {
   toast(ERRORS[code] || message || 'Something went wrong.', 'bad');
 });
 
+net.on('hint', (msg) => {
+  const pending = state.hintPending;
+  if (!pending || pending.requestId !== msg.requestId || pending.turnId !== msg.turnId) return;
+  state.hintPending = null;
+  const current = state.match?.phase === 'typing' && state.match.typerId === state.you && state.match.turnId === msg.turnId;
+  if (msg.ok && current && state.hintTurn !== msg.turnId && spendCoins(HINT_PRICE)) {
+    state.hintTurn = msg.turnId; state.hintWord = msg.word;
+  } else if (!msg.ok && current) toast(msg.reason === 'already_bought' ? 'You already bought this turn’s hint.' : 'No hint available. You were not charged.', 'info');
+  hud.update(state);
+});
+net.on('cardResult', (msg) => {
+  const pending = state.cardPending;
+  if (!pending || pending.requestId !== msg.requestId) return;
+  state.cardPending = null;
+  if (msg.ok) {
+    consumeCard(msg.cardId, `card:${msg.requestId}`); state.cardUsedTurn = msg.turnId;
+    // Do not send counts back mid-match; the server consumed its registered copy.
+  } else toast('That card could not be used. It remains in your inventory.', 'info');
+  panels.refresh(); hud.update(state);
+});
+net.on('cardUsed', ({ actorId, targetId, cardId }) => {
+  const card = CARDS_BY_ID[cardId];
+  world.playEffect(targetId, 'flair', { text: card?.name || 'CARD!', color: card?.color || '#fff' });
+  chat.add({ system: true, text: `${nameOf(actorId)} used ${card?.name || 'a card'} on ${nameOf(targetId)}.` });
+});
+net.on('emote', ({ id, name }) => world.playEmote(id, name));
+net.on('unlock', ({ ok, token }) => {
+  if (ok) {
+    state.isAdmin = true; unlockToken = token;
+    try { localStorage.setItem('ftw_admin_v1', token); } catch {}
+    refreshRoom();
+  } else { state.unlockFailed = true; panels.refresh(); }
+});
+net.on('announce', ({ text }) => banner(text, { tone: 'win', ms: 5000 }));
+net.on('grant', ({ coins, reason, grantId }) => {
+  if (grantCoins(coins, grantId)) { sfx.coin(); rewardPop(`+${fmt(coins)} 💵`, sidebar.coinsEl); toast(`${reason === 'obby' ? 'Obby reward' : 'Coin grant'}: +${fmt(coins)} coins`, 'good'); }
+});
+
 function applyMatch(m, resync = false) {
   const prev = state.match;
   state.match = m;
+  if (prev?.turnId !== m.turnId || m.phase !== 'typing') {
+    if (turnConfirmation != null) { cancelConfirmation(); turnConfirmation = null; }
+    state.hintPending = null; state.hintWord = null;
+    // Accepted card replies may follow an immediate match-end snapshot; preserve pending receipt.
+  }
+  if (prev && MATCH_PHASES.has(prev.phase) && !MATCH_PHASES.has(m.phase)) syncLoadout();
   state.deadline = m.phaseEndsIn != null ? performance.now() + m.phaseEndsIn : 0;
 
   if (m.phase === 'lobby' || m.phase === 'countdown') {
@@ -705,7 +939,7 @@ function applyMatch(m, resync = false) {
 
   // Now that the next prefix is known, highlight exactly the letters the next player must reuse.
   if (lastWord && m.phase === 'typing' && m.chain.at(-1)?.word === lastWord.word) {
-    setBubble(lastWord.id, { text: lastWord.word.toUpperCase(), highlight: m.prefix.length, tone: 'good' });
+    setBubble(lastWord.id, { text: lastWord.word.toUpperCase(), highlight: m.prefix.length, prefixIndex: m.prefixIndex, tone: 'good' });
   }
 
   if (prev && !resync) phaseEffects(prev, m);
@@ -722,10 +956,12 @@ function isMyTurn(m) {
 
 // `?debug` exposes internals for automated tests and troubleshooting.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__ftw = { state, net, get world() { return world; } };
+  window.__ftw = { state, net, actions, profile, hud, get world() { return world; } };
 }
 
 function phaseEffects(prev, m) {
+  if (m.twist && (m.round !== prev.round || m.twist.id !== prev.twist?.id)) banner(`TWIST: ${m.twist.name.toUpperCase()}!`, { tone: 'win', ms: 3000 });
+  if (m.wordCount > prev.wordCount && m.wordCount % 10 === 0) { countdownPop(`${m.wordCount} WORD CHAIN!`); sfx.coin(); }
   if (prev.phase === 'countdown' && m.phase === 'choosing') {
     countdownPop('GO!');
     sfx.countdown(true);

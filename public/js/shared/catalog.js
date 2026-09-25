@@ -83,7 +83,7 @@ export const PETS = [
   { id: 'penguin', name: 'Pengu',   rarity: 'Rare',      emoji: '🐧', ability: { type: 'time', value: 3 },     model: { kind: 'penguin', body: '#1f2937', accent: '#ffffff' } },
   { id: 'owl',     name: 'Hoot',    rarity: 'Epic',      emoji: '🦉', ability: { type: 'time', value: 4 },     model: { kind: 'owl',     body: '#9c6b3c', accent: '#ffd166' } },
   { id: 'unicorn', name: 'Sparkle', rarity: 'Epic',      emoji: '🦄', ability: { type: 'shield', value: 1 },   model: { kind: 'unicorn', body: '#ffffff', accent: '#c77dff' } },
-  { id: 'dragon',  name: 'Blaze',   rarity: 'Legendary', emoji: '🐲', ability: { type: 'sabotage', value: 3 }, model: { kind: 'dragon',  body: '#e63946', accent: '#ffd60a' } },
+  { id: 'dragon',  name: 'Blaze',   rarity: 'Legendary', emoji: '🐲', ability: { type: 'dragon', value: 3, chance: .5 }, model: { kind: 'dragon',  body: '#e63946', accent: '#ffd60a' } },
   { id: 'robot',   name: 'Tick-Tock', rarity: 'Legendary', emoji: '🤖', ability: { type: 'time', value: 5 },   model: { kind: 'robot',   body: '#9fb4c7', accent: '#38bdf8' } },
 ];
 export const PETS_BY_ID = Object.fromEntries(PETS.map((p) => [p.id, p]));
@@ -95,6 +95,7 @@ export function abilityText(ability) {
     case 'mistakes': return `+${ability.value} extra mistake${ability.value > 1 ? 's' : ''} per turn`;
     case 'shield': return 'Blocks the first heart you lose each match';
     case 'sabotage': return `Next player gets ${ability.value}s less after your word`;
+    case 'dragon': return '50% chance the next player gets just 3 seconds';
     default: return '';
   }
 }
@@ -117,3 +118,46 @@ export function rollBlock(block, random = Math.random) {
   }
   return entries[entries.length - 1][0];
 }
+
+export const TABLES = [
+  { id: 'classic', name: 'Classic', rarity: 'Common', price: 0 },
+  { id: 'picnic', name: 'Picnic', rarity: 'Common', price: 600 },
+  { id: 'glass', name: 'Glass', rarity: 'Uncommon', price: 1500 },
+  { id: 'donut', name: 'Donut', rarity: 'Uncommon', price: 2500 },
+  { id: 'poker', name: 'Poker', rarity: 'Rare', price: 4000 },
+  { id: 'pizza', name: 'Pizza', rarity: 'Rare', price: 5000 },
+  { id: 'ice', name: 'Ice', rarity: 'Epic', price: 8000 },
+  { id: 'lava', name: 'Lava', rarity: 'Epic', price: 12000 },
+  { id: 'galaxy', name: 'Galaxy', rarity: 'Legendary', price: 20000 },
+  { id: 'royal', name: 'Royal', rarity: 'Legendary', price: 30000 },
+];
+export const TABLE_IDS = new Set(TABLES.map((v) => v.id));
+export const BACK_BLING = [
+  { id: 'none', name: 'None', rarity: 'Common', price: 0 },
+  { id: 'backpack', name: 'Backpack', rarity: 'Common', price: 400 },
+  { id: 'cape', name: 'Cape', rarity: 'Common', price: 700 },
+  { id: 'angel', name: 'Angel Wings', rarity: 'Uncommon', price: 1500 },
+  { id: 'devil', name: 'Devil Wings', rarity: 'Uncommon', price: 1500 },
+  { id: 'sword', name: 'Sword', rarity: 'Rare', price: 3000 },
+  { id: 'guitar', name: 'Guitar', rarity: 'Rare', price: 3500 },
+  { id: 'jetpack', name: 'Jetpack', rarity: 'Epic', price: 6000 },
+  { id: 'rainbow', name: 'Rainbow Cape', rarity: 'Epic', price: 8000 },
+  { id: 'dragon', name: 'Dragon Wings', rarity: 'Legendary', price: 15000 },
+  { id: 'halo', name: 'Golden Halo', rarity: 'Legendary', price: 25000 },
+];
+export const BACK_IDS = new Set(BACK_BLING.map((v) => v.id));
+
+// Consumables are separate from pets. Ownership follows the casual local profile economy;
+// the room validates timing/targets and spends registered counts, never client-supplied effects.
+export const CARDS = [
+  { id: 'skip', name: 'Free Pass', rarity: 'Common', effect: 'skip', description: "Skip another player's next turn. A favor!", color: '#59d89c' },
+  { id: 'time_tax', name: 'Time Tax', rarity: 'Uncommon', effect: 'time', value: 2, description: "Take 2 seconds off their next turn.", color: '#53baff' },
+  { id: 'pressure', name: 'Narrow Margin', rarity: 'Rare', effect: 'mistakes', value: 2, description: 'Two fewer mistakes on their next turn (minimum one).', color: '#a489ff' },
+  { id: 'heart', name: 'Heartbreaker', rarity: 'Legendary', effect: 'heart', value: 1, description: 'Remove one heart. A pet shield can block it.', color: '#ff668c' },
+];
+export const CARDS_BY_ID = Object.fromEntries(CARDS.map((v) => [v.id, v]));
+export const CARD_IDS = new Set(CARDS.map((v) => v.id));
+export const CARD_BOXES = [
+  { id: 'card_crate', name: 'Card Crate', price: 500, color: '#19b5aa', odds: { skip: 60, time_tax: 30, pressure: 9.9, heart: .1 }, x: -26, z: 26 },
+  { id: 'royal_cards', name: 'Royal Card Crate', price: 1500, color: '#e7a928', odds: { skip: 25, time_tax: 45, pressure: 29.5, heart: .5 }, x: -34, z: 20 },
+];

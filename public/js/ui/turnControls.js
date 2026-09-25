@@ -4,12 +4,13 @@
 import { h, replay, isTextField } from './dom.js';
 import { sfx } from '../audio.js';
 import { MAX_WORD_LENGTH } from '../shared/constants.js';
+import { profile } from '../profile.js';
 
 const TYPING_THROTTLE_MS = 80;
 const RESULT_TIMEOUT_MS = 2500;   // re-allow submitting if a result never arrives
 
 function plainKey(e) {
-  return !e.ctrlKey && !e.metaKey && !e.altKey && !isTextField(document.activeElement);
+  return !e.ctrlKey && !e.metaKey && !e.altKey && !isTextField(document.activeElement) && !document.querySelector('.overlay');
 }
 
 /** onSubmit(word), onTyping(text) — text is sent throttled (~80ms). */
@@ -94,11 +95,12 @@ export function createWordInput({ onSubmit, onTyping }) {
       prefix = pfx;
       pending = false;
       sentText = '';
-      input.value = '';
+      input.value = profile.settings.prefillPrefix !== false ? pfx : '';
       input.placeholder = `${pfx.toUpperCase()}...`;
       form.classList.remove('ok', 'mismatch');
       form.hidden = false;
       input.focus({ preventScroll: true });
+      input.setSelectionRange(input.value.length, input.value.length);
     },
     close() {
       if (!turn) return;

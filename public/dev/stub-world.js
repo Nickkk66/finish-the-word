@@ -3,8 +3,8 @@
 // debug panel: a roster that mirrors what the glue sends (seat, turn/out/hearts, letter tile, bubbles, chat)
 // and buttons that fire onInteract() using the prompt resolver's labels. Space while seated = 'stand'.
 
-import { CHAIRS, BLOCKS } from '/js/shared/catalog.js';
-import { SEAT_COUNT } from '/js/shared/constants.js';
+import { CHAIRS, BLOCKS } from '../js/shared/catalog.js';
+import { SEAT_COUNT } from '../js/shared/constants.js';
 
 function el(tag, style, text) {
   const node = document.createElement(tag);
@@ -106,5 +106,13 @@ export async function createWorld({ container }) {
     setLeaderboard: (rows) => log('leaderboard', rows),
     setCameraMode: (mode) => log('camera', mode),
     setQuality: (level) => log('quality', level),
+    setTable: (id) => log('table', id),
+    setFirstPerson() {}, onViewChange() {}, setPetCollection() {}, setLeaderboardTitle() {},
+    teleportLocal() {}, teleportToPlayer() {}, setZone() {}, playEmote() {},
+    async renderThumbnail() {
+      const canvas = document.createElement('canvas'); canvas.width = 100; canvas.height = 100;
+      const context = canvas.getContext('2d'); context.fillStyle = '#76a9df'; context.fillRect(20, 20, 60, 60);
+      return canvas.toDataURL();
+    },
   };
 }

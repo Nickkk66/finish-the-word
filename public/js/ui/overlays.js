@@ -5,6 +5,7 @@ import { h } from './dom.js';
 let root = null;
 let busyEl = null;
 let busyTimer = 0;
+let activeConfirm = null;
 
 export function initOverlays(el) {
   root = el;
@@ -57,17 +58,32 @@ export function showError({ title, message, buttons }) {
 }
 
 /** Resolves true/false. Esc = cancel. */
+export function cancelConfirmation() { activeConfirm?.(false); }
+
 export function confirmDialog({ title, message, ok = 'OK', cancel = 'Cancel', tone = 'red' }) {
+  if (activeConfirm) return Promise.resolve(false);
   return new Promise((resolve) => {
+    const previousFocus = document.activeElement;
+    let finished = false;
     const done = (value) => {
+      if (finished) return;
+      finished = true;
+      activeConfirm = null;
       el.remove();
       document.removeEventListener('keydown', onKey, true);
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
       resolve(value);
     };
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         done(false);
+      }
+      if (e.key === 'Tab') {
+        const buttons = [...el.querySelectorAll('button')];
+        const index = buttons.indexOf(document.activeElement);
+        e.preventDefault();
+        buttons[(index + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
       }
     };
     const okBtn = h('button', { type: 'button', class: `btn ${tone}`, onClick: () => done(true) }, ok);
@@ -78,6 +94,7 @@ export function confirmDialog({ title, message, ok = 'OK', cancel = 'Cancel', to
         h('button', { type: 'button', class: 'btn grey', onClick: () => done(false) }, cancel),
         okBtn));
     document.addEventListener('keydown', onKey, true);
+    activeConfirm = done;
     okBtn.focus();
   });
 }

@@ -165,9 +165,16 @@ const sounds = {
       tone(midi(76), { type: 'square', dur: 0.14, vol: 0.1 });
     }
   },
-  coin() {
-    tone(midi(83), { type: 'square', dur: 0.08, vol: 0.09 });
-    tone(midi(88), { type: 'square', at: 0.08, dur: 0.34, vol: 0.09 });
+  coin(combo = 0) {
+    tone(midi(83 + Math.min(12, combo)), { type: 'square', dur: 0.08, vol: 0.09 });
+    tone(midi(88 + Math.min(12, combo)), { type: 'square', at: 0.08, dur: 0.34, vol: 0.09 });
+  },
+  heartbeat() {
+    tone(75, { dur: 0.13, vol: 0.24 });
+    tone(65, { at: 0.18, dur: 0.14, vol: 0.19 });
+  },
+  levelUp() {
+    [72, 76, 79, 84, 91].forEach((n, i) => tone(midi(n), { type: 'triangle', at: i * 0.1, dur: 0.4, vol: 0.18 }));
   },
   chat() {
     tone(880, { slide: 1320, dur: 0.07, vol: 0.1 });

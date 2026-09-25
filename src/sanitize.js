@@ -1,14 +1,14 @@
 // Validation / normalisation of untrusted client input. Every function accepts any
 // value (wrong types included) and returns a safe value or a "nothing" marker.
-import { NAME_MAX, CHAT_MAX, MAX_WORD_LENGTH } from '../public/js/shared/constants.js';
-import { CHAIR_IDS, PETS_BY_ID } from '../public/js/shared/catalog.js';
+import { NAME_MAX, CHAT_MAX, MAX_WORD_LENGTH, MODES, BOT_LEVELS } from '../public/js/shared/constants.js';
+import { CHAIR_IDS, PETS_BY_ID, TABLE_IDS, BACK_IDS, CARD_IDS } from '../public/js/shared/catalog.js';
 import { filterText } from './blocklist.js';
 
 export { sanitizeLook } from '../public/js/shared/catalog.js';
 
 const ANIMS = new Set(['idle', 'walk', 'jump', 'fall']);
 const WORLD_LIMIT = 1000; // generous bound on coordinates; the island is far smaller
-const TURN_SECONDS = [10, 15, 20];
+const TURN_SECONDS = [8, 10, 15, 20];
 
 // Collapses whitespace and strips control / invisible formatting characters (bidi overrides,
 // zero-width chars) that could garble or spoof text.
@@ -27,6 +27,16 @@ export const sanitizeChair = (chair) => (typeof chair === 'string' && CHAIR_IDS.
 
 // Object.hasOwn: a plain lookup would accept inherited keys such as "constructor".
 export const sanitizePet = (pet) => (typeof pet === 'string' && Object.hasOwn(PETS_BY_ID, pet) ? pet : null);
+export const sanitizeTable = table => TABLE_IDS.has(table) ? table : 'classic';
+export const sanitizeBack = back => BACK_IDS.has(back) ? back : 'none';
+export const sanitizeLevel = level => Number.isFinite(level) ? Math.max(1, Math.min(999, Math.floor(level))) : 1;
+export const sanitizeTier = tier => Number.isInteger(tier) && tier >= 1 && tier <= 3 ? tier : 1;
+export function sanitizeCards(cards) {
+  const out = {};
+  if (!cards || typeof cards !== 'object') return out;
+  for (const id of CARD_IDS) if (Number.isInteger(cards[id]) && cards[id] >= 0) out[id] = Math.min(cards[id], 9999);
+  return out;
+}
 
 /** Chat line: cleaned, ≤ CHAT_MAX characters (code points), filtered. '' if empty. */
 export function sanitizeChat(text) {
@@ -56,8 +66,12 @@ export function sanitizeMove(msg) {
 export function sanitizeSettings(input, current) {
   const next = { ...current };
   if (!input || typeof input !== 'object') return next;
+  const mode = MODES.find(m => m.id === input.mode);
+  if (mode && mode.id !== current.mode) Object.assign(next, { mode: mode.id, hearts: mode.hearts, turnSeconds: mode.turnSeconds });
   if (Number.isInteger(input.hearts) && input.hearts >= 1 && input.hearts <= 3) next.hearts = input.hearts;
   if (TURN_SECONDS.includes(input.turnSeconds)) next.turnSeconds = input.turnSeconds;
   if (typeof input.petAbilities === 'boolean') next.petAbilities = input.petAbilities;
+  if (Object.hasOwn(BOT_LEVELS, input.botLevel)) next.botLevel = input.botLevel;
+  if (typeof input.public === 'boolean') next.public = input.public;
   return next;
 }

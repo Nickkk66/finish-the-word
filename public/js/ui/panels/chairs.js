@@ -1,53 +1,36 @@
-// Chairs shop: every CHAIRS entry with rarity, price and Buy / Equip / Equipped.
-
 import { h, fmt } from '../dom.js';
 import { icons } from '../icons.js';
-import { CHAIRS, RARITIES } from '../../shared/catalog.js';
+import { modelArt } from '../art.js';
+import { CHAIRS, TABLES, BACK_BLING, RARITIES } from '../../shared/catalog.js';
 import { profile } from '../../profile.js';
 
-const CHAIR_EMOJI = {
-  wooden: '🪑', glass: '🧊', goop: '🫧', toilet: '🚽', slime: '🟩',
-  flower: '🌸', swing: '🎠', gamer: '🎮', electric: '⚡', throne: '👑',
-};
-
-/** actions.chair(id): buy (if needed) + equip. */
 export function chairsPanel({ actions }) {
   return {
-    id: 'chairs',
-    title: 'Chairs',
-    color: 'orange',
-    icon: icons.chair,
+    id: 'chairs', title: 'Shop', color: 'orange', icon: icons.chair,
     mount(body) {
+      let kind = 'chair';
       const balance = h('div', { class: 'balance stroke' });
-      const cards = CHAIRS.map((chair) => {
-        const rarity = RARITIES[chair.rarity];
-        const btn = h('button', { type: 'button', class: 'btn small block', onClick: () => actions.chair(chair.id) });
-        const el = h('div', { class: 'item-card', style: { '--rc': rarity.color } },
-          h('div', { class: 'item-art' }, h('span', { class: 'item-emoji', 'aria-hidden': 'true' }, CHAIR_EMOJI[chair.id] || '🪑')),
-          h('div', { class: 'item-name stroke' }, chair.name),
-          h('span', { class: 'pill', style: { '--pc': rarity.color } }, chair.rarity),
-          btn);
-        return { chair, el, btn };
-      });
-      body.append(
-        h('div', { class: 'panel-bar' },
-          h('p', { class: 'panel-tip' }, 'Your chair replaces your seat at the table. You can also walk up to the chairs on the island and press E.'),
-          balance),
-        h('div', { class: 'item-grid' }, cards.map((c) => c.el)));
-
+      const grid = h('div', { class: 'item-grid' });
+      const tabs = [['chair', 'Chairs'], ['table', 'Tables'], ['back', 'Back Bling']].map(([id, name]) =>
+        h('button', { type: 'button', class: 'seg-btn', onClick: () => { kind = id; update(); } }, name));
+      body.append(h('div', { class: 'panel-bar' }, h('div', { class: 'seg' }, tabs), balance), grid);
       function update() {
         balance.textContent = `💵 ${fmt(profile.coins)}`;
-        for (const { chair, el, btn } of cards) {
-          const owned = profile.ownedChairs.includes(chair.id);
-          const equipped = profile.equippedChair === chair.id;
-          el.classList.toggle('equipped', equipped);
-          btn.className = `btn small block ${equipped ? 'grey' : owned ? 'blue' : 'green'}`;
-          btn.disabled = equipped || (!owned && profile.coins < chair.price);
-          btn.textContent = equipped ? 'Equipped ✓' : owned ? 'Equip' : `💵 ${fmt(chair.price)}`;
-        }
+        tabs.forEach((button, i) => button.setAttribute('aria-pressed', String(['chair', 'table', 'back'][i] === kind)));
+        const catalog = kind === 'chair' ? CHAIRS : kind === 'table' ? TABLES : BACK_BLING;
+        const owned = kind === 'chair' ? profile.ownedChairs : kind === 'table' ? profile.ownedTables : profile.ownedBacks;
+        const equipped = kind === 'chair' ? profile.equippedChair : kind === 'table' ? profile.equippedTable : profile.equippedBack;
+        grid.replaceChildren(...catalog.map((item) => {
+          const selected = equipped === item.id;
+          const has = owned.includes(item.id);
+          return h('div', { class: `item-card${selected ? ' equipped' : ''}`, style: { '--rc': RARITIES[item.rarity]?.color || '#b0b7c3' } },
+            h('div', { class: 'item-art' }, modelArt(actions, kind, item.id, item.name)),
+            h('div', { class: 'item-name stroke' }, item.name),
+            h('span', { class: 'item-desc' }, item.rarity || 'Default'),
+            h('button', { type: 'button', class: `btn small block ${selected ? 'grey' : has ? 'blue' : 'green'}`, disabled: selected || (!has && profile.coins < item.price), onClick: () => actions.cosmetic(kind, item.id) }, selected ? 'Equipped ✓' : has ? 'Equip' : `Buy · ${fmt(item.price)}`));
+        }));
       }
-      update();
-      return { update };
+      update(); return { update };
     },
   };
 }

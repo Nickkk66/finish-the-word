@@ -9,10 +9,19 @@ Up to 8 players per room; share the invite link (`/?room=CODE`) to play together
 **Rules:** sit at the table (2+ players, or ask the host to add bots). Type a word that starts with the
 last letter of the previous word — sometimes the last *two* letters. No repeats, 5 mistakes per turn, and the
 timer shrinks as the chain grows. Run out of time or mistakes and you lose a heart; last player standing wins.
-Coins buy chairs and lucky blocks (pets with abilities).
+Coins buy chairs, tables, back accessories, pet blocks, collectible card boxes, and exact-answer hints.
+
+Version 2 includes seven game modes, public matchmaking, a persistent global wins board, adjustable bots,
+WPM combos, pet merging (three copies per tier, maximum tier 3), and separate consumable cards. Walk near a
+pet block to see its odds and undiscovered silhouettes. Prefix letters are pre-filled by default; turn this off
+in personal Settings. The pier portal leads to an obstacle course while you wait for the next match.
+
+Winner bonuses grow by 15 coins per minute of meaningful play, separately from word/combo rewards. Coins
+and inventories are saved in your browser; this is a casual economy, not an account-backed wallet.
 
 **Controls:** WASD / arrows move, Space jumps (or stands up from a seat), E interacts, drag to orbit the camera,
-scroll to zoom, `/` to chat. Phones get a joystick and a jump button.
+scroll to zoom, `/` to chat, P to toggle first person (outside typing), and `/e dance` for emotes.
+Phones get a joystick, jump button, emote picker, and view toggle.
 
 ## Double-click launchers (macOS)
 
@@ -38,6 +47,10 @@ npm run dev
 
 Open http://127.0.0.1:8787. Other scripts: `npm test` (server unit tests), `npm run smoke` (end-to-end check
 against a running dev server), `npm run build:words` (regenerate the word lists).
+
+Additional verification: `node test/worker.integration.mjs` runs an isolated real Worker with a disposable
+test secret and checks persistent APIs; `node scripts/e2e.mjs match|shop|load` exercises Chrome against the
+running server (set `CHROME_BIN` if needed). Screenshots remain in the ignored `.e2e-shots/` folder.
 
 ## Deploy
 

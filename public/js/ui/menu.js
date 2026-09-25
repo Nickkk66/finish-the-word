@@ -7,6 +7,7 @@ import { createAvatarEditor } from './avatarEditor.js';
 import { icons } from './icons.js';
 import { profile, cleanName, setName, setLook } from '../profile.js';
 import { NAME_MAX, ROOM_CODE_REGEX, MAX_PLAYERS } from '../shared/constants.js';
+import { apiUrl } from '../net.js';
 
 const RULES = [
   ['🪑', 'Sit at the table with 2+ players (or ask the host to add bots).'],
@@ -73,8 +74,11 @@ export function createMenu({ invitedCode, actions }) {
       h('div', { class: 'invite-title stroke' }, "You've been invited!"),
       button(h('span', null, 'Join Game ', h('span', { class: 'invite-code' }, invitedCode)), 'big green block pulse', () => play(invitedCode)))
     : null;
-  const createBtn = button('Create Game', `big block ${invitedCode ? 'blue' : 'green'}`, () => play(null));
+  const publicBtn = button('Play Public', 'big block green', () => play('public'));
+  const createBtn = button('Create Private Game', 'big block blue', () => play(null));
   const joinBtn = button('Join', 'blue', joinTyped);
+  const publicCount = h('p', { class: 'card-note' }, 'Finding public games…');
+  const publicList = h('div', { class: 'public-room-list' });
 
   function joinTyped() {
     const code = cleanCode(codeInput.value);
@@ -94,7 +98,8 @@ export function createMenu({ invitedCode, actions }) {
     busy = true;
     for (const b of buttons) b.disabled = true;
     try {
-      await actions.play(code);
+      if (code === 'public') await actions.quickplay();
+      else await actions.play(code);
     } finally {
       busy = false;
       for (const b of buttons) b.disabled = false;
@@ -114,9 +119,10 @@ export function createMenu({ invitedCode, actions }) {
           h('label', { class: 'field-label' }, 'Your name', nameInput),
           invite,
           invite ? h('div', { class: 'or' }, 'or') : null,
-          createBtn,
+          publicBtn, createBtn,
           h('div', { class: 'join-row' }, codeInput, joinBtn),
           codeHint,
+          publicCount, publicList,
           h('p', { class: 'card-note' }, `Up to ${MAX_PLAYERS} players per table. Share the invite link with friends!`),
         ),
         h('section', { class: 'card avatar-card' },
@@ -149,6 +155,19 @@ export function createMenu({ invitedCode, actions }) {
     preview.set(profile.look);
   }
   refresh();
+  async function refreshPublic() {
+    if (el.hidden) return;
+    try {
+      const response = await fetch(apiUrl('/api/public'));
+      if (!response.ok) throw new Error('Unavailable');
+      const data = await response.json();
+      publicCount.textContent = `${data.players || 0} players in public games`;
+      publicList.replaceChildren(...(data.rooms || []).slice(0, 3).map((room) =>
+        h('button', { type: 'button', class: 'public-room', onClick: () => play(room.code) }, `${room.code} · ${room.humans}/${MAX_PLAYERS} players`, h('span', null, 'Join →'))));
+    } catch { publicCount.textContent = 'Create a private game or try public games shortly.'; }
+  }
+  refreshPublic();
+  setInterval(refreshPublic, 15000);
 
   return {
     el,
@@ -156,6 +175,7 @@ export function createMenu({ invitedCode, actions }) {
     show() {
       el.hidden = false;
       refresh();
+      refreshPublic();
     },
     hide() {
       el.hidden = true;

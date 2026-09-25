@@ -3,13 +3,27 @@
 import { ROOM_CODE_REGEX } from '../public/js/shared/constants.js';
 
 export { GameRoom } from './room.js';
+export { Leaderboard } from './leaderboard.js';
+export { Matchmaker } from './matchmaker.js';
 
 const ROOM_PATH = /^\/api\/room\/([^/]+)$/;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     if (pathname === '/api/health') return new Response('ok');
+    if (pathname.startsWith('/api/') && request.method === 'OPTIONS') return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' } });
+    const endpoint = { '/api/leaderboard': ['LEADERBOARD', '/top?n=10', 30], '/api/public': ['MATCHMAKER', '/public', 5], '/api/quickplay': ['MATCHMAKER', '/quickplay', 0] }[pathname];
+    if (endpoint && request.method === 'GET') {
+      const [binding, path, ttl] = endpoint;
+      const key = new Request(new URL(pathname, request.url));
+      const cached = ttl && await caches.default.match(key);
+      if (cached) return cached;
+      const result = await env[binding].get(env[binding].idFromName('global')).fetch(`https://internal${path}`);
+      const response = new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': ttl ? `public, max-age=${ttl}` : 'no-store' } });
+      if (ttl && response.ok) ctx.waitUntil(caches.default.put(key, response.clone()));
+      return response;
+    }
 
     const room = ROOM_PATH.exec(pathname);
     if (room) {
