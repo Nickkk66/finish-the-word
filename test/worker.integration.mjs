@@ -64,6 +64,36 @@ async function connect(id, code, extra = {}) {
 }
 try {
   await start();
+  async function account(path, method = 'GET', body, token, expected = 200) {
+    const response = await fetch(`${base}/api/account/${path}`, {
+      method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    assert.equal(response.status, expected, path);
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+    return response.json();
+  }
+  const credentials = { username: 'integration_user', password: 'disposable-test-password' };
+  const registered = await account('register', 'POST', { ...credentials, profile: { id: 'guestintegration', coins: 777, pets: { cat: 3 }, settings: { prefillPrefix: false } } });
+  assert.equal(registered.profile.coins, 777);
+  assert.equal(registered.profile.settings.prefillPrefix, false);
+  assert.ok(registered.token && !registered.password && !registered.password_hash);
+  await account('register', 'POST', { ...credentials, profile: {} }, null, 409);
+  await account('login', 'POST', { ...credentials, password: 'incorrect-password' }, null, 401);
+  const device = await account('login', 'POST', credentials);
+  assert.deepEqual(device.profile, registered.profile);
+  await account('profile', 'PUT', { revision: 1, profile: { ...device.profile, coins: 999, id: 'cannotchangeid' } }, device.token);
+  const saved = await account('me', 'GET', null, registered.token);
+  assert.equal(saved.profile.coins, 999);
+  assert.equal(saved.profile.id, 'guestintegration');
+  await account('profile', 'PUT', { revision: 1, profile: registered.profile }, registered.token, 409);
+  await account('profile', 'PUT', { revision: 2, profile: {} }, '0'.repeat(64), 401);
+  await account('logout', 'POST', null, device.token);
+  await account('me', 'GET', null, device.token, 401);
+  await stop(); await start();
+  assert.equal((await account('me', 'GET', null, registered.token)).profile.coins, 999);
+  console.log('ok account registration, login, persistence, identity, conflicts, logout and CORS');
+
   const quick = await api('/api/quickplay');
   assert.equal((await api('/api/quickplay')).code, quick.code, 'empty quickplay reservation reused');
   const host = await connect('HostIntegration', quick.code, { public: true, cards: { heart: 2 } });

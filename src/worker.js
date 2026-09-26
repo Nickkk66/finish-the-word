@@ -5,6 +5,7 @@ import { ROOM_CODE_REGEX } from '../public/js/shared/constants.js';
 export { GameRoom } from './room.js';
 export { Leaderboard } from './leaderboard.js';
 export { Matchmaker } from './matchmaker.js';
+export { Accounts } from './accounts.js';
 
 const ROOM_PATH = /^\/api\/room\/([^/]+)$/;
 
@@ -12,7 +13,11 @@ export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     if (pathname === '/api/health') return new Response('ok');
-    if (pathname.startsWith('/api/') && request.method === 'OPTIONS') return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' } });
+    if (pathname.startsWith('/api/') && request.method === 'OPTIONS') return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Max-Age': '86400' } });
+    if (pathname.startsWith('/api/account/')) {
+      const result = await env.ACCOUNTS.get(env.ACCOUNTS.idFromName('global')).fetch(request);
+      return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff' } });
+    }
     const endpoint = { '/api/leaderboard': ['LEADERBOARD', '/top?n=10', 30], '/api/public': ['MATCHMAKER', '/public', 5], '/api/quickplay': ['MATCHMAKER', '/quickplay', 0] }[pathname];
     if (endpoint && request.method === 'GET') {
       const [binding, path, ttl] = endpoint;

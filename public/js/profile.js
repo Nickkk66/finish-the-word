@@ -113,6 +113,14 @@ export function onProfileChange(fn) {
   return () => listeners.delete(fn);
 }
 
+/** Replace identity/progress only at an explicit account boundary; keep the exported object stable. */
+export function replaceProfile(raw) {
+  Object.assign(profile, normalize(raw));
+  commit();
+}
+
+export function exportProfile() { return JSON.parse(JSON.stringify(profile)); }
+
 // Another tab changed the profile (e.g. bought something): adopt it so we never overwrite it with stale data.
 window.addEventListener('storage', (e) => {
   if (e.key !== STORAGE_KEY || !e.newValue) return;

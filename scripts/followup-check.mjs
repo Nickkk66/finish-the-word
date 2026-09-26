@@ -1,0 +1,104 @@
+// Regression gate for the interrupted follow-up: real browsers + optional cloud saves.
+import assert from 'node:assert/strict';
+import { browser, delay } from './browser.mjs';
+const base = process.env.BASE || 'http://127.0.0.1:8787';
+if (!/^http:\/\/(127\.0\.0\.1|localhost):/.test(base)) throw Error('Use a local Worker for account creation tests.');
+const b = await browser();
+try {
+  const a = await b.page('followup-desktop');
+  const c = await b.page('followup-mobile', 390, 844, true);
+  for (const p of [a, c]) { await p.nav(`${base}/?debug`); await p.wait('window.__ftw?.world'); }
+  const guestA = await a.eval('window.__ftw.profile.id');
+  const guestC = await c.eval('window.__ftw.profile.id');
+  const credentials = { username: `qa_${Date.now().toString(36)}`, password: 'disposable-browser-test' };
+  await a.clickText('Account ·'); await a.clickText('Create account', '.seg-btn');
+  await a.eval(`document.querySelector('[name=username]').value=${JSON.stringify(credentials.username)};document.querySelector('[name=password]').value=${JSON.stringify(credentials.password)};document.querySelector('[name=confirm-password]').value=${JSON.stringify(credentials.password)};`);
+  await a.clickText('Create & save');
+  await a.wait('window.__ftw.state.account?.status === "saved"');
+  assert.equal(await a.eval('window.__ftw.profile.id'), guestA);
+  await a.eval(`import('./js/profile.js').then(p=>p.grantCoins(123))`);
+  await a.wait('window.__ftw.state.account.status === "saved" && !JSON.parse(localStorage.ftw_account_v1).dirty');
+  const coins = await a.eval('window.__ftw.profile.coins');
+  await c.clickText('Account ·');
+  await c.eval(`document.querySelector('[name=username]').value=${JSON.stringify(credentials.username)};document.querySelector('[name=password]').value=${JSON.stringify(credentials.password)};`);
+  await c.clickText('Log in', 'button[type=submit]');
+  await c.clickText('Log in', '.overlay button');
+  await c.wait('window.__ftw.state.account?.status === "saved"');
+  assert.equal(await c.eval('window.__ftw.profile.coins'), coins);
+  assert.equal(await c.eval('window.__ftw.profile.id'), guestA);
+  await c.shot('account');
+  await c.eval(`import('./js/profile.js').then(p=>p.grantCoins(50))`);
+  await c.wait('!JSON.parse(localStorage.ftw_account_v1).dirty');
+  await a.eval(`import('./js/profile.js').then(p=>p.grantCoins(1))`);
+  await a.wait('window.__ftw.state.account.status === "conflict"');
+  await a.clickText('Load cloud save'); await a.clickText('Load save', '.overlay button');
+  await a.wait('window.__ftw.state.account.status === "saved"');
+  assert.equal(await a.eval('window.__ftw.profile.coins'), coins + 50);
+  await a.nav(`${base}/?debug`); await a.wait('window.__ftw?.state.account?.status === "saved"');
+  assert.equal(await a.eval('window.__ftw.profile.coins'), coins + 50);
+  await c.clickText('Log out'); await c.wait('window.__ftw.state.account.status === "guest"');
+  assert.equal(await c.eval('window.__ftw.profile.id'), guestC);
+  console.log('ok account UI, cross-device saves, conflict recovery, reload, guest restoration');
+
+  // Join together as guests/account; no login is needed on the second device.
+  await a.clickText('Create Private'); await a.wait('window.__ftw.state.inRoom');
+  const code = (await a.state()).code;
+  await c.click('.panel-close');
+  await c.nav(`${base}/?debug&room=${code}`); await c.wait('window.__ftw?.world');
+  await c.clickText('Join'); await c.wait('window.__ftw.state.inRoom');
+  await a.eval(`import('./js/profile.js').then(p=>{p.addCard('skip');p.addCard('time_tax');})`);
+  await a.send({t:'loadout', cards:{skip:1,time_tax:1}});
+  await a.send({t:'celebrate',kind:'portal',to:'obby'});
+  await c.wait(`window.__ftw.world.debugSnapshot().portalAnimations.includes(${JSON.stringify(guestA)})`);
+  await delay(1100);
+  await a.send({t:'celebrate',kind:'hatch'});
+  await c.wait(`window.__ftw.world.debugSnapshot().hatchAnimations.includes(${JSON.stringify(guestA)})`);
+  await a.click('[aria-label="Settings"]');
+  await a.wait('document.querySelector(".panel-settings")');
+  await a.clickText('First person', '.seg-btn');
+  assert.equal(await a.eval('window.__ftw.world.debugSnapshot().firstPerson'), true);
+  await a.clickText('Third person', '.seg-btn');
+  await a.shot('settings'); await a.click('.panel-close');
+  assert.equal(await a.eval('document.querySelector(".view-toggle") !== null'), false);
+  await c.click('[aria-label="Profile"]'); await c.shot('profile'); await c.click('.panel-close');
+  await a.click('[aria-label="Cards"]'); await a.shot('cards');
+  assert.equal(await a.eval('document.querySelectorAll(".collection-card").length'), 4);
+  assert.equal(await a.eval('document.querySelectorAll(".collection-card select").length'), 0);
+  await a.click('.panel-close');
+  await a.eval(`import('./js/shared/constants.js').then(m=>window.__ftw.world.teleportLocal({...m.LAYOUT.portal,y:.25}))`);
+  await a.wait('window.__ftw.state.zone === "obby"');
+  await delay(1600); await a.shot('obby');
+  await a.clickText('Return to island'); await a.wait('window.__ftw.state.zone === "island"');
+  await delay(1600);
+  await a.eval(`window.__ftw.world.teleportLocal({x:-26,y:.25,z:16})`);
+  await delay(600); await a.shot('preview');
+  await a.send({t:'host',action:'settings',settings:{turnSeconds:20,hearts:3}});
+  await a.send({t:'sit',seat:0}); await c.send({t:'sit',seat:1});
+  await a.wait('window.__ftw.state.match.phase === "countdown"'); await a.send({t:'host',action:'start'});
+  await a.wait('window.__ftw.state.match.phase === "choosing"');
+  let m = (await a.state()).match;
+  const chooser = m.chooserId === guestA ? a : c;
+  await chooser.send({t:'pick',letter:m.options[0]});
+  await a.wait('window.__ftw.state.match.phase === "typing"');
+  m = (await a.state()).match;
+  const actor = m.typerId === guestA ? a : c;
+  // Both clients get a card before their next match; choose the initial holder's turn.
+  if (actor === c) {
+    await c.send({t:'hint',turnId:m.turnId,requestId:'qa-hint',balance:250});
+    await delay(500);
+    const { default: words } = await import('../src/words.js');
+    const word = words.split('\n').find(w=>w.startsWith(m.prefix)&&w.length>=3);
+    await c.send({t:'submit',word});
+    await a.wait(`window.__ftw.state.match.typerId === ${JSON.stringify(guestA)}`);
+  }
+  await a.clickText('My cards'); await a.shot('turn-cards');
+  await a.clickText('Use card', '.collection-card button');
+  await a.wait('window.__ftw.world.debugSnapshot().cardTargets.length === 2');
+  await a.shot('targets');
+  await a.clickText('Use on me', '.card-target-notice button');
+  await a.clickText('Use card', '.overlay button');
+  await a.wait('window.__ftw.profile.cards.skip === 0');
+  assert.equal(await a.eval('window.__ftw.world.debugSnapshot().cardTargets.length'), 0);
+  console.log('ok shared portal, settings camera, collection, glowing targets, self Free Pass');
+  for (const page of [a,c]) assert.deepEqual(page.errors.filter(error=>!/409 \(Conflict\)/.test(error)), [], `${page.name} browser errors`);
+} finally { await b.close(); }

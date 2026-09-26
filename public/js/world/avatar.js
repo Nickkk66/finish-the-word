@@ -285,6 +285,7 @@ export class Avatar {
     this.flinchT = 0;
     this.nodT = 0;
     this.flightT = -1;
+    this.portalT = -1;
     this.landT = 0;
     this.stars = null;
     this.look = null;
@@ -556,6 +557,15 @@ export class Avatar {
     if (em?.name === 'dance2') this.spin.rotation.y += Math.sin(em.t * Math.PI * 4) * 0.26;
     this.body.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
 
+    if (this.portalT >= 0) {
+      this.portalT += dt;
+      const u = Math.min(this.portalT / .85, 1);
+      this.body.position.y += Math.sin(u * Math.PI) * 2 - u * u * 5;
+      this.spin.rotation.x += u * Math.PI * 1.5;
+      this.spin.rotation.y += u * Math.PI * 2;
+      this.body.scale.multiplyScalar(Math.max(.03, 1 - u));
+      if (u >= 1) this.portalT = -1;
+    }
     this.updateStars(t);
   }
 

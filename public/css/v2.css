@@ -19,6 +19,11 @@
 .panel-profile { width:min(850px,100%); height:min(630px,calc(100dvh - 60px)); }
 .panel-profile .panel-body { overflow:hidden; }
 .profile-summary { display:flex; flex-direction:column; gap:9px; min-height:0; }
+.profile-summary { padding:12px; border:3px solid #7795d5; border-radius:26px; background:radial-gradient(circle at 12% 10%,#ffffff 0 7px,transparent 8px),radial-gradient(circle at 88% 28%,#ffffffa8 0 15px,transparent 16px),linear-gradient(145deg,#d4eeff,#e8ddff); box-shadow:inset 0 4px #ffffffb0,0 5px #657fb438; }
+.profile-summary .avatar-stage { border-radius:42% 42% 35% 35%; background:radial-gradient(ellipse at center,#fff 0 35%,#9dcafa88 70%); }
+.profile-summary .stat { border-radius:14px; background:#ffffffd9; border-color:#b3bfdf; }
+.profile-summary .field { border-radius:18px; }
+.profile-summary .level-progress { border-radius:16px; background:#ffffffa8; padding:7px 10px; }
 .profile-summary .avatar-stage { width:120px; height:144px; min-height:0; margin:0 auto; flex:none; }
 .profile-summary .avatar-stage .avatar-preview { max-height:100%; }
 .profile-summary .stats { gap:6px; }
@@ -51,6 +56,36 @@
 .side-btn[aria-label="Game Settings"] { grid-column:1; }
 .match-badges { font:600 14px/1.3 var(--font); color:#fff; padding:3px 8px; background:#16273e65; border-radius:8px; }
 .turn-tools { display:flex; gap:9px; pointer-events:auto; }
+.obby-return { position:absolute; right:calc(12px + var(--sar)); bottom:calc(24px + var(--sab)); pointer-events:auto; }
+.card-guidance { color:#413413; padding:12px 15px; border:2px solid #dfbd59; border-radius:16px; background:#fff4c9; font:600 16px/1.4 var(--font); }
+.card-art-button { display:grid; place-items:center; border:0; background:transparent; padding:0; cursor:pointer; border-radius:16px; transition:transform .15s; }
+.card-art-button:hover,.card-art-button:focus-visible { transform:translateY(-3px) rotate(-3deg); outline:3px solid #739bee; outline-offset:4px; }
+.collection-card .item-desc { flex:1; }
+.collection-card.selected { box-shadow:0 0 0 4px #6b8efa,0 6px var(--ink); }
+.card-turn-tray { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:start; }
+.card-turn-tray .collection-card { min-height:0; padding:14px 8px; gap:9px; position:relative; }
+.card-turn-tray .item-name { font-size:18px; }
+.card-turn-tray .card-art { width:70px; height:90px; }
+.card-turn-tray .item-desc { position:absolute; z-index:2; left:-3px; right:-3px; top:115px; margin:0; padding:12px; background:#fff; color:#26344f; border:3px solid #6b8efa; border-radius:16px; box-shadow:0 4px 12px #17294e44; font-size:14px; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s; }
+.card-turn-tray .collection-card:hover .item-desc,.card-turn-tray .collection-card:focus-within .item-desc,.card-turn-tray .collection-card.selected .item-desc { opacity:1; visibility:visible; }
+.card-turn-tray .pill { display:none; }
+.card-turn-tray .btn { font-size:15px; padding:8px; }
+.card-turn-tray .item-count { font-size:19px; }
+.panel-account { width:min(500px,100%); }
+.account-form { display:flex; flex-direction:column; gap:16px; }
+.account-status { padding:14px; border:2px solid #9bb8e3; border-radius:18px; color:#253b62; background:#e5f0ff; font:600 16px/1.4 var(--font); }
+.account-status.error { color:#852d35; border-color:#df9ba1; background:#fff0f0; }
+.account-help { margin:0; color:#4a5a71; font:500 14px/1.5 var(--font); }
+.account-menu-button { margin-top:10px; }
+.plist { border:3px solid #384963; border-radius:21px; background:#e9f3ffef; box-shadow:0 5px #24314988,inset 0 3px #fff; color:#26354b; }
+.plist-head { padding:11px 12px; color:#fff; background:linear-gradient(#7bafff,#567ed6); text-shadow:0 2px #335492; border-bottom:3px solid #384963; }
+.plist-rows { max-height:min(46dvh,380px); overflow:auto; padding:5px; }
+.plist-row { min-height:39px; margin:4px 0; padding:5px 7px; color:#26354b; background:#fff; border:2px solid #c3d3e9; border-radius:14px; text-shadow:none; gap:4px; }
+.plist-row.me { background:#fff4bf; border-color:#e1c15a; }
+.plist-row.me .pl-text { color:#655218; }
+.plist-row.turn { background:#d2fbdc; border-color:#40ac68; box-shadow:inset 0 2px #fff; }
+.pl-avatar { display:grid; place-items:center; flex:none; width:24px; height:26px; border:2px solid #627caf; border-radius:9px; background:linear-gradient(#b9e1ff,#bba7fa); font:700 15px var(--font); color:#2b416d; }
+.pl-wins { background:#e9f0ff; border-radius:8px; font-size:13px; padding:3px 0; }
 .hint-answer { padding:7px 14px; border:3px solid #4c3e12; border-radius:12px; background:#fff5bf; color:#332b13; font:700 21px var(--font); user-select:text; pointer-events:auto; }
 .combo-meter { font:700 20px var(--font); color:#ffbf52; }
 .chat-entry { display:flex; gap:4px; }
@@ -72,6 +107,7 @@
   .profile-columns { grid-template-columns:1fr; gap:12px; }
   .panel-profile { height:calc(100dvh - 64px); }
   .profile-summary { display:grid; grid-template-columns:90px 1fr; gap:6px 10px; }
+  .profile-summary { padding:8px; border-radius:20px; }
   .profile-summary .avatar-stage { grid-row:span 2; width:85px; height:100px; }
   .profile-summary .stats { grid-column:1/-1; grid-template-columns:repeat(4,minmax(0,1fr)); }
   .profile-summary .stat { padding:4px; }
@@ -97,6 +133,9 @@
   .side-btn[aria-label="Game Settings"] .side-label { width:58px; font-size:9px; }
   .turn-tools .btn { font-size:13px; padding:6px 11px; }
   .hint-answer { font-size:17px; }
+  .card-turn-tray { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .obby-return { bottom:calc(110px + var(--sab)); right:calc(12px + var(--sar)); font-size:13px; }
+  .account-form .seg-btn { padding:9px 12px; }
 }
 @media (pointer:coarse) and (max-width:720px), (pointer:coarse) and (max-height:520px) {
   .counters { bottom:auto; }
@@ -105,3 +144,6 @@
 @media (prefers-reduced-motion:reduce) {
   .teleport-overlay,.teleport-spinner,.heart-hit,.card-reveal .card-art { animation:none; }
 }
+
+.card-target-notice { position:fixed; z-index:2500; top:105px; left:50%; transform:translateX(-50%); width:max-content; max-width:calc(100vw - 24px); display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:10px; padding:12px 16px; border:3px solid #275164; border-radius:20px; background:#d9fff4; color:#163e44; pointer-events:auto; box-shadow:0 5px #18334666; }
+.card-target-notice strong { font:600 17px var(--font); }

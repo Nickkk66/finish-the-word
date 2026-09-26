@@ -23,7 +23,7 @@ and flair earnings remain separate. Only award the duration bonus when at least 
 played a valid word. `eligibleMs` cannot exceed actual match duration or 30 seconds per accepted word.
 This gives a 15-coin win bonus for a meaningful minute, up to 1800 for two hours. Coins/inventories remain the
 existing casual localStorage economy; they cannot be made cheat-proof by trusting client counts. Cards have
-server-enforced turn/target/count limits, but no account or server wallet migration is included in this release.
+server-enforced turn/target/count limits, and optional accounts synchronize that same casual economy; they are not a server-authoritative wallet.
 
 ### Protocol additions
 
@@ -45,10 +45,11 @@ server-enforced turn/target/count limits, but no account or server wallet migrat
   UI reserves the purchase while pending and debits once on an accepted, current-turn response.
 - C→S `useCard {turnId,requestId,cardId,targetId}` → private
   `cardResult {ok,turnId,requestId,cardId,targetId,reason?}`, and on success broadcast
-  `cardUsed {actorId,targetId,cardId,effect}`. One card per actor turn; alive other-player targets only.
+  `cardUsed {actorId,targetId,cardId,effect}`. One card per actor turn; alive targets only. Free Pass may target yourself; harmful cards require another player.
   `skip` queues skipping the target's next typing turn; `time_tax` removes 2 seconds (normal floor applies);
   `pressure` removes 2 allowed mistakes (floor 1); `heart` removes 1 heart immediately through shield/elim logic.
   Repeated IDs cannot spend twice. Invalid uses do not consume cards. Clear pending effects on match end.
+- C→S `celebrate {kind:'portal'|'hatch',to?:'obby'|'island'}` → everyone, including sender, with server-owned `id`. Limited to once/second and players outside active matches. Portal triggers a tumbling/shrinking fall; hatch triggers a cheer and particles on every client.
 - C→S `emote {name}` → S→C `emote {id,name}` to others; sender animates locally. At most once/second.
 - C→S `unlock {code}` → private `unlock {ok,token?}`. Code lives only in env.ADMIN_CODE; disabled if absent.
   Five attempts/connection and hashed IP/10min. Persist HMAC admin token locally; verify on hello. No code logs.
@@ -66,11 +67,12 @@ server-enforced turn/target/count limits, but no account or server wallet migrat
 ### World additions
 
 `setTable(id)`, `renderThumbnail(kind,id,size=160) → Promise<dataURL>` (kind chair/table/pet/back/block/cardBox),
+`beginCardTargeting(ids,onSelect)`, `cancelCardTargeting()`, `playPortal(id,to)`, `playHatch(id)`,
 `setFirstPerson(on)`, `onViewChange(cb)`, `playEmote(id,name)`, `playEffect(id,'flair',{text,color})`,
 `setPlayerStatus(id,{combo,...})`, `teleportLocal(pos)`, `setZone('island'|'obby')`,
 `setPetCollection(ownedIds)` (ever-discovered pet IDs), `setLeaderboardTitle(text)`.
 `onInteract` adds `{type:'portal',to:'obby'|'island'}`, `{type:'obbyFinish',ms}`, `{type:'obbyRespawn'}`,
-and `{type:'cardBox',boxId}`. Portal runs automatically on entry; UI owns 1.4s overlay and halfway teleport.
+and `{type:'cardBox',boxId}`. Portal runs automatically on entry; UI starts the travel overlay after 500ms and teleports at 900ms, letting the fall animation show first.
 `OBBY.spawn`, `.finish`, `.killY` are shared; world/obby.js owns platform layout and motion/collision data.
 Root cosmetics exports `buildTable`, `buildBackBling`, `buildPortal`, `buildCardBox` via cosmetics.js;
 returned groups use `userData.update(t,dt,seated=false)`. Back bling origin is torso center, geometry behind z=-.5.
@@ -88,6 +90,29 @@ Settings retains sound/graphics/personal preferences and a prominent non-host no
 appears only for owner/admin. Hidden admin entry opens after 5 version taps/3s. Shop tabs chairs/tables/back;
 Cards separate from Pets. All inventory/odds art uses model or vector art; hatch reveal retains the pet emoji.
 Profile uses two columns at desktop with tabs for Look/Back Bling/Pets and fits at 700px height.
+Camera controls live in Settings → Controls; P remains the shortcut. The obby has a visible return button.
+Cards show all types/counts/descriptions; turn view has hover/tap explanations and pulsating selectable players.
+
+### Optional accounts and cloud saves
+
+Guests play immediately with their existing browser save. Account is available from the menu and Settings.
+Register uploads current progress; login loads the account and leaves any room before changing identity.
+Logout restores the device's guest save. Usernames use 3–20 letters/digits/underscores (case insensitive);
+passwords use 12–128 characters. There is no email/password recovery in this version.
+
+`Accounts` is a SQLite Durable Object added in migration v3. `/api/account/register` and `/login` accept POST
+JSON `{username,password,profile?}` and return `{username,token,revision,profile}`. Bearer-authenticated
+`GET /me` returns the current save, `PUT /profile` accepts `{revision,profile}`, and `POST /logout` revokes
+that session. Tokens expire after 30 days. Passwords use per-user random salts and PBKDF2-SHA256; only hashes
+of session tokens are stored. Requests have body limits, validation and persistent login/save rate limits.
+Account responses use no-store and CORS for the GitHub Pages client.
+
+Cloud writes use optimistic revisions: stale updates return 409 and do not overwrite newer progress.
+The client debounces saves, preserves dirty/offline state across reload, retries after reconnect, and offers an
+explicit Load cloud save action on conflicts. Logout preserves unsaved progress in a local account backup;
+logging back in recovers that backup or presents a conflict. Only one browser tab should edit a profile at a
+time; other tabs reload when local identity/save state changes. Room identity still uses the existing casual
+client trust model; account login does not turn inventory or multiplayer IDs into cheat-proof state.
 
 ---
 

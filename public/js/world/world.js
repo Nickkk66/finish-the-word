@@ -8,7 +8,7 @@ import { createProps } from './props.js';
 import { createTable } from './table.js';
 import { createLobby } from './lobby.js';
 import { PlayerEntity } from './player.js';
-import { LabelLayer, Prompt, Sign } from './labels.js';
+import { LabelLayer, Label, Prompt, Sign } from './labels.js';
 import { CharacterMotor, Input, isTouchDevice } from './controls.js';
 import { CameraRig } from './camera.js';
 import { Effects } from './effects.js';
@@ -117,6 +117,24 @@ export async function createWorld({ container, labelLayer }) {
 
   // ---- State ----
   const players = new Map();
+  const cardTargets = new Map();
+  const targetGeometry = new THREE.CylinderGeometry(2.2, 2.2, 6, 24, 1, true).translate(0, 3, 0);
+  function clearCardTargets() {
+    for (const { glow, label } of cardTargets.values()) {
+      glow.removeFromParent(); glow.material.dispose(); label.destroy();
+    }
+    cardTargets.clear();
+  }
+  const targetRay = new THREE.Raycaster();
+  let targetPointer = null;
+  canvas.addEventListener('pointerdown', event => { targetPointer = { x: event.clientX, y: event.clientY }; });
+  canvas.addEventListener('pointerup', event => {
+    if (!targetPointer || Math.hypot(event.clientX - targetPointer.x, event.clientY - targetPointer.y) > 8 || !cardTargets.size) return;
+    const rect = canvas.getBoundingClientRect();
+    targetRay.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2), camera);
+    const hit = targetRay.intersectObjects([...cardTargets.values()].map(t => t.glow))[0];
+    if (hit) cardTargets.get(hit.object.userData.playerId)?.select();
+  });
   const seatOccupant = new Array(SEAT_COUNT).fill(null);
   const interactListeners = [];
   const moveListeners = [];
@@ -339,6 +357,14 @@ export async function createWorld({ container, labelLayer }) {
     input.orbitX = input.orbitY = input.zoomDelta = 0;
 
     for (const e of players.values()) e.tick(dt, time, now);
+    for (const [id, target] of cardTargets) {
+      const e = players.get(id);
+      if (!e) continue;
+      target.glow.position.copy(e.render);
+      target.glow.material.opacity = .15 + .12 * (1 + Math.sin(time * 7));
+      target.glow.scale.setScalar(1 + .04 * Math.sin(time * 7));
+      target.label.anchor.set(e.render.x, e.render.y + 7, e.render.z);
+    }
     table.update(time, dt);
     lobby.update(time, dt);
     terrain.update(time);
@@ -423,6 +449,8 @@ export async function createWorld({ container, labelLayer }) {
       const e = players.get(id);
       if (!e) return;
       vacate(e.seat, id);
+      const target = cardTargets.get(id);
+      if (target) { target.glow.removeFromParent(); target.glow.material.dispose(); target.label.destroy(); cardTargets.delete(id); }
       e.dispose();
       players.delete(id);
       updateInputActive();
@@ -512,6 +540,31 @@ export async function createWorld({ container, labelLayer }) {
     setTable(id) { table.setTable(id); },
     renderThumbnail: thumbnails.render,
     setPetCollection(ids) { preview.setCollection(ids); },
+    beginCardTargeting(ids, onSelect) {
+      clearCardTargets();
+      for (const id of ids) {
+        const e = players.get(id);
+        if (!e) continue;
+        const glow = new THREE.Mesh(targetGeometry, new THREE.MeshBasicMaterial({ color: '#78ffe2', transparent: true, opacity: .3, depthWrite: false, side: THREE.DoubleSide }));
+        glow.userData.playerId = id; scene.add(glow);
+        const label = new Label(labels, 'w-card-target', { minScale: .75, maxScale: 1, maxDist: 100 });
+        const select = () => onSelect(id);
+        const button = document.createElement('button'); button.type = 'button';
+        button.textContent = id === localId ? 'Choose me' : `Choose ${e.data.name}`;
+        button.addEventListener('pointerdown', event => event.stopPropagation());
+        button.addEventListener('click', select); label.el.append(button);
+        cardTargets.set(id, { glow, label, select });
+      }
+    },
+    cancelCardTargeting: clearCardTargets,
+    playHatch(id) { world.playEffect(id, 'hatch'); },
+    playPortal(id) {
+      const e = players.get(id);
+      if (!e || e.seat >= 0) return;
+      e.avatar.portalT = 0;
+      effects.ring(e.render, 12, 1.2, '#81eaff');
+      effects.sparkRing(e.render, 50, ['#85f5ff', '#bf8fff', '#ffffff']);
+    },
     playEmote(id, name) { players.get(id)?.avatar.playEmote(name); },
     setFirstPerson(on) {
       firstPerson = !!on; rig.firstPitch = 0; rig.seatedYaw = 0; rig.blend = 1;
@@ -547,6 +600,7 @@ export async function createWorld({ container, labelLayer }) {
       return { zone, firstPerson, localPosition: local()?.pos.toArray() ?? null, checkpoint: { ...checkpoint },
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
+        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), portalAnimations: [...players.values()].filter(e => e.avatar.portalT >= 0).map(e => e.id),
         grounded: motor.grounded, platformKind: motor.standingOn?.kind ?? null };
     },
 

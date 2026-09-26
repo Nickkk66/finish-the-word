@@ -27,16 +27,20 @@ const CSS = `
 .w-combo { color: #ffd43b; font-size: 17px; text-shadow: ${OUTLINE(1.5)}; }
 .w-flair { color: #ffd43b; font-size: 29px; font-weight: 700; text-align: center; text-shadow: ${OUTLINE(2.5)};
  animation: w-flair 2.1s ease-out forwards; }
+.w-card-target button { pointer-events:auto; border:3px solid #174e51; border-radius:16px; padding:8px 14px; color:#123c40; background:#9bffe7; font:700 16px Fredoka,sans-serif; cursor:pointer; animation:w-target-pulse .8s infinite alternate; }
+@keyframes w-target-pulse { to { box-shadow:0 0 22px #75ffe3; transform:scale(1.06); } }
 .w-odds { background: rgba(24,29,49,.96); color: white; border: 2px solid #fff5; border-radius: 18px;
- padding: 12px; width: 240px; box-shadow: 0 10px 30px #0006; text-align: center; white-space: normal; }
+ padding: 14px; width: 320px; box-sizing: border-box; box-shadow: 0 10px 30px #0006; text-align: center; white-space: normal; }
 .w-odds-title { font-size: 17px; margin-bottom: 7px; }
 .w-odds-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
-.w-odds-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; }
-.w-odds-cell img { width: 58px; height: 58px; object-fit: contain; }
+.w-odds-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px; min-width: 0; }
+.w-odds-cell img { width: 88px; height: 88px; object-fit: contain; }
+.w-odds-card-art { display:block; flex:none; width:60px; height:78px; transform:rotate(-6deg); overflow:visible; }
 .w-odds-cell img.w-unknown { filter: brightness(0); }
 .w-odds-cell strong { font-size: 13px; color: #ffe387; }
 .w-odds-caption { margin-top: 8px; font-size: 10px; color: #c9cfeb; }
-@media (max-width: 600px) { .w-odds { width: 210px; padding: 8px; } .w-odds-cell img { width: 44px; height: 44px; } }
+@media (max-width: 600px) { .w-odds { width: 256px; padding: 10px; } .w-odds-cell img { width: 64px; height: 64px; }
+ .w-odds-cell { font-size: 11px; } .w-odds-card-art { width: 46px; height: 62px; font-size: 20px; } }
 @keyframes w-flair { 0% { opacity: 0; transform: scale(.5); } 15% { opacity: 1; transform: scale(1.15); }
  25% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-30px); } }
 .w-hearts { color: #ff3b4a; font-size: 18px; letter-spacing: 1px; text-shadow: ${OUTLINE(1.6)}; }

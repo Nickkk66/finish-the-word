@@ -17,11 +17,18 @@ pet block to see its odds and undiscovered silhouettes. Prefix letters are pre-f
 in personal Settings. The pier portal leads to an obstacle course while you wait for the next match.
 
 Winner bonuses grow by 15 coins per minute of meaningful play, separately from word/combo rewards. Coins
-and inventories are saved in your browser; this is a casual economy, not an account-backed wallet.
+and inventories save in your browser by default. Optional accounts sync progress across devices; the economy still trusts client-reported progress.
 
 **Controls:** WASD / arrows move, Space jumps (or stands up from a seat), E interacts, drag to orbit the camera,
 scroll to zoom, `/` to chat, P to toggle first person (outside typing), and `/e dance` for emotes.
-Phones get a joystick, jump button, emote picker, and view toggle.
+Phones get a joystick, jump button, and emote picker. Camera controls are in Settings → Controls.
+
+**Accounts:** choose Account on the main menu or in Settings to create a username/password and save your
+current progress. You can still play as a guest. Logging in on another device loads your saved collection;
+logging out restores that device's guest profile. Keep your password safe: password recovery is not included.
+
+**Owner tools:** in a room, open Settings, tap the version five times within three seconds, and enter your
+private owner code. This reveals Admin tools; simply hosting a room does not grant admin coin powers.
 
 ## Double-click launchers (macOS)
 
@@ -50,7 +57,7 @@ against a running dev server), `npm run build:words` (regenerate the word lists)
 
 Additional verification: `node test/worker.integration.mjs` runs an isolated real Worker with a disposable
 test secret and checks persistent APIs; `node scripts/e2e.mjs match|shop|load` exercises Chrome against the
-running server (set `CHROME_BIN` if needed). Screenshots remain in the ignored `.e2e-shots/` folder.
+running server (set `CHROME_BIN` if needed). Run `node scripts/followup-check.mjs` for account, card-targeting, shared-animation and obby-return browser checks. Screenshots remain in the ignored `.e2e-shots/` folder.
 
 ## Deploy
 

@@ -150,10 +150,10 @@ export const BACK_IDS = new Set(BACK_BLING.map((v) => v.id));
 // Consumables are separate from pets. Ownership follows the casual local profile economy;
 // the room validates timing/targets and spends registered counts, never client-supplied effects.
 export const CARDS = [
-  { id: 'skip', name: 'Free Pass', rarity: 'Common', effect: 'skip', description: "Skip another player's next turn. A favor!", color: '#59d89c' },
-  { id: 'time_tax', name: 'Time Tax', rarity: 'Uncommon', effect: 'time', value: 2, description: "Take 2 seconds off their next turn.", color: '#53baff' },
-  { id: 'pressure', name: 'Narrow Margin', rarity: 'Rare', effect: 'mistakes', value: 2, description: 'Two fewer mistakes on their next turn (minimum one).', color: '#a489ff' },
-  { id: 'heart', name: 'Heartbreaker', rarity: 'Legendary', effect: 'heart', value: 1, description: 'Remove one heart. A pet shield can block it.', color: '#ff668c' },
+  { id: 'skip', name: 'Free Pass', rarity: 'Common', effect: 'skip', description: "Skip your own or another player's next turn. No heart lost!", color: '#59d89c' },
+  { id: 'time_tax', name: 'Time Tax', rarity: 'Uncommon', effect: 'time', value: 2, description: "Give the player you choose 2 fewer seconds on their next turn.", color: '#53baff' },
+  { id: 'pressure', name: 'Narrow Margin', rarity: 'Rare', effect: 'mistakes', value: 2, description: 'The player you choose gets 2 fewer allowed mistakes on their next turn (at least 1).', color: '#a489ff' },
+  { id: 'heart', name: 'Heartbreaker', rarity: 'Legendary', effect: 'heart', value: 1, description: "Remove someone else's heart. A pet shield can block it.", color: '#ff668c' },
 ];
 export const CARDS_BY_ID = Object.fromEntries(CARDS.map((v) => [v.id, v]));
 export const CARD_IDS = new Set(CARDS.map((v) => v.id));

@@ -1,12 +1,13 @@
 import { PETS_BY_ID, CARDS_BY_ID } from '../shared/catalog.js';
 import { Label } from './labels.js';
+import { cardArt } from '../ui/art.js';
 
 export class BlockPreview extends Label {
   constructor(labels, thumbnails) {
-    super(labels, 'w-odds', { maxDist: 40, minScale: 0.75, maxScale: 1, scaleRef: 18 });
+    super(labels, 'w-odds', { maxDist: 40, minScale: 1, maxScale: 1, centered: true });
     this.thumbnails = thumbnails;
     this.visible = false;
-    this.clampToViewport = true;
+    this.besideAnchor = true;
     this.owned = new Set();
     this.boxId = null;
     this.images = [];
@@ -17,8 +18,8 @@ export class BlockPreview extends Label {
   }
   showBox(def, spot, cards = false) {
     this.visible = true;
-    // Anchored above the model, leaving its interaction prompt below.
-    this.anchor.set(spot.x + 3.6, spot.promptY + 5.2, spot.z);
+    // Project the block itself, then place the panel beside it in screen space.
+    this.anchor.set(spot.x, spot.promptY + 1.4, spot.z);
     if (this.boxId === def.id) return;
     this.boxId = def.id;
     this.images = [];
@@ -32,11 +33,10 @@ export class BlockPreview extends Label {
       if (!cards) {
         const img = document.createElement('img'); img.alt = item.name; img.classList.toggle('w-unknown', !this.owned.has(id));
         this.images.push({ img, id }); cell.append(img);
-        this.thumbnails.render('pet', id, 128).then(url => { img.src = url; }).catch(() => {});
+        this.thumbnails.render('pet', id, 192).then(url => { img.src = url; }).catch(() => {});
       } else {
-        const art = document.createElement('span');
-        art.textContent = ({ skip: '»', time_tax: '−2s', pressure: '!', heart: '♥' })[id] ?? '✦';
-        art.style.cssText = `font-size:26px;display:grid;place-items:center;width:38px;height:48px;background:${item.color ?? '#c6afff'};color:#172035;border:2px solid white;border-radius:6px;transform:rotate(-6deg)`;
+        const art = cardArt(item);
+        art.classList.add('w-odds-card-art');
         cell.append(art);
       }
       const name = document.createElement('span'); name.textContent = item.name;

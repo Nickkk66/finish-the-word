@@ -147,6 +147,48 @@ test('card skip, time and mistakes effects are consumed once on eligible target 
   }
 });
 
+test('Free Pass can protect your own next turn but harmful cards cannot target yourself', () => {
+  const room = game();
+  const m = room.engine.match;
+  const actor = m.typerId;
+  const conn = room.conns[actor];
+  for (const cardId of ['time_tax', 'pressure', 'heart']) {
+    room.clock.advance(1000);
+    room.send(conn, { t: 'useCard', turnId: m.turnId, requestId: cardId, cardId, targetId: actor });
+    assert.equal(conn.last('cardResult').reason, 'invalid_target');
+    assert.equal(room.engine.players.get(actor).cards[cardId], 2);
+  }
+  room.clock.advance(1000);
+  room.send(conn, { t: 'useCard', turnId: m.turnId, requestId: 'self-skip', cardId: 'skip', targetId: actor });
+  assert.equal(conn.last('cardResult').ok, true);
+  assert.equal(room.engine.participant(actor).pending.skip, true);
+  assert.equal(m.typerId, actor, 'the current typing turn still needs an answer');
+  const hearts = room.engine.participant(actor).hearts;
+  play(room); play(room); play(room);
+  assert.notEqual(m.typerId, actor);
+  assert.equal(room.engine.participant(actor).pending.skip, false);
+  assert.equal(room.engine.participant(actor).hearts, hearts);
+});
+
+test('portal and hatch celebrations relay to everyone with server-owned identity and limits', () => {
+  const room = createRoom();
+  const a = room.join('alice'); const b = room.join('bob');
+  room.send(a, { t: 'celebrate', kind: 'portal', to: 'obby', id: 'bob' });
+  assert.deepEqual(b.last('celebrate'), { t: 'celebrate', kind: 'portal', to: 'obby', id: 'alice' });
+  assert.deepEqual(a.last('celebrate'), b.last('celebrate'));
+  room.send(a, { t: 'celebrate', kind: 'hatch' });
+  assert.equal(b.all('celebrate').length, 1);
+  room.clock.advance(1000);
+  room.send(a, { t: 'celebrate', kind: 'hatch' });
+  assert.equal(b.last('celebrate').kind, 'hatch');
+  room.clock.advance(1000);
+  room.send(a, { t: 'celebrate', kind: 'portal', to: 'invalid' });
+  assert.equal(b.all('celebrate').length, 2);
+  const active = game();
+  active.send(active.conns.alice, { t: 'celebrate', kind: 'hatch' });
+  assert.equal(active.conns.bob.all('celebrate').length, 0);
+});
+
 test('heart cards honor shields, eliminate and end a match; invalid cards never consume inventory', () => {
   const room = game();
   const m = room.engine.match;

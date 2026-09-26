@@ -19,6 +19,7 @@ export function settingsPanel({ state, actions }) {
       const sound = segmented([['On', true], ['Off', false]], actions.setSound);
       const quality = segmented([['High', 'high'], ['Low', 'low']], actions.setQuality);
       const prefill = segmented([['On', true], ['Off', false]], (v) => actions.preference('prefillPrefix', v));
+      const view = segmented([['Third person', 'third'], ['First person', 'first']], actions.setView);
       const notice = h('p', { class: 'host-notice' });
       const version = h('button', { type: 'button', class: 'version-entry' });
       const secret = h('input', { type: 'password', class: 'secret-entry', placeholder: '···', hidden: true, autocomplete: 'off', 'aria-label': 'Access code' });
@@ -33,11 +34,14 @@ export function settingsPanel({ state, actions }) {
         if (e.key === 'Escape') { secret.value = ''; secret.hidden = true; }
         if (e.key === 'Enter') { actions.unlock(secret.value); secret.value = ''; secret.hidden = true; }
       });
-      body.append(h('div', { class: 'set-group' }, row('Sound', sound.el), row('Graphics', quality.el), row('Pre-fill required letters', prefill.el)),
+      body.append(h('div', { class: 'set-group' }, row('Sound', sound.el), row('Graphics', quality.el)),
+        h('h3', { class: 'section-title stroke' }, 'Controls'),
+        h('div', { class: 'set-group' }, row('Camera · P to switch', view.el), row('Pre-fill required letters', prefill.el)),
+        h('div', { class: 'set-group' }, row('Save across devices', button('Account', () => actions.openAccount()))),
         notice, admin, h('div', { class: 'leave-row' }, button('Leave room', actions.leave, 'red')), version, secret);
       let adminKey = '';
       function update() {
-        sound.set(profile.settings.sound); quality.set(profile.settings.quality); prefill.set(profile.settings.prefillPrefix);
+        sound.set(profile.settings.sound); quality.set(profile.settings.quality); prefill.set(profile.settings.prefillPrefix); view.set(profile.settings.view === 'first' ? 'first' : 'third');
         const host = state.hostId === state.you || state.isAdmin;
         notice.textContent = host ? 'Change match rules in Game Settings.' : 'Only the host can change game rules. Your personal settings above are always yours to change.';
         notice.classList.toggle('restricted', !host);

@@ -62,6 +62,7 @@ export async function browser() {
       page.type = (text) => cdp('Input.insertText', { text });
       page.key = async (key, code, windowsVirtualKeyCode, text) => { await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode, text }); await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode }); };
       page.shot = async (label) => {
+        await delay(350); // Let panel transitions settle before visual verification.
         mkdirSync('.e2e-shots', { recursive: true });
         const { data } = await cdp('Page.captureScreenshot', { format: 'png' });
         const file = path.resolve('.e2e-shots', `${name}-${label}.png`); writeFileSync(file, Buffer.from(data, 'base64')); return file;

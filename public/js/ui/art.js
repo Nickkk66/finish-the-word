@@ -18,7 +18,9 @@ export function cardArt(card) {
     s('rect', { x: 4, y: 3, width: 72, height: 94, rx: 10, fill: card.color || '#7d5ce0', stroke: '#202538', 'stroke-width': 4 }),
     s('circle', { cx: 40, cy: 40, r: 26, fill: '#ffffff22', stroke: '#ffffff99', 'stroke-width': 2 }),
     s('path', { d: symbol, stroke: '#fff', fill: effect === 'skip' ? '#fff' : 'none', 'stroke-width': 4, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
-    s('path', { d: 'M19 77H61M26 85H54', stroke: '#fff', 'stroke-width': 4, 'stroke-linecap': 'round' }));
+    effect === 'time'
+      ? s('text', { x: 40, y: 85, 'text-anchor': 'middle', fill: '#fff', 'font-size': 21, 'font-weight': 700 }, '−2s')
+      : s('path', { d: 'M19 77H61M26 85H54', stroke: '#fff', 'stroke-width': 4, 'stroke-linecap': 'round' }));
 }
 
 export function oddsText(weight, total) {

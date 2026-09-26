@@ -85,6 +85,30 @@ export class LabelLayer {
             let x = (_v.x * 0.5 + 0.5) * width + this.offsetX;
             let y = (0.5 - _v.y * 0.5) * height + this.offsetY;
             const s = clamp(l.scaleRef / depth, l.minScale, l.maxScale);
+            if (l.besideAnchor) {
+              const panelW = width <= 600 ? 256 : 320;
+              const panelH = l.el.offsetHeight || (width <= 600 ? 280 : 324);
+              const right = x + panelW / 2 + 95;
+              const left = x - panelW / 2 - 95;
+              if (width <= 600 && height > 600) x = width - panelW / 2 - 12;
+              else if (right + panelW / 2 < width - 12) x = right;
+              else if (left - panelW / 2 > 12) x = left;
+              else {
+                x = clamp(x, panelW / 2 + 12, width - panelW / 2 - 12);
+                y -= panelH / 2 + 55;
+              }
+              const topSpace = width <= 600 && height > 600 ? 195 : 90;
+              y = clamp(y, panelH / 2 + topSpace, Math.max(panelH / 2 + topSpace, height - panelH / 2 - 100));
+              l.screenBounds = { left: x - panelW / 2, right: x + panelW / 2, top: y - panelH / 2, bottom: y + panelH / 2 };
+            }
+            if (l.el.classList.contains('w-prompt-wrap')) {
+              for (const other of this.labels) {
+                const box = other.besideAnchor && other.visible && other.screenBounds;
+                if (box && x + 90 > box.left && x - 90 < box.right && y + 30 > box.top && y - 30 < box.bottom) {
+                  y = Math.min(height - 100, box.bottom + 40);
+                }
+              }
+            }
             if (l.viewportMargin && (x < l.viewportMargin * s || x > width - l.viewportMargin * s || y < 75 || y > height - 20)) {
               visible = false;
             }
@@ -108,7 +132,7 @@ export class LabelLayer {
         }
       }
       if (visible !== l._shown) {
-        l.el.style.display = visible ? 'block' : 'none';
+        l.el.style.display = visible ? l.displayMode : 'none';
         l._shown = visible;
       }
     }
@@ -120,6 +144,9 @@ export class Label {
   constructor(layer, className, { maxDist = 90, scaleRef = 22, minScale = 0.5, maxScale = 1.1, centered = false } = {}) {
     this.layer = layer;
     this.el = div('w-lbl ' + className);
+    // Specialized CSS uses flex; explicitly hide even labels never projected on screen.
+    this.el.style.display = 'none';
+    this.displayMode = className === 'w-sign' || className === 'w-stack' ? 'flex' : 'block';
     this.anchor = new THREE.Vector3();
     this.visible = true;
     this.maxDist = maxDist;

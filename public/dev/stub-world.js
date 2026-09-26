@@ -97,6 +97,10 @@ export async function createWorld({ container }) {
     },
     setLetterTile(id, letters) { patch(id, 'tile', letters); },
     setPlayerStatus(id, status) { patch(id, 'status', status); },
+    beginCardTargeting() {},
+    cancelCardTargeting() {},
+    playPortal() {},
+    playHatch() {},
     playEffect(id, kind) {
       log('effect', id, kind);
       patch(id, 'effect', kind);

@@ -30,7 +30,7 @@ function overlap(word, next) {
   return next[0] === word[word.length - 1] ? 1 : 0;
 }
 
-export function createHud({ onSubmit, onTyping, onPick, onHint, onCards }) {
+export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onReturn }) {
   // ---- top
   const statusText = h('span', { class: 'status-text stroke' });
   const statusTiles = h('span', { class: 'status-tiles' });
@@ -55,12 +55,13 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards }) {
   const wordInput = createWordInput({ onSubmit, onTyping });
   const picker = createLetterPicker({ onPick });
   const hintButton = h('button', { type: 'button', class: 'btn small yellow', onClick: onHint }, `Hint · ${HINT_PRICE}`);
-  const cardsButton = h('button', { type: 'button', class: 'btn small purple', onClick: onCards }, 'Use a card');
+  const cardsButton = h('button', { type: 'button', class: 'btn small purple', onClick: onCards }, 'My cards');
+  const returnButton = h('button', { type: 'button', class: 'btn small blue obby-return', hidden: true, onClick: onReturn }, '← Return to island');
   const tools = h('div', { class: 'turn-tools', hidden: true }, hintButton, cardsButton);
   const hintAnswer = h('div', { class: 'hint-answer', hidden: true, role: 'status' });
   const combo = h('div', { class: 'combo-meter stroke', hidden: true });
 
-  const el = h('div', { class: 'hud', hidden: true }, top, h('div', { class: 'hud-bottom' }, combo, turnRow, picker.el, hintAnswer, tools, wordInput.el));
+  const el = h('div', { class: 'hud', hidden: true }, top, returnButton, h('div', { class: 'hud-bottom' }, combo, turnRow, picker.el, hintAnswer, tools, wordInput.el));
 
   let st = null;           // latest app state
   let turnKey = '';
@@ -275,7 +276,8 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards }) {
     tools.hidden = !myTyping;
     hintButton.disabled = !!st.hintPending || st.hintTurn === m?.turnId || profile.coins < HINT_PRICE;
     hintButton.textContent = st.hintPending ? 'Finding hint…' : st.hintTurn === m?.turnId ? 'Hint purchased' : `Hint · ${HINT_PRICE}`;
-    cardsButton.disabled = !!st.cardPending || st.cardUsedTurn === m?.turnId || !Object.values(profile.cards).some((n) => n > 0);
+    cardsButton.disabled = !!st.cardPending;
+    returnButton.hidden = st.zone !== 'obby';
     hintAnswer.hidden = !myTyping || !st.hintWord;
     hintAnswer.textContent = st.hintWord ? `Your hint: ${st.hintWord.toUpperCase()}` : '';
 

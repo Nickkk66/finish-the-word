@@ -120,6 +120,7 @@ export function createMenu({ invitedCode, actions }) {
           invite,
           invite ? h('div', { class: 'or' }, 'or') : null,
           publicBtn, createBtn,
+          h('button', { type: 'button', class: 'btn small grey block account-menu-button', onClick: () => actions.openAccount() }, 'Account · Save across devices'),
           h('div', { class: 'join-row' }, codeInput, joinBtn),
           codeHint,
           publicCount, publicList,

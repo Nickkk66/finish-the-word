@@ -7,6 +7,8 @@ import {
   recordWord, recordMatch, setSetting, claimFree, FREE_COINS,
   buyOrEquip, mergePet, deletePet, addCard, consumeCard, spendCoins, grantCoins, recordObby, level,
 } from './profile.js';
+import { createAccount } from './account.js';
+import { accountPanel } from './ui/panels/account.js';
 import { createNet, apiUrl } from './net.js';
 import { initAudio, setSoundEnabled, sfx } from './audio.js';
 import { h, fmt, isTextField, formatDuration, replay } from './ui/dom.js';
@@ -83,6 +85,7 @@ let teleporting = false;
 let lastEmoteAt = 0;
 let turnConfirmation = null;
 let unlockToken = '';
+let targeting = null;
 try { unlockToken = localStorage.getItem('ftw_admin_v1') || ''; } catch {}
 
 async function purchase(item, commit, stillValid = () => true) {
@@ -107,6 +110,15 @@ initAudio();
 setSoundEnabled(profile.settings.sound);
 
 const actions = {
+  openAccount() { panels.open(PANELS.account); },
+  accountRegister: credentials => account.register(credentials),
+  async accountLogin(credentials) {
+    if (await confirmDialog({ title: 'Load your account?', message: 'Your guest progress stays saved on this device. Logging in loads your account and returns you to the menu.', ok: 'Log in' })) await account.login(credentials);
+  },
+  accountLogout: () => account.logout(),
+  async accountUseCloud() {
+    if (await confirmDialog({ title: 'Load cloud progress?', message: 'This replaces the progress on this screen with your latest cloud save. A backup stays on this device.', ok: 'Load save' })) await account.useCloud();
+  },
   chair(chairId) { return actions.cosmetic('chair', chairId); },
   async cosmetic(kind, id) {
     const catalog = kind === 'chair' ? CHAIRS : kind === 'table' ? TABLES : BACK_BLING;
@@ -133,7 +145,7 @@ const actions = {
     const petId = rollBlock(block);
     addPet(petId);
     panels.close();
-    world.playEffect(state.you, 'hatch');
+    net.send({ t: 'celebrate', kind: 'hatch' });
     playHatch(uiRoot, { block, petId, count: profile.pets[petId], onEquip: () => actions.equipPet(petId) });
     return true;
     }, () => !isAliveParticipant() && state.inRoom);
@@ -164,6 +176,7 @@ const actions = {
       if (!payForBlock(box)) return false;
       const id = rollBlock(box); addCard(id); syncLoadout(); panels.close();
       const card = CARDS_BY_ID[id]; sfx.hatch();
+      net.send({ t: 'celebrate', kind: 'hatch' });
       const close = () => overlay.remove();
       const overlay = h('div', { class: 'overlay card-reveal' }, h('div', { class: 'overlay-card' },
         h('div', { class: 'overlay-title stroke' }, card.name), cardArt(card),
@@ -186,6 +199,24 @@ const actions = {
     }, () => state.match?.phase === 'typing' && state.match.typerId === state.you && state.match.turnId === turnId);
     turnConfirmation = null;
   },
+  beginCardTarget(cardId) {
+    const m = state.match;
+    const card = CARDS_BY_ID[cardId];
+    if (!card || !profile.cards[cardId]) { toast('Get this card from a card box between matches.', 'info'); return; }
+    if (m?.phase !== 'typing' || m.typerId !== state.you) { toast('Use a card on your typing turn.', 'info'); return; }
+    if (state.cardPending || state.cardUsedTurn === m.turnId) { toast('One card per turn.', 'info'); return; }
+    const ids = m.participants.filter(p => p.alive && (p.id !== state.you || card.effect === 'skip')).map(p => p.id);
+    cancelCardTarget();
+    panels.close();
+    const el = h('div', { class: 'card-target-notice' },
+      h('strong', {}, `${card.name}: tap a glowing player`),
+      card.effect === 'skip' ? h('button', { class: 'btn green', onClick: () => select(state.you) }, 'Use on me') : null,
+      h('button', { class: 'btn grey', onClick: cancelCardTarget }, 'Cancel'));
+    const select = (id) => { cancelCardTarget(); actions.useCard(cardId, id); };
+    targeting = { turnId: m.turnId, el };
+    uiRoot.append(el);
+    world.beginCardTargeting(ids, select);
+  },
   async useCard(cardId, targetId) {
     const m = state.match;
     if (m?.phase !== 'typing' || m.typerId !== state.you || state.cardPending || state.cardUsedTurn === m.turnId || !profile.cards[cardId]) return;
@@ -201,6 +232,8 @@ const actions = {
   },
   thumbnail: (kind, id, size) => world ? world.renderThumbnail(kind, id, size) : Promise.reject(new Error('World not ready')),
   preference: setSetting,
+  setView(view) { world?.setFirstPerson(view === 'first'); setSetting('view', view); },
+  returnToIsland() { if (state.zone === 'obby') return onInteract({ type: 'portal', to: 'island' }); },
   unlock: (code) => net.send({ t: 'unlock', code }),
   admin: (action, fields = {}) => net.send({ t: 'admin', action, ...fields }),
   teleportToPlayer: (id) => world.teleportToPlayer(id),
@@ -250,9 +283,10 @@ const PANELS = {
   settings: settingsPanel(panelCtx),
   gameSettings: gameSettingsPanel(panelCtx),
   cards: cardsPanel(panelCtx),
+  account: accountPanel(panelCtx),
 };
 
-const hud = createHud({ onSubmit: submitWord, onTyping: sendTyping, onPick: (letter) => net.send({ t: 'pick', letter }), onHint: actions.hint, onCards: () => panels.open(PANELS.cards) });
+const hud = createHud({ onSubmit: submitWord, onTyping: sendTyping, onPick: (letter) => net.send({ t: 'pick', letter }), onHint: actions.hint, onCards: () => panels.open(PANELS.cards), onReturn: actions.returnToIsland });
 const playerList = createPlayerList();
 const chat = createChat({ onSend: sendChat, onEmote: playEmote });
 const panels = createPanelHost(uiRoot);
@@ -262,7 +296,7 @@ const gameUi = h('div', { class: 'game-ui', hidden: true }, hud.el, playerList.e
 const invited = cleanCode(new URLSearchParams(location.search).get('room'));
 const menu = createMenu({
   invitedCode: ROOM_CODE_REGEX.test(invited) ? invited : null,
-  actions: { play: joinRoom, quickplay, toggleSound: () => actions.setSound(!profile.settings.sound) },
+  actions: { play: joinRoom, quickplay, openAccount: actions.openAccount, toggleSound: () => actions.setSound(!profile.settings.sound) },
 });
 uiRoot.prepend(gameUi, menu.el);
 
@@ -278,6 +312,7 @@ function syncWorldInput() {
 document.addEventListener('focusin', syncWorldInput);
 document.addEventListener('focusout', () => setTimeout(syncWorldInput, 0));
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') cancelCardTarget();
   if (e.key.toLowerCase() !== 'p' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || !state.inRoom || isTextField(document.activeElement) || isMyTurn(state.match || {}) || state.match?.phase === 'choosing' || document.querySelector('.overlay')) return;
   e.preventDefault(); toggleView();
 });
@@ -293,12 +328,21 @@ onProfileChange(() => {
   setSoundEnabled(profile.settings.sound);
   syncShop();
   world?.setPetCollection(profile.discoveredPets);
+  world?.setQuality(profile.settings.quality);
+  if (!state.inRoom) state.you = profile.id;
   if (state.inRoom) hud.update(state);
 });
 
 // ------------------------------------------------------------------ world
 
 const worldReady = loadWorld();
+const account = createAccount({
+  onChange(value) { state.account = value; panels.refresh(); },
+  beforeReplace() {
+    if (state.inRoom || state.code) leaveRoom();
+    shopKey = '';
+  },
+});
 
 async function loadWorld() {
   const stub = new URLSearchParams(location.search).has('stubworld');
@@ -354,6 +398,12 @@ function toggleView() {
   if (!state.inRoom) return;
   const on = profile.settings.view !== 'first';
   world.setFirstPerson(on); setSetting('view', on ? 'first' : 'third'); sidebar.setView(on);
+}
+
+function cancelCardTarget() {
+  targeting?.el.remove();
+  targeting = null;
+  world?.cancelCardTargeting?.();
 }
 
 function playEmote(name) {
@@ -466,14 +516,17 @@ async function onInteract(i) {
   } else if (i.type === 'portal') {
     if (teleporting || isAliveParticipant()) return;
     teleporting = true;
+    net.send({ t: 'celebrate', kind: 'portal', to: i.to });
     const overlay = h('div', { class: 'teleport-overlay' }, h('div', { class: 'teleport-spinner' }), h('div', { class: 'stroke' }, i.to === 'obby' ? 'Traveling to the obby…' : 'Returning to the island…'));
-    uiRoot.append(overlay);
+    const roomCode = state.code;
+    setTimeout(() => { if (state.inRoom && state.code === roomCode) uiRoot.append(overlay); }, 500);
     setTimeout(() => {
+      if (!state.inRoom || state.code !== roomCode) return;
       state.zone = i.to;
       world.setZone(i.to); world.teleportLocal(i.to === 'obby' ? OBBY.spawn : { x: 0, y: .25, z: 72 });
       if (i.to === 'obby') net.send({ t: 'obby', event: 'start' });
       hud.update(state);
-    }, 700);
+    }, 900);
     setTimeout(() => { overlay.remove(); teleporting = false; }, 1400);
   } else if (i.type === 'obbyFinish') {
     recordObby(i.ms); net.send({ t: 'obby', event: 'finish', ms: i.ms });
@@ -591,7 +644,7 @@ async function joinRoom(code, isPublic = false) {
   const roomCode = code || makeRoomCode();
   if (!world) setBusy('Loading...');
   try {
-    await worldReady;
+    await Promise.all([worldReady, account.ready]);
   } catch {
     return;   // error card already shown
   }
@@ -604,6 +657,7 @@ async function joinRoom(code, isPublic = false) {
 
 /** Tears the room down locally and returns to the menu (the socket must already be closed). */
 function exitRoom() {
+  cancelCardTarget();
   cancelConfirmation(); state.hintPending = null; state.cardPending = null;
   state.bannedPlayers.clear();
   for (const id of [...state.players.keys()]) removePlayer(id);
@@ -902,6 +956,10 @@ net.on('cardUsed', ({ actorId, targetId, cardId }) => {
   chat.add({ system: true, text: `${nameOf(actorId)} used ${card?.name || 'a card'} on ${nameOf(targetId)}.` });
 });
 net.on('emote', ({ id, name }) => world.playEmote(id, name));
+net.on('celebrate', ({ id, kind, to }) => {
+  if (kind === 'portal') world.playPortal(id, to);
+  else if (kind === 'hatch') world.playHatch(id);
+});
 net.on('unlock', ({ ok, token }) => {
   if (ok) {
     state.isAdmin = true; unlockToken = token;
@@ -918,6 +976,7 @@ function applyMatch(m, resync = false) {
   const prev = state.match;
   state.match = m;
   if (prev?.turnId !== m.turnId || m.phase !== 'typing') {
+    cancelCardTarget();
     if (turnConfirmation != null) { cancelConfirmation(); turnConfirmation = null; }
     state.hintPending = null; state.hintWord = null;
     // Accepted card replies may follow an immediate match-end snapshot; preserve pending receipt.

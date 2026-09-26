@@ -302,6 +302,7 @@ export class GameEngine {
       case 'hint': return this.onHint(player, msg);
       case 'useCard': return this.onCard(player, msg);
       case 'emote': return this.onEmote(player, msg.name);
+      case 'celebrate': return this.onCelebrate(player, msg);
       case 'unlock': return this.onUnlock(player, msg.code);
       case 'mod': return this.onMod(player, msg);
       case 'admin': return this.onAdmin(player, msg);
@@ -458,7 +459,7 @@ export class GameEngine {
       const actor = this.participant(player.id);
       const target = this.participant(msg.targetId);
       const card = Object.hasOwn(CARDS_BY_ID, msg.cardId) ? CARDS_BY_ID[msg.cardId] : null;
-      if (!card || !target?.alive || target.id === player.id) return { ...answer, reason: 'invalid_target' };
+      if (!card || !target?.alive || (target.id === player.id && card.effect !== 'skip')) return { ...answer, reason: 'invalid_target' };
       if (actor.cardTurn === m.turnId) return { ...answer, reason: 'one_per_turn' };
       if (!(player.cards[card.id] > 0)) return { ...answer, reason: 'not_owned' };
       actor.cardTurn = m.turnId;
@@ -477,6 +478,13 @@ export class GameEngine {
     if (!EMOTES.includes(name) || !this.allow(player, 'emote')) return;
     if (player.seat >= 0 && name.startsWith('dance')) return;
     this.broadcast({ t: 'emote', id: player.id, name }, player.id);
+  }
+
+  // Cosmetic events are approved and relayed by the room; clients cannot impersonate another player.
+  onCelebrate(player, msg) {
+    if (!['portal', 'hatch'].includes(msg.kind) || this.isPlaying(player.id) || !this.allow(player, 'emote')) return;
+    if (msg.kind === 'portal' && (player.seat >= 0 || !['island', 'obby'].includes(msg.to))) return;
+    this.broadcast({ t: 'celebrate', id: player.id, kind: msg.kind, ...(msg.kind === 'portal' ? { to: msg.to } : {}) });
   }
 
   async onUnlock(player, code) {

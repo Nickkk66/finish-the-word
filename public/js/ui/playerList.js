@@ -71,6 +71,7 @@ export function createPlayerList() {
       } else if (r.seated) status = h('span', { class: 'pl-seat', title: 'Seated' }, '🪑');
       return h('div', { class: `plist-row${r.me ? ' me' : ''}${r.turn ? ' turn' : ''}${r.out ? ' out' : ''}${r.offline ? ' offline' : ''}` },
         h('span', { class: 'pl-name' },
+          h('span', { class: 'pl-avatar', 'aria-hidden': 'true' }, r.name.slice(0, 1).toUpperCase()),
           r.host ? h('span', { class: 'pl-crown', title: 'Host' }, '👑') : null,
           h('span', { class: 'pl-text' }, r.name),
           r.bot ? h('span', { class: 'pl-tag bot' }, 'BOT') : null,
