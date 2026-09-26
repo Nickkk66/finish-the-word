@@ -19,7 +19,7 @@ in personal Settings. The pier portal leads to an obstacle course while you wait
 Winner bonuses grow by 15 coins per minute of meaningful play, separately from word/combo rewards. Coins
 and inventories save in your browser by default. Optional accounts sync progress across devices; the economy still trusts client-reported progress.
 
-**Roulette — The Last Sip:** choose the large Roulette button in Game Settings. A cursed cup hides one poisoned sip among six. Each turn allows 10 seconds to drink or use your one pass per bottle; timeout drinks. Poison knocks a player out and resets the bottle. Last awake wins the pool of game coins. Entry can be free, 25, 100, or 500 coins; paid rounds require a fresh confirmation each match. Roulette includes its own table and a moonlit world.
+**Roulette — The Last Sip:** choose Roulette in Game Settings → Mode. Its seven-second asteroid intro closes the menus, darkens the map and leaves the table lit. Enter with 25, 100 or 500 game coins. Every turn multiplies the stacked prize by 1.2 (up to ×100) and poison chance by 1.25 (starting at 16.7%, capped at 95%). Drink or pass in 10 seconds; timeout drinks, and each player gets one pass until the next knockout. Last awake wins. A poisoned player slumps and releases a skull ghost. Standing in asteroid fire/craters costs 25 coins every five continuous seconds; leaving stops the drain. Bets require a fresh confirmation each match.
 
 **Merging:** three matching pets create the next tier (up to 3). Higher tiers are larger with a blue/gold aura; their gameplay ability stays the same. Capes support static/rainbow colors in Profile → Back Bling.
 
@@ -62,7 +62,7 @@ against a running dev server), `npm run build:words` (regenerate the word lists)
 
 Additional verification: `node test/worker.integration.mjs` runs an isolated real Worker with a disposable
 test secret and checks persistent APIs; `node scripts/e2e.mjs match|shop|load` exercises Chrome against the
-running server (set `CHROME_BIN` if needed). Run `node scripts/followup-check.mjs` for account, card-targeting, shared-animation and obby-return browser checks. Use `node scripts/revision-check.mjs` for the revised UI/admin tools, `node scripts/roulette-check.mjs` for a paid desktop/mobile Roulette match, and `node scripts/avatar-check.mjs` for the hair/cape gallery. The revision check expects a local disposable `ADMIN_CODE` override of `local-ui-test-only`. Screenshots remain in the ignored `.e2e-shots/` folder.
+running server (set `CHROME_BIN` if needed). Run `node scripts/followup-check.mjs` for account, card-targeting, shared-animation and obby-return browser checks. Use `node scripts/revision-check.mjs` for the revised UI/admin tools, `node scripts/roulette-check.mjs` for a paid desktop/mobile Roulette match, and `node scripts/avatar-check.mjs` for the hair/cape gallery. `node scripts/roulette-hazard-check.mjs` checks automatic fire damage and stopping after leaving. The revision check expects a local disposable `ADMIN_CODE` override of `local-ui-test-only`. Screenshots remain in the ignored `.e2e-shots/` folder.
 
 ## Deploy
 

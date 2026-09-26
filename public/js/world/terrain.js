@@ -49,7 +49,7 @@ export function createTerrain(scene) {
   let extent = 0;
   let night = 0, nightTarget = 0, nightFrom = 0, nightStart = 0;
   const dayTop = new THREE.Color(SKY_TOP), dayHorizon = new THREE.Color(SKY_HORIZON);
-  const darkTop = new THREE.Color('#040515'), darkHorizon = new THREE.Color('#17223e');
+  const darkTop = new THREE.Color('#010108'), darkHorizon = new THREE.Color('#060912');
   const warmSun = new THREE.Color('#fff3dc'), coldMoon = new THREE.Color('#b5caff');
 
   return {
@@ -81,8 +81,8 @@ export function createTerrain(scene) {
       sky.material.uniforms.uNight.value = night;
       sky.material.uniforms.uSunColor.value.copy(warmSun).lerp(coldMoon, night);
       sun.color.copy(warmSun).lerp(coldMoon, night);
-      sun.intensity = 2.3 - night * 2.18;
-      hemi.intensity = 1.6 - night * 1.46;
+      sun.intensity = 2.3 - night * 2.28;
+      hemi.intensity = 1.6 - night * 1.575;
       water.material.uniforms.uNight.value = night;
       seabed.material.color.set('#1d6fae').multiplyScalar(1 - night * .94);
       scene.fog.color.copy(dayHorizon).lerp(darkHorizon, night);
@@ -328,7 +328,7 @@ function buildWater() {
         float foam2 = 1.0 - smoothstep(0.0, 0.55, abs(r - (uShoreR + 2.2) - wob * 1.5 - sin(uTime * 0.8) * 0.7));
         float f = clamp(foam + foam2 * 0.55, 0.0, 1.0);
         col = mix(col, vec3(1.0), f * 0.85);
-        col *= mix(vec3(1.), vec3(.035,.045,.12), uNight);
+        col *= mix(vec3(1.), vec3(.008,.012,.03), uNight);
         gl_FragColor = vec4(col, max(mix(0.94, 0.66, shallow), f * 0.9));
         #include <colorspace_fragment>
         #include <fog_fragment>

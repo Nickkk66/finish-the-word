@@ -322,7 +322,7 @@ export async function createWorld({ container, labelLayer }) {
 
     const me = local();
     obby.update(time, dt);
-    if (me && !menuMode) {
+    if (me && !menuMode && !roulette.cinematic()) {
       if (me.seat >= 0) {
         if (input.consumeJumpPress()) emitInteract(STAND);
         input.consumeInteract();
@@ -376,6 +376,7 @@ export async function createWorld({ container, labelLayer }) {
     if (me) focus.copy(me.render);
     else focus.set(LAYOUT.spawn.x, 0, LAYOUT.spawn.z);
     rig.update(dt, time, focus, viewSeat());
+    roulette.camera(camera);
     terrain.setSkyFocus(camera.position);
     effects.update(dt, camera);
 
@@ -541,8 +542,8 @@ export async function createWorld({ container, labelLayer }) {
 
     setLeaderboardTitle(title) { lobby.setLeaderboardTitle(title); },
     setTable(id) { table.setTable(id); },
-    setRoulette(on, match) { terrain.setNight(on); roulette.set(on, match, players); },
-    knockOutRoulette(id) { const e = players.get(id); if (e) e.avatar.rouletteSleeping = true; },
+    setRoulette(on, match, entry) { terrain.setNight(on); lobby.setRoulette(on); roulette.set(on, match, players, entry); },
+    knockOutRoulette(id) { roulette.knockout(id); },
     renderThumbnail: thumbnails.render,
     setPetCollection(ids) { preview.setCollection(ids); },
     beginCardTargeting(ids, onSelect) {

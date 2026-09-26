@@ -5,6 +5,7 @@
 // Model space: faces +Z, feet at y = 0. Legs 0..2, torso 2..4, head ~4..5.25.
 
 import * as THREE from 'three';
+import { sipLift } from '../shared/roulette.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { HAIR_STYLES, sanitizeLook } from '../shared/catalog.js';
@@ -147,24 +148,32 @@ function baconHair() {
   return merge(parts);
 }
 
+function originalSpikyCap() {
+  return [
+    new RoundedBoxGeometry(1.38, 0.5, 1.38, 3, 0.24).translate(0, 0.5, 0),
+    new RoundedBoxGeometry(1.38, 0.95, 0.52, 2, 0.2).translate(0, 0.2, -0.44),
+    new RoundedBoxGeometry(0.24, 0.62, 1.05, 2, 0.1).translate(-0.62, 0.3, -0.1),
+    new RoundedBoxGeometry(0.24, 0.62, 1.05, 2, 0.1).translate(0.62, 0.3, -0.1),
+  ];
+}
+
+
 function spikyHair() {
-  const parts = hairCap();
+  const parts = originalSpikyCap();
   const q = new THREE.Quaternion();
   const axis = new THREE.Vector3();
-  const add = (x, y, z, len, radius, angle, lean) => {
-    const g = new THREE.ConeGeometry(radius, len, 9, 1).translate(0, len / 2, 0);
-    axis.set(Math.cos(angle), 0, Math.sin(angle));
-    g.applyQuaternion(q.setFromAxisAngle(axis, lean));
+  const add = (x, y, z, tilt, dirA, len = 0.8) => {
+    const g = new THREE.ConeGeometry(0.21, len, 5).translate(0, len / 2, 0);
+    axis.set(Math.sin(dirA), 0, -Math.cos(dirA));
+    g.applyQuaternion(q.setFromAxisAngle(axis, tilt));
     parts.push(g.translate(x, y, z));
   };
-  // Uneven, tapered locks form a clean silhouette with a swept front fringe.
-  for (let i = 0; i < 11; i++) {
-    const a = i / 11 * TAU;
-    const r = i % 3 === 0 ? .46 : .36;
-    add(Math.cos(a) * r, .67, Math.sin(a) * r - .04, .59 + (i % 4) * .09, .16, a, .29);
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * TAU;
+    add(Math.cos(a) * 0.42, 0.66, Math.sin(a) * 0.42 - 0.05, 0.75, Math.atan2(Math.sin(a), Math.cos(a)));
   }
-  add(-.1, .68, -.06, 1.02, .23, 0, .1);
-  for (const x of [-.36, -.07, .25, .49]) add(x, .58, .49, .5 + x * .16, .14, 0, -.56);
+  add(0, 0.72, -0.05, 0, 0, 0.95);
+  for (const x of [-0.35, 0, 0.35]) add(x, 0.62, 0.45, 1.05, Math.PI / 2, 0.7);
   return merge(parts);
 }
 
@@ -347,7 +356,7 @@ export class Avatar {
   shakeHead() {
     this.shakeT = 0.6;
   }
-  sip() { this.sipT = 1.5; }
+  sip() { this.sipStarted = performance.now(); }
   flinch() {
     this.flinchT = 0.55;
   }
@@ -384,8 +393,8 @@ export class Avatar {
     if (total > 0) for (let k = 0; k < CHANNELS; k++) o[k] /= total;
 
     this.applyModifiers(dt, t, o);
-    this.sipT = Math.max(0, (this.sipT || 0) - dt);
-    if (this.sipT) { const k=Math.sin(this.sipT/1.5*Math.PI); o[RAX]=-1.3-k*1.2; o[HX]-=k*.25; }
+    const lift = this.sipStarted == null ? 0 : sipLift((performance.now()-this.sipStarted)/1000);
+    if (lift > 0) { o[RAX]=lerp(o[RAX],-1.9,lift); o[RAZ]=lerp(o[RAZ],-.5,lift); o[HX]-=lift*.12; }
     this.sleepWeight = damp(this.sleepWeight || 0, this.rouletteSleeping && this.seated ? 1 : 0, 7, dt);
     if (this.sleepWeight > .001) {
       const k=this.sleepWeight; o[BX]+=k*1.05; o[HX]+=k*.35; o[BY]-=k*.25;

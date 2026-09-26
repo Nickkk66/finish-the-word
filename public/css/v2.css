@@ -1,6 +1,4 @@
 /* v2 collections, room controls, turn purchases and compact profile. */
-.roulette-launch { display:flex; flex-direction:column; align-items:center; gap:7px; width:100%; padding:19px; margin:10px 0 18px; border:4px solid #241632; border-radius:20px; background:radial-gradient(ellipse at top,#794097,#291837 75%); color:#f5d999; box-shadow:0 6px #191222,inset 0 1px #e4b86c; cursor:pointer; font:700 29px var(--font); letter-spacing:.12em; }
-.roulette-launch small { font:500 14px var(--font); letter-spacing:.03em; color:#d7bfde; }
 .roulette-hud { position:absolute; inset:0; pointer-events:none; color:#f7e5c2; }
 .roulette-hud[hidden] { display:none; }
 .roulette-heading { position:absolute; left:50%; top:32px; transform:translateX(-50%); text-align:center; text-shadow:0 2px 10px #070010; }
@@ -184,3 +182,14 @@
 
 .card-target-notice { position:fixed; z-index:2500; top:105px; left:50%; transform:translateX(-50%); width:max-content; max-width:calc(100vw - 24px); display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:10px; padding:12px 16px; border:3px solid #275164; border-radius:20px; background:#d9fff4; color:#163e44; pointer-events:auto; box-shadow:0 5px #18334666; }
 .card-target-notice strong { font:600 17px var(--font); }
+
+.w-roulette-soul { font:44px sans-serif; filter:drop-shadow(0 0 8px #d8eaff); pointer-events:none; }
+.w-roulette-soul::after { content:''; display:block; margin:-8px auto 0; width:25px; height:55px; background:linear-gradient(#e8f0ffbb,transparent); border-radius:50% 50% 80% 80%; }
+.w-fire-warning { color:#ffc67a; background:#20100dda; border:1px solid #e76739; border-radius:9px; padding:5px 9px; font:600 14px Fredoka,sans-serif; }
+.roulette-hud.danger .roulette-clock { color:#ff839e; text-shadow:0 0 16px #df2c6f; }
+.roulette-cinematic .roulette-hud,.roulette-cinematic .side,.roulette-cinematic .counters { opacity:0;pointer-events:none; }
+.roulette-cinematic::before,.roulette-cinematic::after { content:'';position:fixed;left:0;right:0;height:9vh;background:#05030a;z-index:5000;pointer-events:none; }
+.roulette-cinematic::before { top:0; } .roulette-cinematic::after { bottom:0; }
+.roulette-intro { animation-duration:7s; }
+@media (prefers-reduced-motion:reduce) { .roulette-intro { animation:none; } }
+.roulette-cinematic .chat,.roulette-cinematic .plist { opacity:0;pointer-events:none; }

@@ -116,12 +116,13 @@ const actions = {
   async enterRoulette() {
     if (state.betPending) return;
     const amount = state.rouletteEntry || 0;
-    if (!await confirmDialog({ title: 'Join the cursed table?', message: `${fmt(amount)} game coins go into the pool. Last awake wins the pool. Standing up before the match returns your entry; leaving during the match forfeits it.`, ok: 'Place entry', tone: 'purple' })) return;
+    if (!await confirmDialog({ title: 'Join the cursed table?', message: `${fmt(amount)} game coins go into the pool. Every turn raises the prize ×1.2 and poison chance ×1.25. Last awake wins. Standing up before the match returns your entry; leaving during the match forfeits it.`, ok: 'Place entry', tone: 'purple' })) return;
     state.betPending = { requestId: crypto.randomUUID(), amount, balance: profile.coins };
     net.send({ t: 'bet', ...state.betPending }); refreshRoom();
   },
   openAccount() { panels.open(PANELS.account); },
   refreshPanels() { panels.refresh(); },
+  closePanels() { panels.close(); cancelConfirmation(); },
   accountRegister: credentials => account.register(credentials),
   accountReset: credentials => account.reset(credentials),
   accountRecovery: () => account.recovery(),
@@ -790,10 +791,13 @@ function refreshMode() {
   const active = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode === 'roulette' : state.settings.mode === 'roulette');
   rouletteHud.update(state, active);
   if (active) hud.hide(); else if (state.inRoom) hud.show();
-  world?.setRoulette?.(active, m, state.players);
+  world?.setRoulette?.(active, m, state.rouletteEntry);
   if (active && !state.rouletteShown) {
-    const intro=h('div',{class:'roulette-intro'},'The moon is watching.'); uiRoot.append(intro); setTimeout(()=>intro.remove(),4000);
+    panels.close(); cancelConfirmation();
+    uiRoot.classList.add('roulette-cinematic');setTimeout(()=>uiRoot.classList.remove('roulette-cinematic'),7000);
+    const intro=h('div',{class:'roulette-intro'},'Something has found us.'); uiRoot.append(intro); setTimeout(()=>intro.remove(),7000);
   }
+  if (!active) uiRoot.classList.remove('roulette-cinematic');
   state.rouletteShown=active;
 }
 
@@ -1051,6 +1055,7 @@ net.on('betResult', result => {
   else if (result.error) toast(result.error, 'bad');
   refreshRoom();
 });
+net.on('hazardDebit', ({ amount, receipt }) => { if (adjustCoins('add', -amount, receipt)) { world?.playEffect(state.you, 'flair', {text:'−25 COINS · FIRE',color:'#ff8a4b'}); sfx.thud(); } });
 net.on('stakeRefund', ({ coins, receipt }) => { if (grantCoins(coins, receipt) && coins) toast(`${fmt(coins)} entry coins returned.`, 'good'); });
 net.on('rouletteReward', reward => {
   if (recordMatch(reward)) { sfx.coin(); toast(`${fmt(reward.coins)} coins · ${reward.bonuses[0].label}`, 'good'); syncLoadout(); }

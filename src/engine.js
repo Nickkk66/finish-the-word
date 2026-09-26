@@ -8,6 +8,7 @@ import {
   RECONNECT_GRACE_MS, DEFAULT_SETTINGS, MODES, REWARDS, FLAIRS, EMOTES, HINT_PRICE, OBBY,
 } from '../public/js/shared/constants.js';
 import { PETS_BY_ID, CARDS_BY_ID, TABLE_IDS, CHAIR_IDS } from '../public/js/shared/catalog.js';
+import { ROULETTE_INTRO_MS, ROULETTE_DRINK_MS, ROULETTE_PASS_MS, inRouletteFire } from '../public/js/shared/roulette.js';
 import { rules, TWISTS } from './modes.js';
 import { adminToken, constantTimeEqual } from './auth.js';
 import { filterText } from './blocklist.js';
@@ -120,7 +121,9 @@ export class GameEngine {
     this.botTimer = null;
     this.tableOverride = null;
     this.pendingPresetBotReset = false;
-    this.rouletteEntry = 0;
+    this.rouletteEntry = 25;
+    this.rouletteHazardsAt = 0;
+    this.fireMode = false;
   }
 
   // ---- Transport entry points (never throw) -------------------------------------------
@@ -150,6 +153,7 @@ export class GameEngine {
       if (player?.conn !== conn) return; // never joined, rejected, or replaced by a newer socket
       player.conn = null;
       player.connected = false;
+      this.cancel(player.fireTimer); player.fireTimer = null;
       player.graceTimer = this.schedule(() => this.removePlayer(player.id), RECONNECT_GRACE_MS);
       this.broadcastPlayer(player);
       this.reportListing();
@@ -213,6 +217,8 @@ export class GameEngine {
       this.hostId ??= id;
     }
     this.conns.set(conn, id);
+    if (this.fireMode) player.fireReadyAt = this.now() + ROULETTE_INTRO_MS;
+    this.syncFire(player);
     this.send(player, {
       t: 'welcome',
       you: id,
@@ -225,7 +231,7 @@ export class GameEngine {
       rouletteEntry: this.rouletteEntry,
     });
     this.broadcast({ t: 'player', p: this.view(player) }, id);
-    for (const receipt of player.requests.values()) if (['betResult', 'stakeRefund', 'rouletteReward'].includes(receipt.t)) this.send(player, receipt);
+    for (const receipt of player.requests.values()) if (['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit'].includes(receipt.t)) this.send(player, receipt);
     if (isNew) this.broadcast(systemChat(`${player.name} joined the game`));
     this.reportListing();
   }
@@ -271,9 +277,10 @@ export class GameEngine {
     if (!player) return;
     this.refundStake(player);
     this.cancel(player.graceTimer);
+    this.cancel(player.fireTimer);
     this.fail(id, 'left'); // knocked out if still playing
     if (!player.isBot) {
-      const receipts = [...player.requests].filter(([,value]) => ['betResult', 'stakeRefund', 'rouletteReward'].includes(value.t));
+      const receipts = [...player.requests].filter(([,value]) => ['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit'].includes(value.t));
       if (receipts.length) this.rouletteReceipts.set(id, receipts.slice(-100));
       if (this.rouletteReceipts.size > 64) this.rouletteReceipts.delete(this.rouletteReceipts.keys().next().value);
     }
@@ -293,6 +300,7 @@ export class GameEngine {
 
   // No humans left: drop the bots, stop every timer, start from scratch.
   resetRoom() {
+    for (const p of this.players.values()) this.cancel(p.fireTimer);
     this.cancel(this.phaseTimer);
     this.cancel(this.movesTimer);
     this.stopBot();
@@ -344,6 +352,7 @@ export class GameEngine {
     const pos = sanitizeMove(msg);
     if (!pos) return;
     player.pos = pos;
+    this.syncFire(player);
     player.moved = true;
     this.movesTimer ??= this.schedule(() => this.flushMoves(), MOVES_INTERVAL_MS);
   }
@@ -367,6 +376,7 @@ export class GameEngine {
     if (this.isPlaying(player.id) || !this.allow(player, 'seat')) return;
     if (this.seatOwner(seat)) return this.send(player, { t: 'error', code: 'seat_taken', message: 'That seat is taken.' });
     player.seat = seat;
+    this.syncFire(player);
     this.broadcastPlayer(player);
     this.syncCountdown();
   }
@@ -647,7 +657,7 @@ export class GameEngine {
 
   // Settings apply from the next match.
   changeSettings(input) {
-    if (Number.isSafeInteger(input?.rouletteEntry) && [0, 25, 100, 500].includes(input.rouletteEntry) && !ACTIVE_PHASES.has(this.match.phase)) {
+    if (Number.isSafeInteger(input?.rouletteEntry) && [25, 100, 500].includes(input.rouletteEntry) && !ACTIVE_PHASES.has(this.match.phase)) {
       for (const player of this.players.values()) this.refundStake(player);
       this.rouletteEntry = input.rouletteEntry;
       this.broadcastRoom();
@@ -666,6 +676,7 @@ export class GameEngine {
       return;
     }
     this.settings = next;
+    this.syncHazards();
     this.syncCountdown();
     this.broadcastRoom();
     this.reportListing();
@@ -696,6 +707,7 @@ export class GameEngine {
     this.match = newMatch();
     if (this.readyPlayers().length >= 2) this.setPhase('countdown', COUNTDOWN_MS, () => this.startMatch());
     else this.setPhase('lobby');
+    this.syncHazards();
   }
 
   syncCountdown() {
@@ -966,6 +978,33 @@ export class GameEngine {
 
   // ---- Cursed cup: server-owned hidden draw, turns, stakes and payout -----------------
 
+  syncHazards() {
+    const mode = ACTIVE_PHASES.has(this.match.phase) || this.match.phase === 'ended' ? this.match.mode : this.settings.mode;
+    const on = mode === 'roulette';
+    if (on && !this.fireMode) this.rouletteHazardsAt = this.now() + ROULETTE_INTRO_MS;
+    this.fireMode = on;
+    for (const p of this.players.values()) this.syncFire(p);
+  }
+
+  fireActive(player) {
+    return player.connected && !player.isBot && player.seat < 0 && inRouletteFire(player.pos)
+      && this.fireMode;
+  }
+
+  syncFire(player) {
+    if (!this.fireActive(player)) { this.cancel(player.fireTimer); player.fireTimer = null; return; }
+    if (player.fireTimer != null) return;
+    const wait = Math.max(0, this.rouletteHazardsAt - this.now(), (player.fireReadyAt || 0) - this.now()) + 5000;
+    player.fireTimer = this.schedule(() => {
+      player.fireTimer = null;
+      if (!this.fireActive(player)) return;
+      const receipt = `fire:${this.code}:${player.id}:${this.now()}:${++this.matchSerial}`;
+      const debit = {t:'hazardDebit',amount:25,receipt};
+      this.remember(player,receipt,debit); this.send(player,debit);
+      this.syncFire(player);
+    }, wait);
+  }
+
   onBet(player, msg) {
     this.request(player, 'bet', msg, () => {
       const result = { t: 'betResult', requestId: msg.requestId, ok: false };
@@ -992,24 +1031,22 @@ export class GameEngine {
 
   startRoulette(seated) {
     const m = this.match;
-    m.roulette = { pot: 0, remaining: 6, passed: new Set(), event: null, serial: 0 };
+    m.roulette = { pot: 0, basePot: 0, multiplier: 1, risk: 1/6, turns: 0, passed: new Set(), event: null, serial: 0 };
     m.stakes = {};
     for (const player of seated) {
-      const amount = player.rouletteBet?.amount || 0;
+      const amount = player.isBot ? this.rouletteEntry : player.rouletteBet?.amount || 0;
       m.stakes[player.id] = amount;
       m.roulette.pot += amount;
       player.rouletteBet = null;
       this.broadcastPlayer(player);
     }
+    m.roulette.basePot = m.roulette.pot;
     for (const p of m.participants) { p.hearts = p.maxHearts = 1; p.shield = false; p.ability = null; }
     this.resetBottle();
     this.rouletteTurn(pickRandom(m.participants, this.random).id);
   }
 
   resetBottle() {
-    this.match.poisonSip = 1 + Math.floor(this.random() * 6);
-    this.match.sips = 0;
-    this.match.roulette.remaining = 6;
     this.match.roulette.passed.clear();
     this.match.round++;
   }
@@ -1037,10 +1074,14 @@ export class GameEngine {
     if (action === 'pass' && r.passed.has(id)) return;
     const next = this.nextAlive(id);
     if (action === 'pass') r.passed.add(id);
-    const poisoned = action === 'drink' && ++m.sips === m.poisonSip;
-    if (action === 'drink') r.remaining = 6 - m.sips;
-    r.event = { id, action, poisoned, serial: ++r.serial, next };
-    this.setPhase('rouletteReveal', poisoned ? 2600 : 1700, () => {
+    const risk = r.risk;
+    const poisoned = action === 'drink' && this.random() < risk;
+    r.event = { id, action, poisoned, risk, serial: ++r.serial, next };
+    this.setPhase('rouletteReveal', action === 'drink' ? ROULETTE_DRINK_MS : ROULETTE_PASS_MS, () => {
+      r.turns++;
+      r.multiplier = Math.min(100, 1.2 ** r.turns);
+      r.risk = Math.min(.95, (1/6) * 1.25 ** r.turns);
+      r.pot = Math.floor(r.basePot * r.multiplier);
       if (poisoned) this.rouletteOut(id);
       else this.rouletteTurn(next);
     });
@@ -1113,7 +1154,7 @@ export class GameEngine {
     return [...this.players.values()].filter((p) => p.seat >= 0).sort((a, b) => a.seat - b.seat);
   }
   readyPlayers() {
-    return this.seated().filter(p => this.settings.mode !== 'roulette' || this.rouletteEntry === 0 || p.rouletteBet?.amount === this.rouletteEntry);
+    return this.seated().filter(p => this.settings.mode !== 'roulette' || this.rouletteEntry === 0 || p.isBot || p.rouletteBet?.amount === this.rouletteEntry);
   }
 
   seatOwner(seat) {

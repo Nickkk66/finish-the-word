@@ -100,7 +100,7 @@ export function createLobby(scene) {
   let boardRows = [];
   // ---- Boards ----
   let winsCanvas = null;
-  let winsTexture = null;
+  let winsTexture = null, howCanvas, howTexture, roulette = false;
   for (const b of BOARDS) {
     const canvas = makeCanvas(1024, 720);
     if (b.kind === 'wins') drawLeaderboard(canvas, []);
@@ -110,6 +110,7 @@ export function createLobby(scene) {
       winsCanvas = canvas;
       winsTexture = texture;
     }
+    if (b.kind !== 'wins') { howCanvas=canvas; howTexture=texture; }
     scene.add(buildBoard(b, texture, colliders));
   }
 
@@ -118,6 +119,7 @@ export function createLobby(scene) {
     shopItems,
     blocks,
     cardBoxes,
+    setRoulette(on) { if (roulette === on) return; roulette=on; drawHowTo(howCanvas,on); howTexture.needsUpdate=true; },
     setLeaderboardTitle(title) {
       boardTitle = String(title).slice(0, 40);
       drawLeaderboard(winsCanvas, boardRows, boardTitle); winsTexture.needsUpdate = true;
@@ -261,12 +263,19 @@ function drawLeaderboard(canvas, rows, title = 'MOST WINS · ALL TIME') {
   });
 }
 
-function drawHowTo(canvas) {
+function drawHowTo(canvas, roulette = false) {
   const g = canvas.getContext('2d');
   const { width: w, height: h } = canvas;
-  boardBackground(g, w, h, '#2a9a4a', '#18692f');
-  outlinedText(g, 'HOW TO PLAY', w / 2, 82, 84, '#ffffff', 'center', 14);
-  const lines = [
+  boardBackground(g,w,h,roulette?'#39264f':'#2a9a4a',roulette?'#140c20':'#18692f');
+  outlinedText(g, roulette ? 'THE LAST SIP' : 'HOW TO PLAY', w / 2, 82, 84, '#ffffff', 'center', 14);
+  const lines = roulette ? [
+    'Sit down. Place at least 25 coins.',
+    'Drink or pass. You have 10 seconds.',
+    'Each turn: prize x1.2, risk x1.25',
+    'One pass each until a knockout.',
+    'Last awake takes the whole prize.',
+    'Fire takes 25 coins every 5 seconds!',
+  ] : [
     'Sit at the table to join a match',
     'Type a word that starts with the letter',
     'The next word starts with its LAST letter',

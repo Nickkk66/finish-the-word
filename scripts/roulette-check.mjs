@@ -10,12 +10,16 @@ try {
   await c.clickText('Join'); await c.wait('window.__ftw.state.inRoom');
   for(const p of [a,c]) await p.eval('import("./js/profile.js").then(p=>p.grantCoins(100))');
   const before=await a.eval('window.__ftw.profile.coins')+await c.eval('window.__ftw.profile.coins');
-  await a.click('[aria-label="Game Settings"]'); await a.click('.roulette-launch');
+  await a.click('[aria-label="Game Settings"]'); await a.clickText('Mode:', '.panel-gameSettings button');
+  await a.clickText('Roulette','.overlay.choice button');
   await a.clickText('Enter Roulette','.overlay.confirm button');
   await a.wait('window.__ftw.state.settings.mode === "roulette"');
-  await a.clickText('25', '.panel-gameSettings .seg-btn');
+  await a.wait('!document.querySelector(".panel-gameSettings:not(.leaving)")');
+  await delay(2700);await a.shot('asteroids');
+  await a.wait('!window.__ftw.world.debugSnapshot().roulette.cinematic');
+  assert.equal(await a.eval('window.__ftw.world.debugSnapshot().roulette.craters'),4);
   await a.wait('window.__ftw.state.rouletteEntry === 25');
-  await a.click('.panel-close'); await delay(250);
+  await delay(250);
   await a.send({t:'sit',seat:0}); await c.send({t:'sit',seat:1});
   for(const p of [a,c]) {
     await p.wait('!document.querySelector(".roulette-actions .green").hidden');
@@ -38,13 +42,18 @@ try {
       if(!passes){await p.clickText('Pass ·','.roulette-actions button');passes++;}
       else {await p.clickText('Drink','.roulette-actions button');drinks++;}
       await a.wait('window.__ftw.state.match.phase !== "roulette"');
-      if((await a.state()).match.roulette.event?.poisoned){await delay(1550);await a.shot('cursed');}
+      if((await a.state()).match.roulette.event?.action==='drink'){
+        await a.wait('window.__ftw.world.debugSnapshot().roulette.rimError !== null');
+        assert.ok(await a.eval('window.__ftw.world.debugSnapshot().roulette.rimError < .001'));
+        await a.shot('sip');
+        if((await a.state()).match.roulette.event?.poisoned){await a.wait('window.__ftw.world.debugSnapshot().roulette.ghosts > 0');await a.shot('soul');}
+      }
     }
     await delay(150);
   }
   await a.wait('window.__ftw.state.match.phase === "ended"');
   await delay(300);
-  assert.equal(await a.eval('window.__ftw.profile.coins')+await c.eval('window.__ftw.profile.coins'),before);
+  assert.equal(await a.eval('window.__ftw.profile.coins')+await c.eval('window.__ftw.profile.coins'),before-50+(await a.state()).match.roulette.pot);
   assert.deepEqual(a.errors,[]);assert.deepEqual(c.errors,[]);
-  console.log(`ok Roulette: two browsers, paid entry, pot conservation, pass, ${drinks} drinks, poison, winner, desktop/mobile, no browser errors`);
+  console.log(`ok Roulette: two browsers, paid entry, growing prize, cup rim at mouth, ghost and crater intro, pass, ${drinks} drinks, poison, winner, desktop/mobile, no browser errors`);
 } finally {await b.close();}

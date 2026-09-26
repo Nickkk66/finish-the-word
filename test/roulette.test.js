@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRoom } from './helpers.js';
 
-function setup(entry = 0) {
+function setup(entry = 25) {
   const r = createRoom({seed: 29});
   const a = r.join('alice'), b = r.join('bob');
   r.send(a,{t:'host',action:'settings',settings:{mode:'roulette',rouletteEntry:entry}});
@@ -25,9 +25,9 @@ test('roulette entries require funds, seat and matching stake; replay debits onc
   assert.equal(r.engine.match.phase,'lobby'); assert.deepEqual(r.errors,[]);
 });
 
-test('roulette hidden draw stays private, pass is once per bottle, stale actions fail and timeout drinks',()=>{
-  const {r,a}=setup(); r.send(a,{t:'host',action:'start'});
-  const m=r.engine.match; m.poisonSip=6;
+test('roulette hidden draw stays private, pass is once per knockout round, stale actions fail and timeout drinks',()=>{
+  const {r,a,b}=setup();bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
+  const m=r.engine.match;
   assert.equal(m.phase,'roulette');
   assert.equal(m.duration,10000);
   assert.ok(!JSON.stringify(r.engine.matchView()).includes('poisonSip'));
@@ -38,18 +38,18 @@ test('roulette hidden draw stays private, pass is once per bottle, stale actions
   r.send(r.conns[m.typerId],{t:'roulette',action:'pass',turnId:m.turnId}); r.clock.advance(1700);
   assert.equal(m.typerId,id);
   r.send(conn,{t:'roulette',action:'pass',turnId:m.turnId}); assert.equal(m.phase,'roulette');
-  r.clock.advance(10000); assert.equal(m.roulette.event.action,'drink'); assert.equal(m.roulette.remaining,5);
+  r.clock.advance(10000); assert.equal(m.roulette.event.action,'drink'); assert.ok(m.roulette.risk>1/6);
   assert.deepEqual(r.errors,[]);
 });
 
-test('roulette poisons eliminate, pot is conserved and winner reward is paid exactly once',()=>{
+test('roulette poisons eliminate, prize grows and winner reward is paid exactly once',()=>{
   const {r,a,b}=setup(25); bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
-  const m=r.engine.match; assert.equal(m.roulette.pot,50); m.poisonSip=1;
+  const m=r.engine.match; assert.equal(m.roulette.pot,50); r.forced.push(0);
   const loser=m.typerId;
   r.send(r.conns[loser],{t:'roulette',action:'drink',turnId:m.turnId});
-  r.clock.advance(2600);
+  r.clock.advance(4800);
   assert.equal(m.phase,'ended');assert.notEqual(m.winnerId,loser);
-  assert.equal(r.conns[m.winnerId].last('rouletteReward').coins,50);
+  assert.equal(r.conns[m.winnerId].last('rouletteReward').coins,60);
   assert.equal(r.conns[loser].last('rouletteReward').coins,0);
   r.engine.endRoulette(m.winnerId);
   assert.equal(r.conns[m.winnerId].all('rouletteReward').length,1);
@@ -70,10 +70,10 @@ test('changing roulette settings returns pending entries and abort returns activ
 
 test('disconnect forfeits after grace, awards remaining player and reconnect replays debit and settlement receipts',()=>{
   const {r,a,b}=setup(25);bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
-  r.engine.match.poisonSip=6;
+  r.engine.random=()=>.99;
   r.engine.disconnect(a);r.clock.advance(20000);
-  assert.equal(b.last('rouletteReward').coins,50);
-  const again=r.join('bob');assert.equal(again.last('rouletteReward').coins,50);
+  assert.equal(b.last('rouletteReward').coins,60);
+  const again=r.join('bob');assert.equal(again.last('rouletteReward').coins,60);
   assert.equal(again.last('betResult').receipt,b.last('betResult').receipt);
   assert.deepEqual(r.errors,[]);
 });
@@ -96,4 +96,44 @@ test('Custom preserves the selected word rules and a new preset replaces them',(
   r.clock.advance(1000);r.send(a,{t:'host',action:'settings',settings:{mode:'classic'}});
   assert.equal(r.engine.settings.baseMode,undefined);assert.equal(r.engine.settings.hearts,2);
   assert.deepEqual(r.errors,[]);
+});
+
+test('each completed turn multiplies prize and risk, including passes; risk caps at 95 percent',()=>{
+ const {r,a,b}=setup();bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
+ const m=r.engine.match;r.engine.random=()=>.999;
+ const start=m.roulette.risk;
+ r.send(r.conns[m.typerId],{t:'roulette',action:'pass',turnId:m.turnId});r.clock.advance(1700);
+ assert.equal(m.roulette.pot,60);assert.equal(m.roulette.risk,start*1.25);
+ for(let i=0;i<12;i++){r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);}
+ assert.equal(m.roulette.risk,.95);assert.ok(m.roulette.pot>500);assert.deepEqual(r.errors,[]);
+});
+
+test('fire charges only after 5 continuous seconds on the ground inside a crater, stops on exit or disconnect',()=>{
+ const r=createRoom(),a=r.join('alice');r.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});r.clock.advance(7000);
+ const move=(x=-20,y=0,z=4)=>r.send(a,{t:'move',x,y,z,ry:0,anim:'idle'});
+ move();r.clock.advance(4999);assert.equal(a.all('hazardDebit').length,0);
+ r.clock.advance(1);assert.equal(a.last('hazardDebit').amount,25);
+ r.clock.advance(5000);assert.equal(a.all('hazardDebit').length,2);
+ move(0,0,26);r.clock.advance(10000);assert.equal(a.all('hazardDebit').length,2);
+ move();r.clock.advance(4000);move(0,0,26);r.clock.advance(1000);move();r.clock.advance(4999);assert.equal(a.all('hazardDebit').length,2);
+ r.clock.advance(1);assert.equal(a.all('hazardDebit').length,3);
+ move(-20,5,4);r.clock.advance(6000);assert.equal(a.all('hazardDebit').length,3);
+ move();r.engine.disconnect(a);r.clock.advance(6000);assert.equal(a.all('hazardDebit').length,3);
+ const again=r.join('alice');assert.equal(again.all('hazardDebit').length,3,'reconnect replays receipts, not additional charges');
+ r.clock.advance(11999);assert.equal(again.all('hazardDebit').length,3,'intro grants time before fire starts');
+ r.clock.advance(1);assert.equal(again.all('hazardDebit').length,4);
+ assert.deepEqual(r.errors,[]);
+});
+
+test('pending Roulette settings do not create invisible fire during an active word match',()=>{
+ const r=createRoom(),a=r.join('alice'),b=r.join('bob'),c=r.join('carol');
+ r.send(a,{t:'sit',seat:0});r.send(b,{t:'sit',seat:1});r.send(a,{t:'host',action:'start'});
+ r.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});
+ r.send(c,{t:'move',x:-20,y:0,z:4,ry:0,anim:'idle'});
+ r.clock.advance(7000);assert.equal(c.all('hazardDebit').length,0);assert.equal(r.engine.fireMode,false);
+ r.engine.endMatch(null);r.clock.advance(7000);assert.equal(r.engine.fireMode,true);
+ r.clock.advance(11999);assert.equal(c.all('hazardDebit').length,0);
+ r.clock.advance(1);assert.equal(c.all('hazardDebit').length,1);
+ r.send(a,{t:'host',action:'settings',settings:{mode:'classic'}});r.clock.advance(6000);
+ assert.equal(c.all('hazardDebit').length,1);assert.deepEqual(r.errors,[]);
 });

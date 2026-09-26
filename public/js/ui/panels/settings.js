@@ -85,13 +85,14 @@ export function gameSettingsPanel({ state, actions }) {
   return { id: 'gameSettings', title: 'Game Settings', color: 'orange', icon: icons.gear,
     mount(body) {
       const mode = button('Choose mode', async () => {
-        const id = await choiceDialog('Choose a mode', MODES.filter(v => !['custom', 'roulette'].includes(v.id)).map(v => ({ label: v.name, description: v.description, value: v.id })));
+        const id = await choiceDialog('Choose a mode', MODES.filter(v => v.id !== 'custom').map(v => ({ label: v.name, description: v.description, value: v.id })));
+        if (id === 'roulette') {
+          if (!await confirmDialog({ title: 'The Last Sip', message: 'Enter for at least 25 game coins. Every turn multiplies the prize by 1.2 and poison chance by 1.25 (up to 95%). Drink or pass within 10 seconds; one pass each until a knockout. Last awake takes the prize. Asteroid fire drains 25 coins per 5 seconds standing inside it.', ok: 'Enter Roulette', tone: 'purple' })) return;
+          actions.closePanels();
+        }
         if (id) actions.hostSettings({ mode: id });
       });
-      const roulette = h('button', { class: 'roulette-launch', type: 'button', onClick: async () => {
-        if (await confirmDialog({ title: 'The Last Sip', message: 'Night falls. Take a seat around the cursed cup. One of six sips is poisoned. You have 10 seconds to drink or pass; each player gets one pass per bottle. Timeout means drink. Poison knocks you out, then the bottle resets. Last awake wins the pool of game coins. Choose a free or paid entry below.', ok: 'Enter Roulette', tone: 'purple' })) actions.hostSettings({ mode: 'roulette' });
-      } }, h('strong', {}, 'ROULETTE'), h('small', {}, 'The Last Sip · enter if you dare'));
-      const entry = segmented([['Free', 0], ['25 coins', 25], ['100 coins', 100], ['500 coins', 500]], amount => actions.hostSettings({ rouletteEntry: amount }));
+      const entry = segmented([['25 coins', 25], ['100 coins', 100], ['500 coins', 500]], amount => actions.hostSettings({ rouletteEntry: amount }));
       const entryRow = row('Roulette entry', entry.el);
       const custom = patch => actions.hostSettings({ ...(state.settings.mode === 'roulette' ? {} : { mode: 'custom' }), ...patch });
       const hearts = segmented([['1', 1], ['2', 2], ['3', 3]], (v) => custom({ hearts: v }));
@@ -112,12 +113,12 @@ export function gameSettingsPanel({ state, actions }) {
       const banned = state.bannedPlayers;
       const unban = h('div', { class: 'moderation-list' });
       const tools = h('div', { class: 'host-tools' }, button('Add Bot', () => { custom({}); actions.host('addBot'); }), button('Remove Bot', () => { custom({}); actions.host('removeBot'); }, 'orange'), button('Start now', () => actions.host('start'), 'green'));
-      body.append(notice, roulette, entryRow, h('div', { class: 'set-group' }, row('Mode', mode), row('Hearts', hearts.el), row('Turn time', turn.el), row('Pet abilities', pets.el), row('Bots', bot.el), row('Room visibility', publicRoom.el), row('Table', table)), tools,
+      body.append(notice, entryRow, h('div', { class: 'set-group' }, row('Mode', mode), row('Hearts', hearts.el), row('Turn time', turn.el), row('Pet abilities', pets.el), row('Bots', bot.el), row('Room visibility', publicRoom.el), row('Table', table)), tools,
         h('h3', { class: 'section-title stroke' }, 'Players'), players, unban);
       function update() {
         const allowed = state.hostId === state.you || state.isAdmin;
         const isRoulette = state.settings.mode === 'roulette';
-        roulette.disabled = !allowed; entryRow.hidden = !isRoulette;
+        entryRow.hidden = !isRoulette;
         entry.set(state.rouletteEntry || 0, !allowed || !['lobby', 'countdown'].includes(state.match?.phase));
         notice.textContent = allowed ? 'Changes apply to the next match.' : 'Only the host can change these game settings.';
         notice.classList.toggle('restricted', !allowed);

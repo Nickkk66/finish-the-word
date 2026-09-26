@@ -362,20 +362,31 @@ mistake circles `#ff4d4d` with white ✕, highlight green `#3ddc54`.
 
 ## September 25 revisions: Roulette and cosmetics
 
-Roulette (`mode: roulette`) is the custom cursed-cup game, not wheel-and-ball casino roulette.
-It uses `roulette` and `rouletteReveal` phases. Server-only `poisonSip` is a uniform draw 1–6;
-only the result of a committed action is exposed. Turns are 10 seconds, one pass per player per
-bottle; timeout drinks. A poisoned drink eliminates its player, resets the bottle and passes to
-the next survivor. The last survivor wins the whole game-coin pot. Aborted rounds refund entries.
-The next paid round never automatically places another entry. Bots participate only in free rounds.
+Roulette (`mode: roulette`) is the custom cursed-cup game. Protocol 4 adds its rising-risk rules.
+The normal Mode picker includes Roulette. Confirming closes settings and starts a seven-second asteroid
+cinematic; the camera returns with a darker map, crater fires, a lit table, tree/leaderboard owls and
+mode-specific How to Play instructions.
 
-`host/settings` accepts `rouletteEntry` (0/25/100/500) between matches. Seated players send
-`{t: bet, requestId, amount, balance}` and receive an idempotent `betResult` debit receipt.
-Standing before play or changing entry/mode returns a `stakeRefund`. Active participants send
-`{t: roulette, action: drink|pass, turnId}`. Match end sends `rouletteReward` with a unique match ID.
-Receipts are replayed after reconnect, bounded to 128 per player and 64 departed players within
-the live room; local/cloud profiles remember 512 applied receipts. As with the existing economy,
-balances are client-trusted, and room state is ephemeral across a Worker restart. No real-money stakes.
+Phases are `roulette` (10 seconds to act) and `rouletteReveal` (1.7 seconds for a pass, 4.8 seconds for a drink).
+The server samples each committed drink against the publicly displayed risk, initially 1/6. After every
+completed action, prize multiplier is `min(100, 1.2 ** turns)` and risk is `min(.95, 1/6 * 1.25 ** turns)`.
+Passes also increase both. Each player has one pass until a knockout; timeout drinks. A knockout restores
+passes but does not reset risk/prize. Last awake wins `floor(basePot * multiplier)`; aborted rounds refund
+original stakes. Bots use house-funded entries; their winnings aren't credited to a human account.
+
+`host/settings` accepts `rouletteEntry` (25/100/500), default 25. Seated humans send
+`{t: bet, requestId, amount, balance}` for an idempotent `betResult` debit receipt.
+Standing before play or changing entry/mode sends `stakeRefund`; paid rounds never auto-rebet.
+`{t: roulette, action: drink|pass, turnId}` commits an action. `rouletteReward` settles the match once.
+Receipts replay after reconnect, bounded to 128/player and 64 departed players within the live room;
+profiles remember 512 receipts. Economy remains client-trusted; no real-money stakes.
+
+Shared crater footprints live in `shared/roulette.js`. The server charges `{t: hazardDebit, amount:25,
+receipt}` for each 5 continuous seconds a connected, unseated player stands at ground level inside one.
+Exit/jumping/disconnect cancels the timer. Fire starts after the intro and follows the active mode (pending
+next-match settings never cause invisible damage). Balances floor at zero. Cup movement and arm pose share
+wall-clock timing; the rim is positioned against the animated head's mouth transform during the hold.
+Skull ghosts rise from that player's head. The cash pile grows in stacked bundles and shows the payout.
 
 Custom word settings retain `baseMode` so editing hearts/time doesn't discard the selected word rules.
 Roulette includes the poker table; owned table selection remains available in word modes.
