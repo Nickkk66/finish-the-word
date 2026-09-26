@@ -22,13 +22,15 @@ try {
   await delay(250);
   await a.send({t:'sit',seat:0}); await c.send({t:'sit',seat:1});
   for(const p of [a,c]) {
+    const amount=p===a?25:100;
+    await p.eval(`document.querySelector(".roulette-wager").value=${amount}`);
     await p.wait('!document.querySelector(".roulette-actions .green").hidden');
     await p.clickText('Enter ·','.roulette-actions button');
     await p.clickText('Place entry', '.overlay.confirm button');
-    await p.wait('window.__ftw.state.players.get(window.__ftw.state.you).rouletteBet === 25');
+    await p.wait(`window.__ftw.state.players.get(window.__ftw.state.you).rouletteBet === ${amount}`);
   }
   await a.clickText('Begin the ritual'); await a.wait('window.__ftw.state.match.phase === "roulette"');
-  assert.equal(await a.eval('window.__ftw.state.match.roulette.pot'),50);
+  assert.equal(await a.eval('window.__ftw.state.match.roulette.pot'),125);
   assert.equal(await a.eval('window.__ftw.world.debugSnapshot().roulette.active'),true);
   await a.wait('window.__ftw.world.debugSnapshot().night > .99');
   await a.shot('night'); await c.shot('night');
@@ -39,9 +41,15 @@ try {
     if(st.match.phase==='roulette') {
       const p=st.match.typerId===st.you?a:c;
       await p.wait('!document.querySelector(".roulette-actions .purple").hidden');
+      const spectator=p===a?c:a;
+      assert.equal(await spectator.eval('document.querySelector(".roulette-heartbeat").hidden'),true);
+      await p.wait('!document.querySelector(".roulette-heartbeat").hidden && Number(getComputedStyle(document.querySelector(".roulette-heartbeat")).opacity)>.1');
+      if(p===c){assert.ok(await p.eval('document.querySelector(".roulette-odds s")'));await p.shot('discount');}
+
       if(!passes){await p.clickText('Pass ·','.roulette-actions button');passes++;}
       else {await p.clickText('Drink','.roulette-actions button');drinks++;}
       await a.wait('window.__ftw.state.match.phase !== "roulette"');
+      assert.equal(await p.eval('document.querySelector(".roulette-heartbeat").hidden'),true);
       if((await a.state()).match.roulette.event?.action==='drink'){
         await a.wait('window.__ftw.world.debugSnapshot().roulette.rimError !== null');
         assert.ok(await a.eval('window.__ftw.world.debugSnapshot().roulette.rimError < .001'));
@@ -53,7 +61,7 @@ try {
   }
   await a.wait('window.__ftw.state.match.phase === "ended"');
   await delay(300);
-  assert.equal(await a.eval('window.__ftw.profile.coins')+await c.eval('window.__ftw.profile.coins'),before-50+(await a.state()).match.roulette.pot);
+  assert.equal(await a.eval('window.__ftw.profile.coins')+await c.eval('window.__ftw.profile.coins'),before-125+(await a.state()).match.roulette.pot);
   assert.deepEqual(a.errors,[]);assert.deepEqual(c.errors,[]);
-  console.log(`ok Roulette: two browsers, paid entry, growing prize, cup rim at mouth, ghost and crater intro, pass, ${drinks} drinks, poison, winner, desktop/mobile, no browser errors`);
+  console.log(`ok Roulette: two browsers, independent bets, discounted odds, turn-only heartbeat, growing prize, cup rim at mouth, ghost and crater intro, pass, ${drinks} drinks, poison, winner, desktop/mobile, no browser errors`);
 } finally {await b.close();}

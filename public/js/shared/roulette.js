@@ -10,3 +10,13 @@ export function sipLift(seconds) {
   return seconds < .85 ? smooth(seconds/.85) : seconds < 2.45 ? 1 : 1-smooth((seconds-2.45)/.65);
 }
 export const inRouletteFire = pos => !!pos && pos.y < 2 && pos.y > -2 && ROULETTE_HAZARDS.some(h => Math.hypot(pos.x-h.x,pos.z-h.z)<h.r);
+
+// Relative to the smallest entry, each doubling removes 20% of base risk,
+// capped at 40%. Equal entries have equal odds; no bet buys immunity.
+export function rouletteOdds(baseRisk, stake, minimumStake = 25) {
+  const discount = Math.min(.4, Math.max(0, .2 * Math.log2(Math.max(1, stake / Math.max(25, minimumStake)))));
+  return { risk: baseRisk * (1 - discount), reduction: baseRisk * discount };
+}
+export const METEOR_INTERVAL_MS = 180000;
+export const METEOR_FLIGHT_MS = 2400;
+export const METEOR_SITES = [{x:0,z:22},{x:0,z:-18},{x:15,z:-10}];

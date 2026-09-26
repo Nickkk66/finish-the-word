@@ -369,14 +369,19 @@ mode-specific How to Play instructions.
 
 Phases are `roulette` (10 seconds to act) and `rouletteReveal` (1.7 seconds for a pass, 4.8 seconds for a drink).
 The server samples each committed drink against the publicly displayed risk, initially 1/6. After every
-completed action, prize multiplier is `min(100, 1.2 ** turns)` and risk is `min(.95, 1/6 * 1.25 ** turns)`.
+completed action, prize multiplier is `min(100, 1.05 ** turns)` and risk is `min(.95, 1/6 * 1.25 ** turns)`.
+For each participant, discount is `min(.4, .2 * log2(stake / smallestMatchStake))`;
+actual poison chance is `baseRisk * (1 - discount)`. Stakes freeze at match start, including eliminated
+players, so the reference never jumps mid-match. Equal entries have equal odds and the maximum discount
+is 40% of base risk. Match views expose `baseRisk`, current actor's `risk` and `reduction`, and stakes.
+The HUD strikes out base risk and subtracts percentage points to show the effective probability.
 Passes also increase both. Each player has one pass until a knockout; timeout drinks. A knockout restores
 passes but does not reset risk/prize. Last awake wins `floor(basePot * multiplier)`; aborted rounds refund
 original stakes. Bots use house-funded entries; their winnings aren't credited to a human account.
 
-`host/settings` accepts `rouletteEntry` (25/100/500), default 25. Seated humans send
+The host cannot set entry amounts. Each seated human chooses any affordable whole-number entry of at least 25 coins and sends
 `{t: bet, requestId, amount, balance}` for an idempotent `betResult` debit receipt.
-Standing before play or changing entry/mode sends `stakeRefund`; paid rounds never auto-rebet.
+Standing before play or changing mode sends `stakeRefund`; paid rounds never auto-rebet.
 `{t: roulette, action: drink|pass, turnId}` commits an action. `rouletteReward` settles the match once.
 Receipts replay after reconnect, bounded to 128/player and 64 departed players within the live room;
 profiles remember 512 receipts. Economy remains client-trusted; no real-money stakes.
@@ -386,7 +391,11 @@ receipt}` for each 5 continuous seconds a connected, unseated player stands at g
 Exit/jumping/disconnect cancels the timer. Fire starts after the intro and follows the active mode (pending
 next-match settings never cause invisible damage). Balances floor at zero. Cup movement and arm pose share
 wall-clock timing; the rim is positioned against the animated head's mouth transform during the hold.
-Skull ghosts rise from that player's head. The cash pile grows in stacked bundles and shows the payout.
+Skull ghosts rise from that player's head. The border pulses with heartbeat audio only on the local
+player's action turn; taking damage produces a separate transient red flash. Meteor and flame surfaces
+are textured, meteors burn throughout descent, and crater labels are removed. The engraved goblet has
+a curved bowl, rolled rims and inset gems. Night adds burning trees and a lighthouse beam that sweeps
+across the ocean; the poker felt has betting lines and rail stitches. The cash pile grows in stacked bundles and shows the payout.
 
 Custom word settings retain `baseMode` so editing hearts/time doesn't discard the selected word rules.
 Roulette includes the poker table; owned table selection remains available in word modes.
@@ -399,3 +408,12 @@ extrapolation capped at 150 ms; teleports still snap. Local movement remains mot
 `capeColor` is synchronized and saved as a hex color or `rainbow`; the cape sits behind the torso
 and eases out to 70 degrees at walking speed. Pet tiers 2/3 are 9%/18% larger with blue/gold auras,
 without changing abilities. Secret Block thumbnails frame the cube rather than the world glow.
+
+### Night meteor reward
+Every 180 seconds while Roulette is the active mode, the server broadcasts `meteor` with a unique
+`id`, safe landing `x/z`, and `landsIn` for a 2400 ms flight. There is no camera cut. One uncollected
+meteor is available at a time; the next replaces it. `welcome` includes the current meteor for late joins.
+An unseated nearby player presses E (or taps the prompt) to send `{t:'collectMeteor',id}`. The server
+checks landing time and distance (3.5 units horizontally, 3 vertically), consumes the meteor once,
+and issues `meteorReward {coins:150,receipt}`. Receipts replay on reconnect and deduplicate client-side.
+Leaving Roulette or resetting an empty room cancels the timer and removes the collectible.

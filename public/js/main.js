@@ -113,10 +113,10 @@ setSoundEnabled(profile.settings.sound);
 
 const actions = {
   roulette(action) { net.send({ t: 'roulette', action, turnId: state.match?.turnId }); },
-  async enterRoulette() {
+  async enterRoulette(amount = 25) {
     if (state.betPending) return;
-    const amount = state.rouletteEntry || 0;
-    if (!await confirmDialog({ title: 'Join the cursed table?', message: `${fmt(amount)} game coins go into the pool. Every turn raises the prize ×1.2 and poison chance ×1.25. Last awake wins. Standing up before the match returns your entry; leaving during the match forfeits it.`, ok: 'Place entry', tone: 'purple' })) return;
+    if (!Number.isSafeInteger(amount) || amount < 25 || amount > profile.coins) return toast('Enter a whole number from 25 up to your coin balance.', 'bad');
+    if (!await confirmDialog({ title: 'Join the cursed table?', message: `${fmt(amount)} game coins go into the pool. Each doubling above the smallest entry removes 20% of base poison risk, capped at 40% off. Equal entries have equal odds. Every turn raises the prize ×1.05 and poison chance ×1.25. Last awake wins. Standing up before the match returns your entry; leaving during the match forfeits it.`, ok: 'Place entry', tone: 'purple' })) return;
     state.betPending = { requestId: crypto.randomUUID(), amount, balance: profile.coins };
     net.send({ t: 'bet', ...state.betPending }); refreshRoom();
   },
@@ -532,7 +532,8 @@ function confirmForfeit(title, ok) {
 
 async function onInteract(i) {
   if (!state.inRoom) return;
-  if (i.type === 'seat') {
+  if (i.type === 'meteor') { net.send({t:'collectMeteor',id:i.id});
+  } else if (i.type === 'seat') {
     net.send({ t: 'sit', seat: i.seat });
   } else if (i.type === 'stand') {
     if (standPending) return;
@@ -570,6 +571,7 @@ async function onInteract(i) {
 }
 
 function resolvePrompt(i) {
+  if (i.type === 'meteor') return {text:'Collect +150 coins',key:'E',enabled:true};
   if (i.type === 'seat') {
     const me = state.players.get(state.you);
     if (!me || me.seat >= 0) return null;
@@ -811,6 +813,7 @@ net.on('welcome', (msg) => {
   world.setTable(state.table);
   state.settings = { ...DEFAULT_SETTINGS, ...msg.settings };
   state.rouletteEntry = msg.rouletteEntry || 0;
+  world?.setMeteor(msg.meteor);
   const incoming = new Set(msg.players.map((p) => p.id));
   for (const id of [...state.players.keys()]) if (!incoming.has(id)) removePlayer(id);
   for (const p of msg.players) upsertPlayer(p);
@@ -917,6 +920,7 @@ net.on('fail', (msg) => {
   } else if (cause === 'timeout' || cause === 'mistakes') {
     world.playEffect(id, 'heart');
     sfx.heart();
+    if (mine) replay(gameUi, 'damage-hit');
     if (mine && hearts > 0) {
       replay(gameUi, 'heart-hit');
       banner(cause === 'timeout' ? "⏰ Time's up!" : '❌ Too many mistakes!', { sub: `−1 ❤️ (${hearts} left)`, tone: 'bad' });
@@ -1055,12 +1059,14 @@ net.on('betResult', result => {
   else if (result.error) toast(result.error, 'bad');
   refreshRoom();
 });
-net.on('hazardDebit', ({ amount, receipt }) => { if (adjustCoins('add', -amount, receipt)) { world?.playEffect(state.you, 'flair', {text:'−25 COINS · FIRE',color:'#ff8a4b'}); sfx.thud(); } });
+net.on('meteor', ({meteor}) => world?.setMeteor(meteor));
+net.on('meteorReward', ({coins,receipt}) => { if (grantCoins(coins,receipt)) { sfx.coin(); rewardPop(`+${fmt(coins)} 💵`,sidebar.coinsEl); toast('Meteor collected: +150 coins','good'); } });
+net.on('hazardDebit', ({ amount, receipt }) => { if (adjustCoins('add', -amount, receipt)) { world?.playEffect(state.you, 'flair', {text:'−25 COINS · FIRE',color:'#ff8a4b'}); replay(gameUi,'damage-hit'); sfx.thud(); } });
 net.on('stakeRefund', ({ coins, receipt }) => { if (grantCoins(coins, receipt) && coins) toast(`${fmt(coins)} entry coins returned.`, 'good'); });
 net.on('rouletteReward', reward => {
   if (recordMatch(reward)) { sfx.coin(); toast(`${fmt(reward.coins)} coins · ${reward.bonuses[0].label}`, 'good'); syncLoadout(); }
 });
-net.on('rouletteOut', ({ id }) => { world?.knockOutRoulette?.(id); sfx.thud(); });
+net.on('rouletteOut', ({ id }) => { world?.knockOutRoulette?.(id); if(id===state.you)replay(gameUi,'damage-hit'); sfx.thud(); });
 
 function applyMatch(m, resync = false) {
   const prev = state.match;

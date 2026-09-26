@@ -245,7 +245,7 @@ export async function createWorld({ container, labelLayer }) {
     for (;;) {
       let best = null;
       let bestD = Infinity;
-      for (const it of interactables) {
+      for (const it of [...interactables, ...[roulette.meteorTarget()].filter(Boolean)]) {
         if (it.stamp === frameNo || (it.i.type === 'seat' && seatOccupant[it.i.seat])) continue;
         const d = Math.hypot(it.x - e.pos.x, it.z - e.pos.z);
         if (d < it.range && d < bestD) {
@@ -370,6 +370,7 @@ export async function createWorld({ container, labelLayer }) {
     table.update(time, dt);
     lobby.update(time, dt);
     terrain.update(time);
+    props.updateNight(terrain.nightAmount(),time);
     roulette.update(time, dt);
     ambient.update(time, dt, me?.pos);
 
@@ -543,6 +544,7 @@ export async function createWorld({ container, labelLayer }) {
     setLeaderboardTitle(title) { lobby.setLeaderboardTitle(title); },
     setTable(id) { table.setTable(id); },
     setRoulette(on, match, entry) { terrain.setNight(on); lobby.setRoulette(on); roulette.set(on, match, players, entry); },
+    setMeteor(drop) { roulette.setMeteor(drop); },
     knockOutRoulette(id) { roulette.knockout(id); },
     renderThumbnail: thumbnails.render,
     setPetCollection(ids) { preview.setCollection(ids); },

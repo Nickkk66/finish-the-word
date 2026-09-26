@@ -1,5 +1,6 @@
 // Additional v2 cosmetics. Model-local materials keep animated previews independent.
 import * as THREE from 'three';
+import { surfaceTexture } from './ember.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LAYOUT } from '../shared/constants.js';
 import { TABLE_IDS, BACK_IDS, CARD_BOXES } from '../shared/catalog.js';
@@ -85,6 +86,14 @@ export function buildTable(tableId) {
     ring(R - .05, .09, '#d5e1e5', [0, top - .1, 0], { metalness: .85, roughness: .15 });
     ring(2, .065, '#a5dce6', [0, top - .42, 0], { metalness: .8 });
   } else if (id === 'poker') {
+    const cloth=new THREE.Mesh(new THREE.CircleGeometry(R-.38,96),new THREE.MeshStandardMaterial({map:surfaceTexture('felt'),roughness:1}));cloth.rotation.x=-Math.PI/2;cloth.position.y=top+.021;group.add(cloth);
+    ring(2.7,.025,'#c8b57c',[0,top+.045,0]);ring(2.82,.014,'#c8b57c',[0,top+.045,0]);
+    for(let i=0;i<8;i++){
+      const a=i*TAU/8;
+      const area=new THREE.Mesh(new THREE.TorusGeometry(.68,.023,6,32,Math.PI),new THREE.MeshStandardMaterial({color:'#c8b57c',roughness:1}));
+      area.rotation.set(Math.PI/2,0,-a);area.position.set(Math.sin(a)*3.9,top+.047,Math.cos(a)*3.9);group.add(area);
+      for(let j=0;j<7;j++){const stitchAngle=a+(j-3)*.045;const stitch=box(.055,.015,.018,'#bfa992',[Math.sin(stitchAngle)*(R-.16),top+.13,Math.cos(stitchAngle)*(R-.16)]);stitch.rotation.y=stitchAngle;}
+    }
     ring(R - .15, .23, '#372e36', [0, top - .1, 0]);
     ring(R - .68, .028, '#d2b982', [0, top + .018, 0]);
     for (let i = 0; i < 8; i++) {

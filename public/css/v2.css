@@ -185,7 +185,6 @@
 
 .w-roulette-soul { font:44px sans-serif; filter:drop-shadow(0 0 8px #d8eaff); pointer-events:none; }
 .w-roulette-soul::after { content:''; display:block; margin:-8px auto 0; width:25px; height:55px; background:linear-gradient(#e8f0ffbb,transparent); border-radius:50% 50% 80% 80%; }
-.w-fire-warning { color:#ffc67a; background:#20100dda; border:1px solid #e76739; border-radius:9px; padding:5px 9px; font:600 14px Fredoka,sans-serif; }
 .roulette-hud.danger .roulette-clock { color:#ff839e; text-shadow:0 0 16px #df2c6f; }
 .roulette-cinematic .roulette-hud,.roulette-cinematic .side,.roulette-cinematic .counters { opacity:0;pointer-events:none; }
 .roulette-cinematic::before,.roulette-cinematic::after { content:'';position:fixed;left:0;right:0;height:9vh;background:#05030a;z-index:5000;pointer-events:none; }
@@ -193,3 +192,15 @@
 .roulette-intro { animation-duration:7s; }
 @media (prefers-reduced-motion:reduce) { .roulette-intro { animation:none; } }
 .roulette-cinematic .chat,.roulette-cinematic .plist { opacity:0;pointer-events:none; }
+
+.roulette-wager {width:110px;min-width:0;border:2px solid #bd93ef;border-radius:12px;background:#211831;color:#fff;padding:9px;font:600 17px Fredoka,sans-serif;pointer-events:auto}
+.roulette-odds {text-align:center;color:#ffb4b4;font:600 17px Fredoka,sans-serif;margin:5px 0}
+.roulette-odds s {opacity:.65;margin-right:5px}.roulette-discount {color:#a5efc6}
+.roulette-heartbeat {position:fixed;inset:0;pointer-events:none;z-index:2;opacity:0;box-shadow:inset 0 0 60px 15px #ec153c,inset 0 0 12px 3px #ff6682}
+.game-ui.damage-hit::after {content:'';position:fixed;inset:0;z-index:100;pointer-events:none;animation:damage-border .8s ease-out both}
+@keyframes damage-border {0%,20%{box-shadow:inset 0 0 90px 22px #ed1638;opacity:1}100%{box-shadow:inset 0 0 25px 4px #ed1638;opacity:0}}
+.w-roulette-soul {font-size:76px!important;filter:drop-shadow(0 0 18px #d6c0ff)}
+.w-roulette-soul::after {width:42px!important;height:85px!important}
+@media(max-width:600px){.roulette-actions{flex-wrap:wrap;justify-content:center}.roulette-wager{width:90px}.roulette-odds{font-size:14px}}
+
+.w-meteor-reward {padding:5px 12px;border:2px solid #f5d780;border-radius:14px;background:#30203bdd;color:#ffe99d;font:700 22px Fredoka,sans-serif;white-space:nowrap;filter:drop-shadow(0 0 9px #ffc04c)}

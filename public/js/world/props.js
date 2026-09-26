@@ -55,11 +55,11 @@ export function createProps(scene) {
   scene.add(buildFlowers(rnd));
   scene.add(buildRocks(rnd, colliders));
   scene.add(buildFences(colliders));
-  scene.add(buildLighthouse(colliders));
+  const lighthouse=buildLighthouse(colliders, scene);scene.add(lighthouse);
   scene.add(buildSpawnPad());
   scene.add(buildPier());
 
-  return { colliders, trees };
+  return { colliders, trees, updateNight: (night,t) => lighthouse.userData.updateNight(night,t) };
 }
 
 // ---- Vegetation ------------------------------------------------------------------------------
@@ -258,7 +258,7 @@ function buildFences(colliders) {
 
 // ---- Lighthouse -------------------------------------------------------------------------------
 
-function buildLighthouse(colliders) {
+function buildLighthouse(colliders, scene) {
   const group = new THREE.Group();
   group.position.set(LIGHTHOUSE.x, 0, LIGHTHOUSE.z);
   // Face the door toward the island center.
@@ -321,6 +321,12 @@ function buildLighthouse(colliders) {
   lantern.position.y = topY + 1.6;
   group.add(lantern);
 
+  const sweep=new THREE.Group();scene.add(sweep);sweep.position.set(LIGHTHOUSE.x,topY+1.6,LIGHTHOUSE.z);
+  const beam=new THREE.Mesh(new THREE.ConeGeometry(11,100,32,1,true),new THREE.MeshBasicMaterial({color:'#ffeec0',transparent:true,opacity:.045,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
+  beam.rotation.x=-Math.PI/2;beam.position.z=50;sweep.add(beam);
+  const spot=new THREE.SpotLight('#fff1c9',2200,180,.14,.65,1.4);sweep.add(spot);spot.target.position.set(0,-13,100);sweep.add(spot.target);
+  const bulb=new THREE.PointLight('#ffe6a0',0,15,2);bulb.position.copy(sweep.position);scene.add(bulb);
+  group.userData.updateNight=(night,t)=>{sweep.visible=night>.01;sweep.rotation.y=Math.atan2(LIGHTHOUSE.x,LIGHTHOUSE.z)+Math.sin(t*.19)*1.1;spot.intensity=2200*night;beam.material.opacity=.055*night;bulb.intensity=12*night;lantern.material.emissiveIntensity=.1+night*1.3;};
   colliders.push({ x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, r: 5.7 });
   return group;
 }

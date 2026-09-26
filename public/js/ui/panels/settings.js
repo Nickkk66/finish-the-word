@@ -87,13 +87,11 @@ export function gameSettingsPanel({ state, actions }) {
       const mode = button('Choose mode', async () => {
         const id = await choiceDialog('Choose a mode', MODES.filter(v => v.id !== 'custom').map(v => ({ label: v.name, description: v.description, value: v.id })));
         if (id === 'roulette') {
-          if (!await confirmDialog({ title: 'The Last Sip', message: 'Enter for at least 25 game coins. Every turn multiplies the prize by 1.2 and poison chance by 1.25 (up to 95%). Drink or pass within 10 seconds; one pass each until a knockout. Last awake takes the prize. Asteroid fire drains 25 coins per 5 seconds standing inside it.', ok: 'Enter Roulette', tone: 'purple' })) return;
+          if (!await confirmDialog({ title: 'The Last Sip', message: 'Choose your own entry, from 25 game coins. Each doubling above the smallest entry removes 20% of base poison risk, capped at 40% off. Equal bets have equal odds. Every turn multiplies the prize by 1.05 and poison chance by 1.25 (up to 95%). Drink or pass within 10 seconds; one pass each until a knockout. Last awake takes the prize. Asteroid fire drains 25 coins per 5 seconds standing inside it.', ok: 'Enter Roulette', tone: 'purple' })) return;
           actions.closePanels();
         }
         if (id) actions.hostSettings({ mode: id });
       });
-      const entry = segmented([['25 coins', 25], ['100 coins', 100], ['500 coins', 500]], amount => actions.hostSettings({ rouletteEntry: amount }));
-      const entryRow = row('Roulette entry', entry.el);
       const custom = patch => actions.hostSettings({ ...(state.settings.mode === 'roulette' ? {} : { mode: 'custom' }), ...patch });
       const hearts = segmented([['1', 1], ['2', 2], ['3', 3]], (v) => custom({ hearts: v }));
       const turn = segmented([['8s', 8], ['10s', 10], ['15s', 15], ['20s', 20]], (v) => custom({ turnSeconds: v }));
@@ -113,13 +111,11 @@ export function gameSettingsPanel({ state, actions }) {
       const banned = state.bannedPlayers;
       const unban = h('div', { class: 'moderation-list' });
       const tools = h('div', { class: 'host-tools' }, button('Add Bot', () => { custom({}); actions.host('addBot'); }), button('Remove Bot', () => { custom({}); actions.host('removeBot'); }, 'orange'), button('Start now', () => actions.host('start'), 'green'));
-      body.append(notice, entryRow, h('div', { class: 'set-group' }, row('Mode', mode), row('Hearts', hearts.el), row('Turn time', turn.el), row('Pet abilities', pets.el), row('Bots', bot.el), row('Room visibility', publicRoom.el), row('Table', table)), tools,
+      body.append(notice, h('div', { class: 'set-group' }, row('Mode', mode), row('Hearts', hearts.el), row('Turn time', turn.el), row('Pet abilities', pets.el), row('Bots', bot.el), row('Room visibility', publicRoom.el), row('Table', table)), tools,
         h('h3', { class: 'section-title stroke' }, 'Players'), players, unban);
       function update() {
         const allowed = state.hostId === state.you || state.isAdmin;
         const isRoulette = state.settings.mode === 'roulette';
-        entryRow.hidden = !isRoulette;
-        entry.set(state.rouletteEntry || 0, !allowed || !['lobby', 'countdown'].includes(state.match?.phase));
         notice.textContent = allowed ? 'Changes apply to the next match.' : 'Only the host can change these game settings.';
         notice.classList.toggle('restricted', !allowed);
         mode.textContent = `Mode: ${MODES.find(v => v.id === state.settings.mode)?.name || 'Classic'} ▾`; mode.disabled = !allowed;

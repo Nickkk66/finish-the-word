@@ -271,7 +271,7 @@ function drawHowTo(canvas, roulette = false) {
   const lines = roulette ? [
     'Sit down. Place at least 25 coins.',
     'Drink or pass. You have 10 seconds.',
-    'Each turn: prize x1.2, risk x1.25',
+    'Each turn: prize x1.05, risk x1.25',
     'One pass each until a knockout.',
     'Last awake takes the whole prize.',
     'Fire takes 25 coins every 5 seconds!',

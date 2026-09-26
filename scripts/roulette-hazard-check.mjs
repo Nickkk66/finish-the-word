@@ -6,8 +6,9 @@ try {
  await p.send({t:'host',action:'settings',settings:{mode:'roulette'}});await p.wait('window.__ftw.world.debugSnapshot().roulette.active');await p.wait('!window.__ftw.world.debugSnapshot().roulette.cinematic');
  const coins=await p.eval('window.__ftw.profile.coins');
  await p.eval('window.__ftw.world.teleportLocal({x:-18,y:0,z:4})');
- await p.wait(`window.__ftw.profile.coins === ${coins-25}`,9000);await p.shot('damage');
+ await p.wait(`window.__ftw.profile.coins === ${coins-25}`,9000);assert.equal(await p.eval('document.querySelector(".game-ui").classList.contains("damage-hit")'),true);await p.shot('damage');
  await p.eval('window.__ftw.world.teleportLocal({x:0,y:0,z:26})');await delay(5500);
  assert.equal(await p.eval('window.__ftw.profile.coins'),coins-25);
- assert.deepEqual(p.errors,[]);console.log('ok live fire debit, warning and stopping outside crater');
+ assert.equal(await p.eval('getComputedStyle(document.querySelector(".game-ui"),"::after").opacity'),'0');
+ assert.deepEqual(p.errors,[]);console.log('ok live fire debit, damage flash and stopping outside crater');
 }finally{await b.close();}
