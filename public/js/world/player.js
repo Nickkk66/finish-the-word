@@ -12,7 +12,8 @@ import { buildBackBling, disposeObject } from './cosmetics.js';
 import { DECK, groundHeight, seatAngle, seatX, seatYaw, seatZ } from './layout.js';
 import { clamp, damp, lerp, lerpAngle, wrapAngle } from './math.js';
 
-const INTERP_DELAY = 110; // ms behind the newest snapshot
+const INTERP_DELAY = 90; // smooth remote motion just behind the newest snapshot
+const EXTRAP_MS = 150; // briefly keep walking through missing network samples
 const SNAP_DIST = 14; // teleport instead of interpolating
 const SNAPSHOTS = 8;
 const HOP_TIME = 0.4;
@@ -33,10 +34,10 @@ export class PlayerEntity {
     this.stack.setConnected(player.connected !== false);
     this.stack.setBadges(player.level, player.isAdmin);
     this.back = null;
-    this.setBack(player.back);
+    this.setBack(player.back, player.capeColor);
     this.aura = null;
     this.pet = null;
-    this.setPet(player.pet);
+    this.setPet(player.pet, player.petTier);
 
     this.seat = -1;
     this.pos = new THREE.Vector3(); // logical feet position
@@ -49,6 +50,7 @@ export class PlayerEntity {
     this.snaps = Array.from({ length: SNAPSHOTS }, () => ({ t: 0, x: 0, y: 0, z: 0, ry: 0, anim: 'idle' }));
     this.snapCount = 0;
     this.prev = new THREE.Vector3();
+    this.moveTarget = new THREE.Vector3();
     this.status = { turn: false, out: false, hearts: null };
     this.turnRing = null;
 
@@ -68,8 +70,8 @@ export class PlayerEntity {
     if (JSON.stringify(old.look) !== JSON.stringify(player.look)) this.avatar.setLook(player.look);
     if (old.name !== player.name) this.stack.setName(player.name);
     this.stack.setConnected(player.connected !== false);
-    if (old.pet !== player.pet) this.setPet(player.pet);
-    if (old.back !== player.back) this.setBack(player.back);
+    if (old.pet !== player.pet || old.petTier !== player.petTier) this.setPet(player.pet, player.petTier);
+    if (old.back !== player.back || old.capeColor !== player.capeColor) this.setBack(player.back, player.capeColor);
     this.stack.setBadges(player.level, player.isAdmin, this.status.combo);
   }
 
@@ -78,22 +80,22 @@ export class PlayerEntity {
     this.stack.setLocal(on);
   }
 
-  setBack(id) {
+  setBack(id, capeColor) {
     if (this.back) { this.back.removeFromParent(); disposeObject(this.back); this.back = null; }
     if (id && id !== 'none') {
-      this.back = buildBackBling(id);
+      this.back = buildBackBling(id, capeColor);
       this.back.position.set(0, 3, 0);
       this.avatar.rig.add(this.back);
     }
   }
 
-  setPet(petId) {
-    if (this.pet?.petId === petId) return;
+  setPet(petId, tier = 1) {
+    if (this.pet?.petId === petId && this.pet?.tier === tier) return;
     const at = this.pet?.object.position.clone();
     this.pet?.dispose();
     this.pet = null;
     if (petId && PETS_BY_ID[petId]) {
-      this.pet = new PetFollower(petId);
+      this.pet = new PetFollower(petId, tier);
       if (at) {
         this.pet.object.position.copy(at);
         this.pet.placed = true;
@@ -193,8 +195,20 @@ export class PlayerEntity {
       b = s[i + 1];
       k = clamp((rt - a.t) / Math.max(1, b.t - a.t), 0, 1);
     }
-    this.pos.set(lerp(a.x, b.x, k), lerp(a.y, b.y, k), lerp(a.z, b.z, k));
-    this.yaw = lerpAngle(a.ry, b.ry, k);
+    const target = this.moveTarget.set(lerp(a.x, b.x, k), lerp(a.y, b.y, k), lerp(a.z, b.z, k));
+    let targetYaw = lerpAngle(a.ry, b.ry, k);
+    if (rt > s[n - 1].t && n > 1 && s[n - 1].anim === 'walk') {
+      const last = s[n - 1], before = s[n - 2];
+      const elapsed = Math.max(1, last.t - before.t);
+      const lead = Math.min(EXTRAP_MS, rt - last.t) / elapsed;
+      target.x += (last.x - before.x) * lead;
+      target.y += (last.y - before.y) * lead;
+      target.z += (last.z - before.z) * lead;
+      targetYaw = lerpAngle(before.ry, last.ry, 1 + lead);
+    }
+    const smooth = 1 - Math.exp(-18 * dt);
+    this.pos.lerp(target, smooth);
+    this.yaw = lerpAngle(this.yaw, targetYaw, smooth);
     const moved = Math.hypot(this.pos.x - this.prev.x, this.pos.z - this.prev.z) / Math.max(dt, 1e-3);
     this.prev.copy(this.pos);
     this.speed = damp(this.speed, moved, 10, dt);
@@ -219,7 +233,8 @@ export class PlayerEntity {
     }
     if (this.aura) this.aura.visible = st.combo >= 3;
     this.avatar.setOut(st.out);
-    this.avatar.setTyping(st.turn);
+    this.avatar.rouletteSleeping = !!status.roulette && st.out;
+    this.avatar.setTyping(st.turn && !status.roulette);
     this.stack.setOut(st.out);
     this.stack.setHearts(st.out ? null : st.hearts);
     this.stack.setTurn(st.turn);
@@ -251,7 +266,7 @@ export class PlayerEntity {
     root.rotation.y = this.renderYaw;
     this.avatar.setLocomotion(this.seat >= 0 ? 'idle' : this.anim, this.speed);
     this.avatar.update(dt, t);
-    this.back?.userData.update?.(t, dt, this.seat >= 0);
+    this.back?.userData.update?.(t, dt, this.seat >= 0, this.speed);
     if (this.back && !this.back.userData.update) this.back.scale.setScalar(this.seat >= 0 ? .7 : 1);
     if (this.aura?.visible) { this.aura.position.copy(r); this.aura.rotation.y = t * 1.5; this.aura.position.y += Math.sin(t * 4) * .2; }
 

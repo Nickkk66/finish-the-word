@@ -19,6 +19,7 @@ import { createThumbnails } from './thumbnails.js';
 import { BlockPreview } from './block-preview.js';
 import { createObby } from './obby.js';
 import { createAmbient } from './ambient.js';
+import { createRouletteScene } from './roulette.js';
 
 const MOVE_INTERVAL = 100; // ms: local moves are sent at most 10×/s
 const STAND = Object.freeze({ type: 'stand' });
@@ -72,6 +73,7 @@ export async function createWorld({ container, labelLayer }) {
   const preview = new BlockPreview(labels, thumbnails);
   const obby = createObby(scene, labels);
   const ambient = createAmbient(scene);
+  const roulette = createRouletteScene(scene, labels, props.trees);
 
   // ---- Lobby signs + interactables ----
   const shopSigns = CHAIRS.map((chair) => {
@@ -230,7 +232,7 @@ export async function createWorld({ container, labelLayer }) {
       prompt.set(null, null);
       return;
     }
-    let nearBlock = null, nearDistance = 8;
+    let nearBlock = null, nearDistance = 4.5;
     for (const spot of [...lobby.blocks, ...lobby.cardBoxes]) {
       const d = Math.hypot(spot.x - e.pos.x, spot.z - e.pos.z);
       if (d < nearDistance) { nearBlock = spot; nearDistance = d; }
@@ -368,6 +370,7 @@ export async function createWorld({ container, labelLayer }) {
     table.update(time, dt);
     lobby.update(time, dt);
     terrain.update(time);
+    roulette.update(time, dt);
     ambient.update(time, dt, me?.pos);
 
     if (me) focus.copy(me.render);
@@ -538,6 +541,8 @@ export async function createWorld({ container, labelLayer }) {
 
     setLeaderboardTitle(title) { lobby.setLeaderboardTitle(title); },
     setTable(id) { table.setTable(id); },
+    setRoulette(on, match) { terrain.setNight(on); roulette.set(on, match, players); },
+    knockOutRoulette(id) { const e = players.get(id); if (e) e.avatar.rouletteSleeping = true; },
     renderThumbnail: thumbnails.render,
     setPetCollection(ids) { preview.setCollection(ids); },
     beginCardTargeting(ids, onSelect) {
@@ -598,6 +603,7 @@ export async function createWorld({ container, labelLayer }) {
     },
     debugSnapshot() {
       return { zone, firstPerson, localPosition: local()?.pos.toArray() ?? null, checkpoint: { ...checkpoint },
+        roulette: roulette.debug(), night: terrain.nightAmount(),
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
         cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), portalAnimations: [...players.values()].filter(e => e.avatar.portalT >= 0).map(e => e.id),

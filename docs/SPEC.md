@@ -55,9 +55,12 @@ server-enforced turn/target/count limits, and optional accounts synchronize that
   Five attempts/connection and hashed IP/10min. Persist HMAC admin token locally; verify on hello. No code logs.
 - C→S `mod {action:'kick'|'ban'|'unban',id}`; owner/admin. Owner cannot moderate an admin.
   S→C `kicked {reason}`, close 4001 or 4002; no automatic reconnect. Ban ID and hashed IP for room lifetime.
-- C→S `admin {action,...}` where actions are `takeHost`, `forceStart`, `endMatch`, `reset`, `announce` (text),
-  `grant` (id,coins<=100000), `removeLeaderboard` (id), `tag` (on), `table` (table).
-  S→C `announce {text}`, `grant {coins,reason}`. Admin teleport is local. Admin UI lives in Settings.
+- C→S `admin {action,...}` where actions are `takeHost`, `forceStart`, `endMatch`, `reset`, `announce` (text,
+  optional global), `grant` (id,coins<=100000), `coins` (id, operation set/add, signed amount),
+  `sellChair` (id,chairId), `freeMerge` (petId,tier), `removeLeaderboard` (id), `tag` (on), `table` (table).
+  S→C `announce {text}`, `grant {coins,reason}`, `coinAdjust`, `sellChair`, and `petMergeGrant`.
+  Global announcements are stored in the Announcements Durable Object and polled by all rooms, including
+  private rooms. Admin teleport is local. Admin UI lives in Settings.
 - C→S `obby {event:'start'|'finish',ms?}`; grant 50 once/10min/player, minimum legitimate run 30s.
 - New errors include `banned`, `not_allowed`; default rate limits apply to every new message type.
 - `GET /api/leaderboard` → `{top:[{name,wins}]}` (30s edge cache), global human wins only with 2+ humans.
@@ -98,10 +101,13 @@ Cards show all types/counts/descriptions; turn view has hover/tap explanations a
 Guests play immediately with their existing browser save. Account is available from the menu and Settings.
 Register uploads current progress; login loads the account and leaves any room before changing identity.
 Logout restores the device's guest save. Usernames use 3–20 letters/digits/underscores (case insensitive);
-passwords use 12–128 characters. There is no email/password recovery in this version.
+passwords use 5–128 characters. Signup gives a one-time recovery code; a signed-in user can rotate it.
 
 `Accounts` is a SQLite Durable Object added in migration v3. `/api/account/register` and `/login` accept POST
-JSON `{username,password,profile?}` and return `{username,token,revision,profile}`. Bearer-authenticated
+JSON `{username,password,profile?}` and return `{username,token,revision,profile}`; registration additionally
+returns `recoveryCode` once. `/api/account/reset` accepts username, recovery code and new password, rotates the
+code, revokes prior sessions and signs in. Bearer-authenticated `/api/account/recovery` rotates the code.
+Bearer-authenticated
 `GET /me` returns the current save, `PUT /profile` accepts `{revision,profile}`, and `POST /logout` revokes
 that session. Tokens expire after 30 days. Passwords use per-user random salts and PBKDF2-SHA256; only hashes
 of session tokens are stored. Requests have body limits, validation and persistent login/save rate limits.
@@ -352,3 +358,33 @@ Bright, saturated, toy-like Roblox look. Grass `#5fbf3a`/`#53ad31` stud checker;
 `#9a6a3f`. Soft sun shadows. UI: Fredoka 600/700, white text with 3–4px dark stroke (`#1b1b1b`), chunky rounded
 buttons with dark outline + bottom shadow, rarity colors from `RARITIES`. Hearts `#ff3b4a`, timer ring `#2f7dff`,
 mistake circles `#ff4d4d` with white ✕, highlight green `#3ddc54`.
+
+
+## September 25 revisions: Roulette and cosmetics
+
+Roulette (`mode: roulette`) is the custom cursed-cup game, not wheel-and-ball casino roulette.
+It uses `roulette` and `rouletteReveal` phases. Server-only `poisonSip` is a uniform draw 1–6;
+only the result of a committed action is exposed. Turns are 10 seconds, one pass per player per
+bottle; timeout drinks. A poisoned drink eliminates its player, resets the bottle and passes to
+the next survivor. The last survivor wins the whole game-coin pot. Aborted rounds refund entries.
+The next paid round never automatically places another entry. Bots participate only in free rounds.
+
+`host/settings` accepts `rouletteEntry` (0/25/100/500) between matches. Seated players send
+`{t: bet, requestId, amount, balance}` and receive an idempotent `betResult` debit receipt.
+Standing before play or changing entry/mode returns a `stakeRefund`. Active participants send
+`{t: roulette, action: drink|pass, turnId}`. Match end sends `rouletteReward` with a unique match ID.
+Receipts are replayed after reconnect, bounded to 128 per player and 64 departed players within
+the live room; local/cloud profiles remember 512 applied receipts. As with the existing economy,
+balances are client-trusted, and room state is ephemeral across a Worker restart. No real-money stakes.
+
+Custom word settings retain `baseMode` so editing hearts/time doesn't discard the selected word rules.
+Roulette includes the poker table; owned table selection remains available in word modes.
+The night transition uses wall-clock time, with a moon/stars, dim lighting/water, tree owls and a
+purple table glow. The pot is drawn as cash bundles. Cup slides, drinking, and dizzy slumps occur
+on every client from authoritative action events.
+
+Remote snapshots are delayed 90 ms, interpolated and exponentially smoothed, with walking
+extrapolation capped at 150 ms; teleports still snap. Local movement remains motor-controlled.
+`capeColor` is synchronized and saved as a hex color or `rainbow`; the cape sits behind the torso
+and eases out to 70 degrees at walking speed. Pet tiers 2/3 are 9%/18% larger with blue/gold auras,
+without changing abilities. Secret Block thumbnails frame the cube rather than the world glow.

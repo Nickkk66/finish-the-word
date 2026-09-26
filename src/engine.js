@@ -5,9 +5,9 @@
 import {
   PROTOCOL_VERSION, MAX_PLAYERS, SEAT_COUNT, MAX_WORD_LENGTH, BASE_MISTAKES,
   COUNTDOWN_MS, CHOOSE_MS, ROUND_END_MS, MATCH_END_MS,
-  RECONNECT_GRACE_MS, DEFAULT_SETTINGS, REWARDS, FLAIRS, EMOTES, HINT_PRICE, OBBY,
+  RECONNECT_GRACE_MS, DEFAULT_SETTINGS, MODES, REWARDS, FLAIRS, EMOTES, HINT_PRICE, OBBY,
 } from '../public/js/shared/constants.js';
-import { PETS_BY_ID, CARDS_BY_ID, TABLE_IDS } from '../public/js/shared/catalog.js';
+import { PETS_BY_ID, CARDS_BY_ID, TABLE_IDS, CHAIR_IDS } from '../public/js/shared/catalog.js';
 import { rules, TWISTS } from './modes.js';
 import { adminToken, constantTimeEqual } from './auth.js';
 import { filterText } from './blocklist.js';
@@ -15,7 +15,7 @@ import { botProfile, planPick, planTurn } from './bots.js';
 import {
   sanitizeName, randomPlayerName, sanitizeLook, sanitizeChair, sanitizePet, sanitizeChat,
   sanitizeTyping, normalizeWord, displayWord, sanitizeMove, sanitizeSettings,
-  sanitizeBack, sanitizeTable, sanitizeLevel, sanitizeTier, sanitizeCards,
+  sanitizeBack, sanitizeCapeColor, sanitizeTable, sanitizeLevel, sanitizeTier, sanitizeCards,
 } from './sanitize.js';
 
 const HARD_LETTERS = [...'jkqvwxyz'];
@@ -25,7 +25,7 @@ const MAX_MESSAGE_LENGTH = 2048;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const CLOSE_REPLACED = 4000; // the same player id connected from another socket
 const CLOSE_REJECTED = 1008; // after error room_full / bad_hello
-const ACTIVE_PHASES = new Set(['choosing', 'typing', 'roundEnd']);
+const ACTIVE_PHASES = new Set(['choosing', 'typing', 'roundEnd', 'roulette', 'rouletteReveal']);
 
 // Token buckets per player and message kind: [tokens refilled per second, burst].
 const RATE_LIMITS = {
@@ -35,9 +35,10 @@ const RATE_LIMITS = {
   chat: [1000 / 600, 3],
   seat: [4, 6],
   loadout: [2, 5],
+  bet: [2, 4], roulette: [3, 4],
   host: [5, 10],
   ping: [2, 4],
-  emote: [1, 1], hint: [2, 3], card: [2, 3], mod: [2, 4], admin: [2, 4], obby: [1, 2], pick: [3, 3],
+  emote: [1, 1], hint: [2, 3], card: [2, 3], mod: [2, 4], admin: [5, 12], obby: [1, 2], pick: [3, 3],
 };
 
 const pickRandom = (list, random) => list[Math.floor(random() * list.length)];
@@ -80,7 +81,7 @@ const clearTurn = (m) =>
   Object.assign(m, { chooserId: null, options: null, typerId: null, prefix: null, mistakes: 0, maxMistakes: BASE_MISTAKES });
 
 export class GameEngine {
-  constructor({ code, dict, botDict, botDicts = {}, now, setTimeout, clearTimeout, random, adminCode = '', crypto = globalThis.crypto, onWin = () => {}, onListing = () => {}, onRemoveLeaderboard = () => {}, onError = (err) => console.error('[engine]', err) }) {
+  constructor({ code, dict, botDict, botDicts = {}, now, setTimeout, clearTimeout, random, adminCode = '', crypto = globalThis.crypto, onWin = () => {}, onListing = () => {}, onRemoveLeaderboard = () => {}, onGlobalAnnouncement = () => {}, onError = (err) => console.error('[engine]', err) }) {
     this.code = code;
     this.dict = dict;
     this.botDict = botDict;
@@ -90,9 +91,11 @@ export class GameEngine {
     this.onWin = onWin;
     this.onListing = onListing;
     this.onRemoveLeaderboard = onRemoveLeaderboard;
+    this.onGlobalAnnouncement = onGlobalAnnouncement;
     this.unlockIps = new Map();
     this.bans = new Map();
     this.obbyRewards = new Map();
+    this.rouletteReceipts = new Map();
     this.turnSerial = 0;
     this.matchSerial = 0;
     this.now = now;
@@ -116,6 +119,8 @@ export class GameEngine {
     this.movesTimer = null;
     this.botTimer = null;
     this.tableOverride = null;
+    this.pendingPresetBotReset = false;
+    this.rouletteEntry = 0;
   }
 
   // ---- Transport entry points (never throw) -------------------------------------------
@@ -187,7 +192,7 @@ export class GameEngine {
       look: sanitizeLook(msg.look),
       chair: sanitizeChair(msg.chair),
       pet: sanitizePet(msg.pet),
-      back: sanitizeBack(msg.back), table: sanitizeTable(msg.table), level: sanitizeLevel(msg.level), petTier: sanitizeTier(msg.petTier),
+      back: sanitizeBack(msg.back), capeColor: sanitizeCapeColor(msg.capeColor), table: sanitizeTable(msg.table), level: sanitizeLevel(msg.level), petTier: sanitizeTier(msg.petTier),
     };
     let player = this.players.get(id);
     const isNew = !player;
@@ -200,6 +205,8 @@ export class GameEngine {
     } else {
       if (this.players.size >= MAX_PLAYERS && !this.evictBot()) return this.reject(conn, 'room_full', 'This room is full.');
       player = this.addPlayer({ id, isBot: false, conn, ...loadout });
+      player.requests = new Map(this.rouletteReceipts.get(id) || []);
+      this.rouletteReceipts.delete(id);
       player.cards = sanitizeCards(msg.cards);
       player.isAdmin = verified;
       if (this.players.size === 1 && msg.public === true) this.settings.public = true;
@@ -215,8 +222,10 @@ export class GameEngine {
       table: this.roomTable(), public: this.settings.public, isAdmin: player.isAdmin,
       players: [...this.players.values()].map((p) => this.view(p)),
       match: this.matchView(),
+      rouletteEntry: this.rouletteEntry,
     });
     this.broadcast({ t: 'player', p: this.view(player) }, id);
+    for (const receipt of player.requests.values()) if (['betResult', 'stakeRefund', 'rouletteReward'].includes(receipt.t)) this.send(player, receipt);
     if (isNew) this.broadcast(systemChat(`${player.name} joined the game`));
     this.reportListing();
   }
@@ -235,10 +244,10 @@ export class GameEngine {
     }
   }
 
-  addPlayer({ id, isBot, conn, name, look, chair, pet, back = 'none', table = 'classic', level = 1, petTier = 1 }) {
+  addPlayer({ id, isBot, conn, name, look, chair, pet, back = 'none', capeColor = null, table = 'classic', level = 1, petTier = 1 }) {
     const player = {
       id, name, isBot, look, chair, pet,
-      back, table, level, petTier, isAdmin: false, adminTag: false, ipHash: conn?.ipHash,
+      back, capeColor, table, level, petTier, rouletteBet: null, isAdmin: false, adminTag: false, ipHash: conn?.ipHash,
       cards: {}, requests: new Map(), obbyStartAt: null,
       seat: -1, wins: 0, pos: null,
       conn, connected: true, graceTimer: null,
@@ -260,8 +269,14 @@ export class GameEngine {
   removePlayer(id) {
     const player = this.players.get(id);
     if (!player) return;
+    this.refundStake(player);
     this.cancel(player.graceTimer);
     this.fail(id, 'left'); // knocked out if still playing
+    if (!player.isBot) {
+      const receipts = [...player.requests].filter(([,value]) => ['betResult', 'stakeRefund', 'rouletteReward'].includes(value.t));
+      if (receipts.length) this.rouletteReceipts.set(id, receipts.slice(-100));
+      if (this.rouletteReceipts.size > 64) this.rouletteReceipts.delete(this.rouletteReceipts.keys().next().value);
+    }
     this.players.delete(id);
     this.reportListing();
     this.broadcast({ t: 'leave', id });
@@ -307,6 +322,8 @@ export class GameEngine {
       case 'mod': return this.onMod(player, msg);
       case 'admin': return this.onAdmin(player, msg);
       case 'obby': return this.onObby(player, msg);
+      case 'bet': return this.onBet(player, msg);
+      case 'roulette': return this.onRoulette(player, msg);
       default: // unknown types (and repeated hellos) are ignored
     }
   }
@@ -355,6 +372,7 @@ export class GameEngine {
   }
 
   onStand(player) {
+    this.refundStake(player);
     if (player.seat < 0 || !this.allow(player, 'seat')) return;
     this.fail(player.id, 'forfeit'); // standing up mid-match knocks you out
     player.seat = -1;
@@ -397,6 +415,7 @@ export class GameEngine {
     if ('pet' in msg) player.pet = sanitizePet(msg.pet);
     if ('petTier' in msg) player.petTier = sanitizeTier(msg.petTier);
     if ('back' in msg) player.back = sanitizeBack(msg.back);
+    if ('capeColor' in msg) player.capeColor = sanitizeCapeColor(msg.capeColor);
     if ('table' in msg) { player.table = sanitizeTable(msg.table); if (player.id === this.hostId) this.tableOverride = null; }
     if ('level' in msg) player.level = sanitizeLevel(msg.level);
     if ('cards' in msg && !ACTIVE_PHASES.has(this.match.phase)) player.cards = sanitizeCards(msg.cards);
@@ -429,11 +448,15 @@ export class GameEngine {
     if (typeof msg.requestId !== 'string' || !ID_RE.test(msg.requestId)) return;
     const key = `${kind}:${msg.requestId}`;
     if (player.requests.has(key)) return this.send(player, player.requests.get(key));
-    if (!this.allow(player, kind === 'hint' ? 'hint' : 'card')) return;
+    if (!this.allow(player, kind === 'hint' ? 'hint' : kind === 'bet' ? 'bet' : 'card')) return;
     const result = run();
-    if (player.requests.size >= 128) player.requests.delete(player.requests.keys().next().value);
-    player.requests.set(key, result);
+    this.remember(player, key, result);
     this.send(player, result);
+  }
+
+  remember(player, key, result) {
+    player.requests.set(key, result);
+    while (player.requests.size > 128) player.requests.delete(player.requests.keys().next().value);
   }
 
   onHint(player, msg) {
@@ -531,13 +554,39 @@ export class GameEngine {
       case 'forceStart': this.hostStart(); break;
       case 'endMatch': if (ACTIVE_PHASES.has(this.match.phase)) this.endMatch(null); break;
       case 'reset':
+        if (this.match.mode === 'roulette' && ACTIVE_PHASES.has(this.match.phase)) this.endRoulette(null);
+        for (const player of this.players.values()) this.refundStake(player);
         this.cancel(this.phaseTimer); this.stopBot();
         for (const p of this.players.values()) { p.seat = -1; this.broadcastPlayer(p); }
         this.settings = { ...DEFAULT_SETTINGS }; this.tableOverride = null;
         this.enterLobby(); this.broadcastRoom(); this.broadcastMatch(); this.reportListing(); break;
       case 'announce': {
         const text = sanitizeChat(msg.text);
-        if (text) this.broadcast({ t: 'announce', text });
+        if (text) {
+          if (msg.global === true) this.onGlobalAnnouncement({ text, name: player.name });
+          else this.broadcast({ t: 'announce', text });
+        }
+        break;
+      }
+      case 'coins': {
+        const target = this.players.get(msg.id);
+        if (target && !target.isBot && ['set', 'add'].includes(msg.operation) && Number.isSafeInteger(msg.amount)
+          && msg.amount >= (msg.operation === 'set' ? 0 : -1000000000) && msg.amount <= 1000000000) {
+          this.send(target, { t: 'coinAdjust', operation: msg.operation, amount: msg.amount, receipt: globalThis.crypto.randomUUID() });
+        }
+        break;
+      }
+      case 'sellChair': {
+        const target = this.players.get(msg.id);
+        if (target && !target.isBot && typeof msg.chairId === 'string' && CHAIR_IDS.has(msg.chairId) && msg.chairId !== 'wooden') {
+          this.send(target, { t: 'sellChair', chairId: msg.chairId, receipt: globalThis.crypto.randomUUID() });
+        }
+        break;
+      }
+      case 'freeMerge': {
+        if (typeof msg.petId === 'string' && Object.hasOwn(PETS_BY_ID, msg.petId) && Number.isInteger(msg.tier) && msg.tier >= 1 && msg.tier < 3) {
+          this.send(player, { t: 'petMergeGrant', petId: msg.petId, tier: msg.tier + 1, receipt: globalThis.crypto.randomUUID() });
+        }
         break;
       }
       case 'grant': {
@@ -567,14 +616,14 @@ export class GameEngine {
     this.broadcast(systemChat(`${player.name} beat the obby in ${Math.round(elapsed / 1000)}s!`));
   }
 
-  roomTable() { return this.tableOverride ?? this.players.get(this.hostId)?.table ?? 'classic'; }
+  roomTable() { return this.settings.mode === 'roulette' || (this.match.mode === 'roulette' && ACTIVE_PHASES.has(this.match.phase)) ? 'poker' : this.tableOverride ?? this.players.get(this.hostId)?.table ?? 'classic'; }
   reportListing() { this.onListing({ code: this.code, humans: [...this.players.values()].filter(p => !p.isBot && p.connected).length, public: this.settings.public }); }
 
   // ---- Host actions -------------------------------------------------------------------
 
   hostStart() {
     const { phase } = this.match;
-    if ((phase === 'lobby' || phase === 'countdown') && this.seated().length >= 2) this.startMatch();
+    if ((phase === 'lobby' || phase === 'countdown') && this.readyPlayers().length >= 2) this.startMatch();
   }
 
   addBot(host) {
@@ -598,9 +647,26 @@ export class GameEngine {
 
   // Settings apply from the next match.
   changeSettings(input) {
+    if (Number.isSafeInteger(input?.rouletteEntry) && [0, 25, 100, 500].includes(input.rouletteEntry) && !ACTIVE_PHASES.has(this.match.phase)) {
+      for (const player of this.players.values()) this.refundStake(player);
+      this.rouletteEntry = input.rouletteEntry;
+      this.broadcastRoom();
+    }
     const next = sanitizeSettings(input, this.settings);
-    if (Object.keys(next).every((k) => next[k] === this.settings[k])) return;
+    if (next.mode !== this.settings.mode) for (const player of this.players.values()) this.refundStake(player);
+    const preset = input?.mode && input.mode !== 'custom' && MODES.some(mode => mode.id === input.mode);
+    if (preset) {
+      this.tableOverride = 'classic';
+      if (ACTIVE_PHASES.has(this.match.phase) || this.match.phase === 'ended') this.pendingPresetBotReset = true;
+      else for (const bot of [...this.players.values()].filter(player => player.isBot)) this.removePlayer(bot.id);
+    }
+    if (Object.keys(next).every((k) => next[k] === this.settings[k])) {
+      this.syncCountdown();
+      if (preset) this.broadcastRoom();
+      return;
+    }
     this.settings = next;
+    this.syncCountdown();
     this.broadcastRoom();
     this.reportListing();
   }
@@ -619,14 +685,22 @@ export class GameEngine {
 
   // Outside matches the phase just follows the number of seated players.
   enterLobby() {
+    if (this.pendingPresetBotReset) {
+      this.pendingPresetBotReset = false;
+      for (const bot of [...this.players.values()].filter(player => player.isBot)) {
+        this.players.delete(bot.id);
+        this.broadcast({ t: 'leave', id: bot.id });
+      }
+      this.reportListing();
+    }
     this.match = newMatch();
-    if (this.seated().length >= 2) this.setPhase('countdown', COUNTDOWN_MS, () => this.startMatch());
+    if (this.readyPlayers().length >= 2) this.setPhase('countdown', COUNTDOWN_MS, () => this.startMatch());
     else this.setPhase('lobby');
   }
 
   syncCountdown() {
     const { phase } = this.match;
-    const ready = this.seated().length >= 2;
+    const ready = this.readyPlayers().length >= 2;
     if ((phase === 'lobby' && ready) || (phase === 'countdown' && !ready)) {
       this.enterLobby();
       this.broadcastMatch();
@@ -634,7 +708,7 @@ export class GameEngine {
   }
 
   startMatch() {
-    const seated = this.seated();
+    const seated = this.readyPlayers();
     if (seated.length < 2) return;
     const settings = { ...this.settings };
     this.match = newMatch();
@@ -657,6 +731,7 @@ export class GameEngine {
         ability, // locked in for the whole match
       };
     });
+    if (settings.mode === 'roulette') return this.startRoulette(seated);
     this.startRound(pickRandom(this.match.participants, this.random).id);
   }
 
@@ -664,8 +739,8 @@ export class GameEngine {
     const m = this.match;
     clearTurn(m);
     m.round++;
-    m.twist = m.mode === 'chaos' ? pickRandom(TWISTS, this.random) : null;
-    m.minLength = rules(m.mode, m).minLength(m.wordCount);
+    m.twist = (m.settings.baseMode || m.mode) === 'chaos' ? pickRandom(TWISTS, this.random) : null;
+    m.minLength = rules(m.settings.baseMode || m.mode, m).minLength(m.wordCount);
     m.chooserId = chooserId;
     m.options = this.letterOptions();
     this.setPhase('choosing', CHOOSE_MS, () => this.pick(pickRandom(m.options, this.random)));
@@ -709,7 +784,7 @@ export class GameEngine {
     const participant = this.participant(typerId);
     if (!participant) return;
     const { ability } = participant;
-    const modeRules = rules(m.mode, m);
+    const modeRules = rules(m.settings.baseMode || m.mode, m);
     const bonus = (type) => (ability?.type === type ? ability.value : 0);
     const shrunk = modeRules.turnMs(m.wordCount);
     let turnMs = Math.max(modeRules.floor, shrunk + bonus('time') * 1000 - sabotageMs - participant.pending.time * 1000);
@@ -801,7 +876,7 @@ export class GameEngine {
   nextPrefix(word) {
     const m = this.match;
     const two = word.slice(-2);
-    const modeRules = rules(m.mode, m);
+    const modeRules = rules(m.settings.baseMode || m.mode, m);
     if (modeRules.randomLetter) {
       m.prefixIndex = Math.floor(this.random() * word.length);
       return word[m.prefixIndex];
@@ -815,6 +890,7 @@ export class GameEngine {
     const m = this.match;
     const participant = this.participant(id);
     if (!ACTIVE_PHASES.has(m.phase) || !participant?.alive) return;
+    if (m.mode === 'roulette') return this.rouletteOut(id);
     const endsRound = id === m.typerId || id === m.chooserId; // the round cannot go on without them
 
     let shielded = false;
@@ -848,6 +924,7 @@ export class GameEngine {
   endMatch(winnerId) {
     const m = this.match;
     if (m.paid || !ACTIVE_PHASES.has(m.phase)) return;
+    if (m.mode === 'roulette') return this.endRoulette(winnerId);
     m.paid = true;
     const durationMs = Math.max(0, this.now() - m.startedAt);
     const contributors = m.participants.filter(p => !p.isBot && p.words > 0).length;
@@ -887,6 +964,119 @@ export class GameEngine {
     this.broadcastMatch();
   }
 
+  // ---- Cursed cup: server-owned hidden draw, turns, stakes and payout -----------------
+
+  onBet(player, msg) {
+    this.request(player, 'bet', msg, () => {
+      const result = { t: 'betResult', requestId: msg.requestId, ok: false };
+      if (this.settings.mode !== 'roulette' || !['lobby', 'countdown'].includes(this.match.phase) || player.seat < 0) return { ...result, error: 'Sit at the table between matches first.' };
+      if (msg.amount !== this.rouletteEntry || !Number.isSafeInteger(msg.balance) || msg.balance < this.rouletteEntry) return { ...result, error: 'Your balance or the entry amount changed.' };
+      if (player.rouletteBet) return { ...result, error: 'You already entered this match.' };
+      const receipt = `${this.code}:${player.id}:${this.now()}:${++this.matchSerial}`;
+      player.rouletteBet = { amount: this.rouletteEntry, receipt };
+      this.broadcastPlayer(player);
+      this.syncCountdown();
+      return { ...result, ok: true, amount: this.rouletteEntry, receipt };
+    });
+  }
+
+  refundStake(player) {
+    if (!player?.rouletteBet) return;
+    const { amount, receipt } = player.rouletteBet;
+    player.rouletteBet = null;
+    const msg = { t: 'stakeRefund', coins: amount, receipt: `refund:${receipt}` };
+    this.remember(player, msg.receipt, msg);
+    this.send(player, msg);
+    this.broadcastPlayer(player);
+  }
+
+  startRoulette(seated) {
+    const m = this.match;
+    m.roulette = { pot: 0, remaining: 6, passed: new Set(), event: null, serial: 0 };
+    m.stakes = {};
+    for (const player of seated) {
+      const amount = player.rouletteBet?.amount || 0;
+      m.stakes[player.id] = amount;
+      m.roulette.pot += amount;
+      player.rouletteBet = null;
+      this.broadcastPlayer(player);
+    }
+    for (const p of m.participants) { p.hearts = p.maxHearts = 1; p.shield = false; p.ability = null; }
+    this.resetBottle();
+    this.rouletteTurn(pickRandom(m.participants, this.random).id);
+  }
+
+  resetBottle() {
+    this.match.poisonSip = 1 + Math.floor(this.random() * 6);
+    this.match.sips = 0;
+    this.match.roulette.remaining = 6;
+    this.match.roulette.passed.clear();
+    this.match.round++;
+  }
+
+  rouletteTurn(id) {
+    const m = this.match;
+    if (!this.participant(id)?.alive) id = m.participants.find(p => p.alive)?.id;
+    m.typerId = id;
+    m.turnId = ++this.turnSerial;
+    this.setPhase('roulette', 10000, () => this.rouletteAction(id, 'drink'));
+    this.broadcastMatch();
+    if (this.players.get(id)?.isBot) this.runBot([{ wait: 1500 + this.random() * 2000, run: () => this.rouletteAction(id, this.random() < .35 && !m.roulette.passed.has(id) ? 'pass' : 'drink') }]);
+  }
+
+  onRoulette(player, msg) {
+    if (!this.allow(player, 'roulette') || this.match.phase !== 'roulette' || this.match.typerId !== player.id || msg.turnId !== this.match.turnId) return;
+    if (!['drink', 'pass'].includes(msg.action)) return;
+    this.rouletteAction(player.id, msg.action);
+  }
+
+  rouletteAction(id, action) {
+    const m = this.match;
+    if (m.phase !== 'roulette' || m.typerId !== id || !this.participant(id)?.alive) return;
+    const r = m.roulette;
+    if (action === 'pass' && r.passed.has(id)) return;
+    const next = this.nextAlive(id);
+    if (action === 'pass') r.passed.add(id);
+    const poisoned = action === 'drink' && ++m.sips === m.poisonSip;
+    if (action === 'drink') r.remaining = 6 - m.sips;
+    r.event = { id, action, poisoned, serial: ++r.serial, next };
+    this.setPhase('rouletteReveal', poisoned ? 2600 : 1700, () => {
+      if (poisoned) this.rouletteOut(id);
+      else this.rouletteTurn(next);
+    });
+    this.broadcastMatch();
+  }
+
+  rouletteOut(id) {
+    const m = this.match, part = this.participant(id);
+    if (!part?.alive) return;
+    part.alive = false; part.hearts = 0;
+    this.broadcast({ t: 'rouletteOut', id });
+    const alive = m.participants.filter(p => p.alive);
+    if (alive.length <= 1) return this.endRoulette(alive[0]?.id || null);
+    this.resetBottle();
+    this.rouletteTurn(this.nextAlive(id));
+  }
+
+  endRoulette(winnerId) {
+    const m = this.match;
+    if (m.paid) return;
+    m.paid = true; m.winnerId = winnerId;
+    this.setPhase('ended', MATCH_END_MS, () => { this.enterLobby(); this.broadcastRoom(); this.broadcastMatch(); });
+    this.broadcast({ t: 'win', id: winnerId, flairs: [] });
+    for (const part of m.participants) {
+      const player = this.players.get(part.id);
+      if (!player || player.isBot) continue;
+      const coins = winnerId ? (part.id === winnerId ? m.roulette.pot : 0) : m.stakes[part.id] || 0;
+      const receipt = { t: 'rouletteReward', matchId: m.matchId, coins, won: part.id === winnerId, words: 0, bestWpm: 0, bestCombo: 0, bonuses: [{ label: winnerId ? 'Cursed cup pool' : 'Entry returned', coins }] };
+      this.remember(player, `roulette:${m.matchId}`, receipt);
+      this.send(player, receipt);
+    }
+    const winner = this.players.get(winnerId);
+    if (winner) { winner.wins++; this.broadcastPlayer(winner); }
+    this.broadcastMatch();
+  }
+
   // ---- Turn order & seats -------------------------------------------------------------
 
   participant(id) {
@@ -921,6 +1111,9 @@ export class GameEngine {
 
   seated() {
     return [...this.players.values()].filter((p) => p.seat >= 0).sort((a, b) => a.seat - b.seat);
+  }
+  readyPlayers() {
+    return this.seated().filter(p => this.settings.mode !== 'roulette' || this.rouletteEntry === 0 || p.rouletteBet?.amount === this.rouletteEntry);
   }
 
   seatOwner(seat) {
@@ -962,6 +1155,8 @@ export class GameEngine {
       id: p.id, name: p.name, isBot: p.isBot, isHost: p.id === this.hostId, connected: p.connected,
       look: p.look, chair: p.chair, pet: p.pet, seat: p.seat, wins: p.wins, pos: p.pos,
       back: p.back, level: p.level, petTier: p.petTier,
+      ...(p.capeColor ? { capeColor: p.capeColor } : {}),
+      ...(p.rouletteBet ? { rouletteBet: p.rouletteBet.amount } : {}),
       ...(p.isAdmin && p.adminTag ? { isAdmin: true } : {}),
     };
   }
@@ -984,6 +1179,7 @@ export class GameEngine {
       wordCount: m.wordCount,
       round: m.round,
       winnerId: m.winnerId,
+      ...(m.roulette ? { roulette: { ...m.roulette, passed: [...m.roulette.passed] } } : {}),
     };
   }
 
@@ -1012,6 +1208,6 @@ export class GameEngine {
   }
 
   broadcastRoom() {
-    this.broadcast({ t: 'room', hostId: this.hostId, settings: { ...this.settings }, table: this.roomTable(), public: this.settings.public });
+    this.broadcast({ t: 'room', hostId: this.hostId, settings: { ...this.settings }, table: this.roomTable(), public: this.settings.public, ...(this.settings.mode === 'roulette' ? { rouletteEntry: this.rouletteEntry } : {}) });
   }
 }

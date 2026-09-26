@@ -1,11 +1,39 @@
 /* v2 collections, room controls, turn purchases and compact profile. */
+.roulette-launch { display:flex; flex-direction:column; align-items:center; gap:7px; width:100%; padding:19px; margin:10px 0 18px; border:4px solid #241632; border-radius:20px; background:radial-gradient(ellipse at top,#794097,#291837 75%); color:#f5d999; box-shadow:0 6px #191222,inset 0 1px #e4b86c; cursor:pointer; font:700 29px var(--font); letter-spacing:.12em; }
+.roulette-launch small { font:500 14px var(--font); letter-spacing:.03em; color:#d7bfde; }
+.roulette-hud { position:absolute; inset:0; pointer-events:none; color:#f7e5c2; }
+.roulette-hud[hidden] { display:none; }
+.roulette-heading { position:absolute; left:50%; top:32px; transform:translateX(-50%); text-align:center; text-shadow:0 2px 10px #070010; }
+.roulette-title { font:700 clamp(21px,3vw,36px) var(--font); letter-spacing:.12em; }
+.roulette-pot { font:600 15px var(--font); color:#e8c36e; margin-top:5px; }
+.roulette-bottom { position:absolute; left:50%; bottom:calc(30px + var(--sab)); transform:translateX(-50%); width:min(610px,calc(100vw - 32px)); padding:16px; border:2px solid #baa06f; border-radius:20px; background:linear-gradient(120deg,#24152fed,#111825ed); text-align:center; box-shadow:0 5px 30px #090414; pointer-events:auto; }
+.roulette-note { font:600 17px/1.4 var(--font); margin-bottom:12px; }
+.roulette-actions { display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; }
+.roulette-clock { font:700 27px var(--font); color:#caa8ff; min-width:68px; }
+.roulette-actions [hidden] { display:none; }
+.roulette-intro { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; background:radial-gradient(ellipse,#10061e88,transparent 70%); color:#f2daaa; font:700 clamp(24px,5vw,62px) var(--font); text-align:center; letter-spacing:.08em; text-shadow:0 0 25px #b789df; animation:ritual-intro 4s both; z-index:10; }
+@keyframes ritual-intro { 0%,100% { opacity:0; transform:scale(.95); } 25%,70% { opacity:1; transform:scale(1); } }
+@media (max-width:720px) { .roulette-heading { top:90px; width:100%; } .roulette-bottom { bottom:calc(105px + var(--sab)); padding:10px; } .roulette-note { font-size:14px; } .roulette-actions .btn { font-size:15px; padding:10px 12px; } }
 .model-thumb { display:block; object-fit:contain; width:100%; height:100%; max-width:160px; max-height:160px; }
 .block-card > .model-thumb { flex:none; width:88px; height:100px; }
+.block-card.secret-block > .model-thumb { width:108px; height:112px; max-width:none; max-height:none; margin:-6px -10px -6px -4px; }
 .model-thumb.silhouette { filter:brightness(0); }
 .model-odds .odd { flex-direction:column; padding:3px 5px; }
 .model-odds .model-thumb { width:34px; height:34px; }
 .card-art { width:86px; height:108px; flex:none; }
 .card-reveal .card-art { width:160px; height:200px; margin:20px auto; display:block; animation:card-flip .7s ease both; }
+.card-reveal-front { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; animation:card-reveal-in .38s cubic-bezier(.18,1.3,.3,1) both; }
+.card-reveal-front[hidden] { display:none; }
+.card-reveal-front .card-art { margin:4px auto; }
+.card-mystery { display:grid; place-items:center; width:162px; height:210px; margin:20px auto; border:7px solid #24254c; border-radius:20px; background:radial-gradient(circle at 30% 25%,#fff9 0 5%,transparent 30%),linear-gradient(145deg,#7b58ff,#d854e6 54%,#3a8cff); box-shadow:0 0 20px #a477ff,0 0 48px #d554ed,0 8px #24254c; color:white; font:900 100px/1 var(--font); -webkit-text-stroke:5px #24254c; animation:mystery-spin 1.05s ease-in-out both; }
+.card-rarity { display:block; padding:5px 18px; border:3px solid #26314c; border-radius:30px; color:#142338; background:#d9edff; font:800 20px/1.1 var(--font); text-transform:uppercase; letter-spacing:.06em; box-shadow:0 3px #26314c; }
+.card-rarity.rarity-common { background:#cfd4de; }
+.card-rarity.rarity-uncommon { background:#8fe59b; }
+.card-rarity.rarity-rare { background:#65c9ff; }
+.card-rarity.rarity-epic { background:#c6a2ff; }
+.card-rarity.rarity-legendary { background:#ffc850; }
+@keyframes mystery-spin { 0% { transform:rotateY(0) scale(.65); opacity:0; } 22% { transform:rotateY(90deg) scale(1); opacity:1; } 72% { transform:rotateY(540deg) scale(1.08); } 100% { transform:rotateY(720deg) scale(.9); opacity:1; } }
+@keyframes card-reveal-in { from { opacity:0; transform:rotateY(-90deg) scale(.7); } to { opacity:1; transform:rotateY(0) scale(1); } }
 @keyframes card-flip { from { transform:rotateY(90deg) scale(.7); } }
 .tier-2 .item-art { box-shadow:0 0 12px #6edfff; }
 .tier-3 .item-art { box-shadow:0 0 18px #ffbf3d; }
@@ -18,16 +46,16 @@
 .profile-columns { display:grid; grid-template-columns:260px minmax(0,1fr); gap:20px; height:100%; min-height:0; }
 .panel-profile { width:min(850px,100%); height:min(630px,calc(100dvh - 60px)); }
 .panel-profile .panel-body { overflow:hidden; }
-.profile-summary { display:flex; flex-direction:column; gap:9px; min-height:0; }
+.profile-summary { display:flex; flex-direction:column; gap:6px; min-height:0; }
 .profile-summary { padding:12px; border:3px solid #7795d5; border-radius:26px; background:radial-gradient(circle at 12% 10%,#ffffff 0 7px,transparent 8px),radial-gradient(circle at 88% 28%,#ffffffa8 0 15px,transparent 16px),linear-gradient(145deg,#d4eeff,#e8ddff); box-shadow:inset 0 4px #ffffffb0,0 5px #657fb438; }
 .profile-summary .avatar-stage { border-radius:42% 42% 35% 35%; background:radial-gradient(ellipse at center,#fff 0 35%,#9dcafa88 70%); }
 .profile-summary .stat { border-radius:14px; background:#ffffffd9; border-color:#b3bfdf; }
 .profile-summary .field { border-radius:18px; }
 .profile-summary .level-progress { border-radius:16px; background:#ffffffa8; padding:7px 10px; }
-.profile-summary .avatar-stage { width:120px; height:144px; min-height:0; margin:0 auto; flex:none; }
+.profile-summary .avatar-stage { width:108px; height:118px; min-height:0; margin:0 auto; flex:none; }
 .profile-summary .avatar-stage .avatar-preview { max-height:100%; }
 .profile-summary .stats { gap:6px; }
-.profile-summary .stat { display:flex; flex-direction:column; align-items:flex-start; padding:5px 8px; border-width:2px; gap:2px; }
+.profile-summary .stat { display:flex; flex-direction:column; align-items:flex-start; padding:3px 7px; border-width:2px; gap:1px; }
 .profile-summary .stat-value { max-width:100%; font-size:17px; }
 .level-progress { display:flex; flex-direction:column; gap:4px; font:600 14px var(--font); }
 .level-progress progress { width:100%; height:12px; accent-color:#775ad8; }
@@ -44,6 +72,10 @@
 .profile-item { display:flex; flex-direction:column; align-items:center; border:2px solid #718098; border-radius:12px; background:#fff; padding:8px; font:600 14px var(--font); cursor:pointer; }
 .profile-item.equipped { background:#dff6dd; border-color:#3b9d44; }
 .profile-item .model-thumb { width:80px; height:80px; }
+.cape-controls { display:grid; gap:8px; margin-bottom:12px; padding:12px; border:2px solid #8ba4d7; border-radius:16px; background:#e6f0ff; font:700 16px var(--font); }
+.cape-colors { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.cape-swatch { width:34px; height:34px; border:3px solid #263449; border-radius:50%; box-shadow:0 3px #263449; cursor:pointer; }
+.cape-swatch[aria-pressed=true] { outline:3px solid #fff; box-shadow:0 0 0 5px #4a80d8,0 3px #263449; }
 .public-room-list { display:grid; gap:5px; }
 .public-room { display:flex; justify-content:space-between; border:1px solid #aabdd1; background:#eaf2fb; border-radius:9px; padding:8px 10px; color:#26394e; font:600 13px var(--font); cursor:pointer; }
 .play-card > .btn + .btn { margin-top:9px; }
@@ -66,7 +98,7 @@
 .card-turn-tray .collection-card { min-height:0; padding:14px 8px; gap:9px; position:relative; }
 .card-turn-tray .item-name { font-size:18px; }
 .card-turn-tray .card-art { width:70px; height:90px; }
-.card-turn-tray .item-desc { position:absolute; z-index:2; left:-3px; right:-3px; top:115px; margin:0; padding:12px; background:#fff; color:#26344f; border:3px solid #6b8efa; border-radius:16px; box-shadow:0 4px 12px #17294e44; font-size:14px; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s; }
+.card-turn-tray .item-desc { position:absolute; z-index:2; left:-3px; right:-3px; bottom:calc(100% - 6px); margin:0; padding:10px; background:#fff; color:#26344f; border:3px solid #6b8efa; border-radius:16px; box-shadow:0 4px 12px #17294e44; font-size:14px; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s; }
 .card-turn-tray .collection-card:hover .item-desc,.card-turn-tray .collection-card:focus-within .item-desc,.card-turn-tray .collection-card.selected .item-desc { opacity:1; visibility:visible; }
 .card-turn-tray .pill { display:none; }
 .card-turn-tray .btn { font-size:15px; padding:8px; }
@@ -76,7 +108,12 @@
 .account-status { padding:14px; border:2px solid #9bb8e3; border-radius:18px; color:#253b62; background:#e5f0ff; font:600 16px/1.4 var(--font); }
 .account-status.error { color:#852d35; border-color:#df9ba1; background:#fff0f0; }
 .account-help { margin:0; color:#4a5a71; font:500 14px/1.5 var(--font); }
+.recovery-box { display:grid; gap:9px; padding:14px; margin:12px 0; border:3px solid #6255ad; border-radius:18px; background:#f3eaff; color:#29324d; font:600 15px/1.4 var(--font); }
+.recovery-box[hidden] { display:none; }
+.recovery-box p { margin:0; }
+.recovery-code { display:block; overflow-wrap:anywhere; padding:9px; border:2px dashed #8063be; border-radius:9px; background:#fff; font:700 15px/1.4 ui-monospace,monospace; user-select:all; }
 .account-menu-button { margin-top:10px; }
+.collection-badge { position:absolute; right:-3px; top:-5px; width:15px; height:15px; border-radius:50%; background:#ff3348; border:3px solid #fff; box-shadow:0 2px #243149; }
 .plist { border:3px solid #384963; border-radius:21px; background:#e9f3ffef; box-shadow:0 5px #24314988,inset 0 3px #fff; color:#26354b; }
 .plist-head { padding:11px 12px; color:#fff; background:linear-gradient(#7bafff,#567ed6); text-shadow:0 2px #335492; border-bottom:3px solid #384963; }
 .plist-rows { max-height:min(46dvh,380px); overflow:auto; padding:5px; }

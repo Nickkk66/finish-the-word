@@ -36,7 +36,8 @@ export function createTerrain(scene) {
 
   scene.add(buildGround());
   const water = buildWater();
-  scene.add(water, buildSeabed());
+  const seabed = buildSeabed();
+  scene.add(water, seabed);
   const clouds = buildClouds();
   scene.add(clouds);
 
@@ -46,9 +47,15 @@ export function createTerrain(scene) {
   const lightUp = new THREE.Vector3().crossVectors(SUN_DIR, lightRight).normalize();
   const snapped = new THREE.Vector3();
   let extent = 0;
+  let night = 0, nightTarget = 0, nightFrom = 0, nightStart = 0;
+  const dayTop = new THREE.Color(SKY_TOP), dayHorizon = new THREE.Color(SKY_HORIZON);
+  const darkTop = new THREE.Color('#040515'), darkHorizon = new THREE.Color('#17223e');
+  const warmSun = new THREE.Color('#fff3dc'), coldMoon = new THREE.Color('#b5caff');
 
   return {
     sun,
+    setNight(on) { const next = on ? 1 : 0; if (next !== nightTarget) { nightFrom = night; nightTarget = next; nightStart = performance.now(); } },
+    nightAmount() { return night; },
     setSkyFocus(position) { sky.position.copy(position); },
     /** Centers the (tight) shadow frustum on `focus`, covering ±`halfSize` units. */
     setShadowFocus(focus, halfSize) {
@@ -67,6 +74,19 @@ export function createTerrain(scene) {
       sun.position.copy(snapped).addScaledVector(SUN_DIR, 140);
     },
     update(t) {
+      const k = Math.min(1, (performance.now() - nightStart) / 3500);
+      night = nightFrom + (nightTarget - nightFrom) * k * k * (3 - 2 * k);
+      sky.material.uniforms.uTop.value.copy(dayTop).lerp(darkTop, night);
+      sky.material.uniforms.uHorizon.value.copy(dayHorizon).lerp(darkHorizon, night);
+      sky.material.uniforms.uNight.value = night;
+      sky.material.uniforms.uSunColor.value.copy(warmSun).lerp(coldMoon, night);
+      sun.color.copy(warmSun).lerp(coldMoon, night);
+      sun.intensity = 2.3 - night * 2.18;
+      hemi.intensity = 1.6 - night * 1.46;
+      water.material.uniforms.uNight.value = night;
+      seabed.material.color.set('#1d6fae').multiplyScalar(1 - night * .94);
+      scene.fog.color.copy(dayHorizon).lerp(darkHorizon, night);
+      clouds.visible = night < .8;
       water.material.uniforms.uTime.value = t;
       clouds.rotation.y = t * 0.004;
     },
@@ -82,6 +102,7 @@ function buildSky() {
       uHorizon: { value: new THREE.Color(SKY_HORIZON) },
       uSunDir: { value: SUN_DIR },
       uSunColor: { value: new THREE.Color('#fff6dc') },
+      uNight: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -95,12 +116,19 @@ function buildSky() {
       uniform vec3 uHorizon;
       uniform vec3 uSunDir;
       uniform vec3 uSunColor;
+      uniform float uNight;
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
         vec3 col = mix(uHorizon, uTop, pow(max(d.y, 0.0), 0.5));
         float s = max(dot(d, uSunDir), 0.0);
-        col += uSunColor * (smoothstep(0.9993, 0.9996, s) * 0.9 + pow(s, 10.0) * 0.16);
+        float moon = smoothstep(0.9982, 0.9991, s);
+        float cut = smoothstep(0.9984, 0.9991, dot(d, normalize(uSunDir + vec3(.036,.012,0.))));
+        float disc = mix(smoothstep(0.9993, 0.9996, s), max(0.,moon-cut), uNight);
+        col += uSunColor * (disc * 0.9 + pow(s, 40.0) * 0.13);
+        vec2 starCell = floor(d.xz / max(.05,d.y) * 150.);
+        float star = fract(sin(dot(starCell,vec2(12.9898,78.233))) * 43758.5453);
+        col += vec3(step(.9985,star) * uNight * smoothstep(.1,.4,d.y) * .65);
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
       }`,
@@ -247,6 +275,7 @@ function buildWater() {
       THREE.UniformsLib.fog,
       {
         uTime: { value: 0 },
+        uNight: { value: 0 },
         uDeep: { value: new THREE.Color('#2f9be0') },
         uShallow: { value: new THREE.Color('#6fdcf0') },
         uShoreR: { value: SHORE_R },
@@ -265,6 +294,7 @@ function buildWater() {
       }`,
     fragmentShader: /* glsl */ `
       uniform float uTime;
+      uniform float uNight;
       uniform vec3 uDeep;
       uniform vec3 uShallow;
       uniform float uShoreR;
@@ -298,6 +328,7 @@ function buildWater() {
         float foam2 = 1.0 - smoothstep(0.0, 0.55, abs(r - (uShoreR + 2.2) - wob * 1.5 - sin(uTime * 0.8) * 0.7));
         float f = clamp(foam + foam2 * 0.55, 0.0, 1.0);
         col = mix(col, vec3(1.0), f * 0.85);
+        col *= mix(vec3(1.), vec3(.035,.045,.12), uNight);
         gl_FragColor = vec4(col, max(mix(0.94, 0.66, shallow), f * 0.9));
         #include <colorspace_fragment>
         #include <fog_fragment>

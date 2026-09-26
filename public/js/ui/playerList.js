@@ -4,7 +4,7 @@ import { h } from './dom.js';
 import { icons } from './icons.js';
 import { MAX_PLAYERS } from '../shared/constants.js';
 
-const LIVE_PHASES = new Set(['choosing', 'typing', 'roundEnd', 'ended']);
+const LIVE_PHASES = new Set(['choosing', 'typing', 'roundEnd', 'roulette', 'rouletteReveal', 'ended']);
 
 export function createPlayerList() {
   const count = h('span', { class: 'plist-count' });
@@ -28,7 +28,7 @@ export function createPlayerList() {
     const m = state.match;
     const live = m && LIVE_PHASES.has(m.phase);
     const parts = new Map(live ? m.participants.map((p, i) => [p.id, { ...p, order: i }]) : []);
-    const turnId = m?.phase === 'typing' ? m.typerId : m?.phase === 'choosing' ? m.chooserId : null;
+    const turnId = ['typing', 'roulette'].includes(m?.phase) ? m.typerId : m?.phase === 'choosing' ? m.chooserId : null;
 
     const players = [...state.players.values()];
     const rank = (p) => {
@@ -71,7 +71,6 @@ export function createPlayerList() {
       } else if (r.seated) status = h('span', { class: 'pl-seat', title: 'Seated' }, '🪑');
       return h('div', { class: `plist-row${r.me ? ' me' : ''}${r.turn ? ' turn' : ''}${r.out ? ' out' : ''}${r.offline ? ' offline' : ''}` },
         h('span', { class: 'pl-name' },
-          h('span', { class: 'pl-avatar', 'aria-hidden': 'true' }, r.name.slice(0, 1).toUpperCase()),
           r.host ? h('span', { class: 'pl-crown', title: 'Host' }, '👑') : null,
           h('span', { class: 'pl-text' }, r.name),
           r.bot ? h('span', { class: 'pl-tag bot' }, 'BOT') : null,

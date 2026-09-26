@@ -15,9 +15,11 @@ export function createPanelHost(root) {
   function close() {
     if (!current) return;
     current.instance.unmount?.();
-    current.el.remove();
+    const old = current.el;
+    old.classList.add('leaving');
+    setTimeout(() => old.remove(), 180);
     current = null;
-    layer.hidden = true;
+    setTimeout(() => { if (!current) layer.hidden = true; }, 180);
   }
 
   function open(def) {
@@ -30,7 +32,8 @@ export function createPanelHost(root) {
         h('h2', { class: 'panel-title stroke' }, def.title)),
       h('button', { type: 'button', class: 'panel-close', 'aria-label': 'Close', onClick: close }, icons.close()),
       body);
-    layer.replaceChildren(h('div', { class: 'panel-backdrop', 'data-pe': '', onClick: close }), el);
+    layer.querySelector('.panel-backdrop')?.remove();
+    layer.append(h('div', { class: 'panel-backdrop', 'data-pe': '', onClick: close }), el);
     layer.hidden = false;
     current = { def, el, instance: def.mount(body) || {} };
   }

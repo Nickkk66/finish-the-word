@@ -69,9 +69,10 @@ function normalize(raw) {
     ownedTables, ownedBacks,
     equippedTable: ownedTables.includes(p.equippedTable) ? p.equippedTable : 'classic',
     equippedBack: ownedBacks.includes(p.equippedBack) ? p.equippedBack : 'none',
+    capeColor: p.capeColor === 'rainbow' || /^#[0-9a-f]{6}$/i.test(p.capeColor || '') ? p.capeColor : '#d84752',
     cards: Object.fromEntries(CARDS.map((card) => [card.id, count(p.cards?.[card.id])])),
     xp: count(p.xp), bestWpm: count(p.bestWpm), bestCombo: count(p.bestCombo), bestObbyMs: count(p.bestObbyMs),
-    receipts: Array.isArray(p.receipts) ? p.receipts.filter((v) => typeof v === 'string').slice(-100) : [],
+    receipts: Array.isArray(p.receipts) ? p.receipts.filter((v) => typeof v === 'string').slice(-512) : [],
     settings: {
       sound: settings.sound !== false,
       prefillPrefix: settings.prefillPrefix !== false,
@@ -146,6 +147,11 @@ export function setLook(look) {
   profile.look = sanitizeLook(look);
   commit();
 }
+export function setCapeColor(value) {
+  if (value !== 'rainbow' && !/^#[0-9a-f]{6}$/i.test(value || '')) return false;
+  profile.capeColor = value;
+  commit(); return true;
+}
 
 function spend(n) {
   if (profile.coins < n) return false;
@@ -219,7 +225,7 @@ export function recordMatch({ won, coins, matchId, bestWpm = 0, bestCombo = 0 })
 export function claimReceipt(id) {
   if (profile.receipts.includes(id)) return false;
   profile.receipts.push(id);
-  profile.receipts = profile.receipts.slice(-100);
+  profile.receipts = profile.receipts.slice(-512);
   return true;
 }
 
@@ -241,6 +247,30 @@ export function spendCoins(coins) { if (!spend(coins)) return false; commit(); r
 export function grantCoins(coins, receipt) {
   if (receipt && !claimReceipt(receipt)) return false;
   profile.coins += count(coins); commit(); return true;
+}
+export function adjustCoins(operation, amount, receipt) {
+  if (!Number.isSafeInteger(amount) || !['set', 'add'].includes(operation)) return false;
+  if (receipt && !claimReceipt(`admin:${receipt}`)) return false;
+  profile.coins = Math.max(0, Math.min(1000000000, operation === 'set' ? amount : profile.coins + amount));
+  commit(); return true;
+}
+export function sellChair(id, receipt) {
+  const chair = CHAIRS.find(item => item.id === id);
+  if (!chair || id === 'wooden' || !profile.ownedChairs.includes(id)) return false;
+  if (receipt && !claimReceipt(`sell:${receipt}`)) return false;
+  profile.ownedChairs = profile.ownedChairs.filter(owned => owned !== id);
+  if (profile.equippedChair === id) profile.equippedChair = 'wooden';
+  profile.coins += Math.floor(chair.price / 2);
+  commit(); return true;
+}
+export function grantPetTier(id, tier, receipt) {
+  if (!PETS_BY_ID[id] || ![2, 3].includes(tier)) return false;
+  if (receipt && !claimReceipt(`merge:${receipt}`)) return false;
+  profile.petTiers[id] ||= { 1: 0, 2: 0, 3: 0 };
+  profile.petTiers[id][tier]++;
+  profile.pets[id] = (profile.pets[id] || 0) + 1;
+  if (!profile.discoveredPets.includes(id)) profile.discoveredPets.push(id);
+  commit(); return true;
 }
 export function addCard(id) {
   if (!CARDS.some((v) => v.id === id)) return false;

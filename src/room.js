@@ -55,6 +55,7 @@ export class GameRoom extends DurableObject {
       adminCode: this.env.ADMIN_CODE || '',
       onWin: ({ playerId, name }) => this.ctx.waitUntil(this.internal('LEADERBOARD', '/win', { playerId, name })),
       onRemoveLeaderboard: playerId => this.ctx.waitUntil(this.internal('LEADERBOARD', '/remove', { playerId })),
+      onGlobalAnnouncement: notice => this.ctx.waitUntil(this.internal('ANNOUNCEMENTS', '/post', notice)),
       onListing: listing => this.report(listing),
       now: Date.now,
       setTimeout: (fn, ms) => setTimeout(fn, ms),

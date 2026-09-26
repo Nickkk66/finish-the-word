@@ -4,7 +4,7 @@ import { sanitizeLook, CHAIRS, TABLES, BACK_BLING, PETS, CARDS } from '../public
 
 const ITERATIONS = 100000; // Workers Web Crypto PBKDF2 iteration ceiling.
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
-const MAX_BODY = 32768;
+const MAX_BODY = 131072; // Includes the bounded 512-receipt replay history.
 const encoder = new TextEncoder();
 const hex = bytes => [...new Uint8Array(bytes)].map(v => v.toString(16).padStart(2, '0')).join('');
 const random = n => hex(crypto.getRandomValues(new Uint8Array(n)));
@@ -45,12 +45,13 @@ export function cloudProfile(value, fixedId) {
     equippedChair: ownedChairs.includes(value.equippedChair) ? value.equippedChair : 'wooden',
     equippedTable: ownedTables.includes(value.equippedTable) ? value.equippedTable : 'classic',
     equippedBack: ownedBacks.includes(value.equippedBack) ? value.equippedBack : 'none',
+    capeColor: value.capeColor === 'rainbow' || /^#[0-9a-f]{6}$/i.test(value.capeColor || '') ? value.capeColor : '#d84752',
     equippedPet: pets[value.equippedPet] ? value.equippedPet : null,
     equippedPetTier: [1, 2, 3].find(tier => tier === value.equippedPetTier && petTiers[value.equippedPet]?.[tier]) || [1, 2, 3].find(tier => petTiers[value.equippedPet]?.[tier]) || 1,
     discoveredPets: [...new Set([...Object.keys(pets), ...(Array.isArray(value.discoveredPets) ? value.discoveredPets : []).filter(id => PETS.some(p => p.id === id))])],
     cards: Object.fromEntries(CARDS.map(card => [card.id, count(value.cards?.[card.id])])),
     longestWord: /^[a-z]{1,30}$/.test(value.longestWord || '') ? value.longestWord : '',
-    receipts: Array.isArray(value.receipts) ? value.receipts.filter(v => typeof v === 'string' && v.length <= 160).slice(-100) : [],
+    receipts: Array.isArray(value.receipts) ? value.receipts.filter(v => typeof v === 'string' && v.length <= 160).slice(-512) : [],
     settings: { sound: settings.sound !== false, prefillPrefix: settings.prefillPrefix !== false, view: settings.view === 'first' ? 'first' : 'third', quality: settings.quality === 'low' ? 'low' : 'high' },
   };
   for (const key of ['coins', 'wins', 'gamesPlayed', 'wordsTyped', 'xp', 'bestWpm', 'bestCombo', 'bestObbyMs', 'lastFreeClaim']) {
@@ -86,6 +87,8 @@ export class Accounts {
     this.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at INTEGER NOT NULL)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS sessions_user ON sessions(username)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS account_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, reset_at INTEGER NOT NULL)');
+    // Existing accounts predate recovery codes. Their owners can generate one while signed in.
+    try { this.sql.exec('ALTER TABLE accounts ADD COLUMN recovery_hash TEXT'); } catch { /* already migrated */ }
   }
   one(query, ...args) { return [...this.sql.exec(query, ...args)][0]; }
   rate(key, maximum, duration) {
@@ -109,25 +112,40 @@ export class Accounts {
   }
   async handle(request) {
     const path = new URL(request.url).pathname.replace('/api/account', '');
-    if (request.method === 'POST' && (path === '/register' || path === '/login')) {
+    if (request.method === 'POST' && (path === '/register' || path === '/login' || path === '/reset')) {
       const ipHash = await digest(request.headers.get('CF-Connecting-IP') || 'local-development');
       if (!this.rate(`ip:${ipHash}`, 30, 15 * 60000)) return failure('Too many attempts. Try again in 15 minutes.', 429);
       const body = await readBody(request);
       const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return failure('Use 3–20 letters, numbers or underscores for your username.');
-      if (typeof body.password !== 'string' || body.password.length < 12 || body.password.length > 128) return failure('Use a password between 12 and 128 characters.');
+      if (typeof body.password !== 'string' || body.password.length < 5 || body.password.length > 128) return failure('Use a password between 5 and 128 characters.');
       if (!this.rate(`user:${await digest(username)}`, 12, 15 * 60000)) return failure('Too many attempts for this account. Try again in 15 minutes.', 429);
       let account = this.one('SELECT * FROM accounts WHERE username=?', username);
+      let recoveryCode = null;
       if (path === '/register') {
         if (!this.rate(`signup:${ipHash}`, 6, 60 * 60000)) return failure('Too many new accounts. Try again later.', 429);
         if (account) return failure('That username is unavailable.', 409);
         const profile = cloudProfile(body.profile);
         const salt = random(16);
         const hash = await passwordHash(body.password, salt);
+        recoveryCode = random(20);
+        const recoveryHash = await digest(recoveryCode);
         // Unique key protects against two registrations racing across the password await.
-        this.sql.exec('INSERT OR IGNORE INTO accounts (username,salt,password_hash,profile,revision,created_at) VALUES (?,?,?,?,1,?)', username, salt, hash, JSON.stringify(profile), Date.now());
+        this.sql.exec('INSERT OR IGNORE INTO accounts (username,salt,password_hash,profile,revision,created_at,recovery_hash) VALUES (?,?,?,?,1,?,?)', username, salt, hash, JSON.stringify(profile), Date.now(), recoveryHash);
         account = this.one('SELECT * FROM accounts WHERE username=?', username);
         if (account.salt !== salt) return failure('That username is unavailable.', 409);
+      } else if (path === '/reset') {
+        const code = typeof body.recoveryCode === 'string' ? body.recoveryCode.trim().toLowerCase() : '';
+        const candidate = await digest(code);
+        if (!account?.recovery_hash || !equal(candidate, account.recovery_hash)) return failure('Username or recovery code is incorrect.', 401);
+        const salt = random(16);
+        const hash = await passwordHash(body.password, salt);
+        recoveryCode = random(20);
+        const recoveryHash = await digest(recoveryCode);
+        this.sql.exec('UPDATE accounts SET salt=?,password_hash=?,recovery_hash=? WHERE username=? AND recovery_hash=?', salt, hash, recoveryHash, username, candidate);
+        account = this.one('SELECT * FROM accounts WHERE username=?', username);
+        if (account.salt !== salt) return failure('That recovery code has already been used.', 401);
+        this.sql.exec('DELETE FROM sessions WHERE username=?', username);
       } else {
         const hash = await passwordHash(body.password, account?.salt || '00000000000000000000000000000000');
         if (!account || !equal(hash, account.password_hash)) return failure('Username or password is incorrect.', 401);
@@ -136,13 +154,19 @@ export class Accounts {
       this.sql.exec('DELETE FROM sessions WHERE expires_at <= ?', Date.now());
       this.sql.exec('DELETE FROM sessions WHERE username=? AND token_hash NOT IN (SELECT token_hash FROM sessions WHERE username=? ORDER BY expires_at DESC LIMIT 9)', username, username);
       this.sql.exec('INSERT INTO sessions (token_hash,username,expires_at) VALUES (?,?,?)', tokenHash, username, Date.now() + SESSION_MS);
-      return json({ username, token, revision: account.revision, profile: JSON.parse(account.profile) });
+      return json({ username, token, revision: account.revision, profile: JSON.parse(account.profile), ...(recoveryCode ? { recoveryCode } : {}) });
     }
     const session = await this.session(request);
     if (!session) return failure('Please log in again. Your local progress is still safe.', 401);
     if (path === '/logout' && request.method === 'POST') {
       this.sql.exec('DELETE FROM sessions WHERE token_hash=?', session.tokenHash);
       return json({ ok: true });
+    }
+    if (path === '/recovery' && request.method === 'POST') {
+      if (!this.rate(`recovery:${session.username}`, 3, 60 * 60000)) return failure('Too many recovery codes requested. Try again later.', 429);
+      const recoveryCode = random(20);
+      this.sql.exec('UPDATE accounts SET recovery_hash=? WHERE username=?', await digest(recoveryCode), session.username);
+      return json({ recoveryCode });
     }
     if (path === '/me' && request.method === 'GET') {
       const account = this.one('SELECT profile,revision FROM accounts WHERE username=?', session.username);

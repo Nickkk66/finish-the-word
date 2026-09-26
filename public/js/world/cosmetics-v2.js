@@ -138,7 +138,7 @@ export function buildTable(tableId) {
   bake(group); return group;
 }
 
-export function buildBackBling(backId) {
+export function buildBackBling(backId, capeColor = null) {
   const id = BACK_IDS.has(backId) ? backId : 'none';
   const k = kit(`back:${id}`), { group, mesh, box, cylinder, ring } = k;
   if (id === 'none') return group;
@@ -148,14 +148,19 @@ export function buildBackBling(backId) {
     box(.48, .12, .17, '#ffc74f', [0, -.24, -1.37]);
     for (const x of [-.48, .48]) box(.13, 1.55, .12, '#274456', [x, 0, -.53]);
   } else if (id === 'cape' || id === 'rainbow') {
-    const cape = mesh(new THREE.PlaneGeometry(1.9, 2.8, 8, 12), id === 'cape' ? '#d84752' : '#ff5e90', [0, -.63, -.75], { side: THREE.DoubleSide });
+    const pivot = new THREE.Group(); pivot.position.set(0, .72, -1.13); group.add(pivot);
+    const rainbow = capeColor === 'rainbow' || (capeColor == null && id === 'rainbow');
+    const color = /^#[0-9a-f]{6}$/i.test(capeColor) ? capeColor : '#d84752';
+    const cape = mesh(new THREE.PlaneGeometry(1.9, 2.8, 8, 12), rainbow ? '#ff5e90' : color, [0, -1.4, 0], { side: THREE.DoubleSide }, pivot);
     cape.userData.animated = true;
     const attr = cape.geometry.attributes.position, original = new Float32Array(attr.array);
-    box(1.6, .18, .16, '#f0cb67', [0, .8, -.61]);
-    group.userData.update = (t, dt, seated = false) => {
-      for (let i = 0; i < attr.count; i++) { const y = original[i * 3 + 1]; attr.setZ(i, -.16 * (1.4 - y) * Math.sin(t * 3 + y * 2 + original[i * 3])); }
+    box(1.6, .18, .16, '#f0cb67', [0, .8, -1.1]);
+    group.userData.update = (t, dt, seated = false, speed = 0) => {
+      const target = seated ? .2 : Math.min(70 * Math.PI / 180, Math.max(0, speed / 16) * 70 * Math.PI / 180);
+      pivot.rotation.x += (target - pivot.rotation.x) * (1 - Math.exp(-9 * dt));
+      for (let i = 0; i < attr.count; i++) { const y = original[i * 3 + 1]; attr.setZ(i, -.09 * (1.4 - y) * Math.sin(t * 4 + y * 2 + original[i * 3])); }
       attr.needsUpdate = true; cape.scale.y = seated ? .62 : 1;
-      if (id === 'rainbow') cape.material.color.setHSL((t * .12) % 1, .8, .6);
+      if (rainbow) cape.material.color.setHSL((t * .12) % 1, .8, .6);
     };
   } else if (['angel', 'devil', 'dragon', 'halo'].includes(id)) {
     const white = id === 'angel', gold = id === 'halo', dragon = id === 'dragon';

@@ -139,12 +139,19 @@
   padding: 22px 20px 20px;
   text-align: center;
   color: var(--ink);
-  background: linear-gradient(180deg, #ffffff, #e8f2ff);
+  background: radial-gradient(circle at 16% 15%, #fff 0 6px, transparent 7px), radial-gradient(circle at 86% 26%, #fff9 0 13px, transparent 14px), linear-gradient(145deg, #fff8ce, #e4edff 48%, #f3dcff);
   border: 4px solid var(--ink);
   border-radius: 24px;
   box-shadow: 0 7px 0 var(--ink), 0 20px 40px rgba(0, 0, 0, .3);
   animation: panel-in .3s cubic-bezier(.2, 1.4, .4, 1) both;
 }
+.overlay.leaving { animation: fade-out .18s ease-in forwards; pointer-events: none; }
+.overlay.leaving .overlay-card { animation: popup-exit .18s ease-in forwards; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes popup-exit { to { opacity: 0; transform: translateY(14px) scale(.9); } }
+.choice-list { display: grid; gap: 7px; width: 100%; max-height: min(60dvh, 460px); overflow: auto; padding: 5px; }
+.choice-list .btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; width:100%; min-height:49px; padding:7px 10px; white-space:normal; line-height:1.15; }
+.choice-list .btn small { font:600 12px/1.2 var(--font); opacity:.9; text-wrap:balance; }
 .overlay-title { font: 700 30px / 1.1 var(--font); }
 .overlay-text { margin: 0; font: 600 16px / 1.4 var(--font); color: #4a5563; }
 .overlay-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }

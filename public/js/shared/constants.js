@@ -1,7 +1,7 @@
 // Shared constants used by BOTH the server (src/) and the browser client (public/js/).
 // Keep this file dependency-free (plain ES module, no DOM / no Node APIs).
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 // ---- Rooms -------------------------------------------------------------------
 export const MAX_PLAYERS = 8;            // humans + bots per room
@@ -51,6 +51,8 @@ export const MODES = [
   { id: 'sudden', name: 'Sudden Death', description: 'One heart. One mistake.', hearts: 1, turnSeconds: 15 },
   { id: 'random', name: 'Random Letter', description: 'Any letter in the last word can be next.', hearts: 2, turnSeconds: 15 },
   { id: 'chaos', name: 'Chaos', description: 'A new twist every round.', hearts: 2, turnSeconds: 15 },
+  { id: 'roulette', name: 'Roulette', description: 'The cursed cup. Drink or pass. Last awake wins.', hearts: 1, turnSeconds: 10 },
+  { id: 'custom', name: 'Custom', description: 'Your own room rules.', hearts: 2, turnSeconds: 15 },
 ];
 export const MODE_IDS = new Set(MODES.map((m) => m.id));
 export const BOT_LEVELS = {

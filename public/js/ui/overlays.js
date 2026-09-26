@@ -6,6 +6,12 @@ let root = null;
 let busyEl = null;
 let busyTimer = 0;
 let activeConfirm = null;
+const EXIT_MS = 180;
+export function closeOverlay(el) {
+  if (!el || el.classList.contains('leaving')) return;
+  el.classList.add('leaving');
+  setTimeout(() => el.remove(), EXIT_MS);
+}
 
 export function initOverlays(el) {
   root = el;
@@ -19,7 +25,7 @@ function overlay(cls, ...children) {
 
 function hideBusy() {
   clearTimeout(busyTimer);
-  busyEl?.remove();
+  closeOverlay(busyEl);
   busyEl = null;
 }
 
@@ -50,7 +56,7 @@ export function showError({ title, message, buttons }) {
       type: 'button',
       class: `btn ${b.tone || 'blue'}`,
       onClick: () => {
-        el.remove();
+        closeOverlay(el);
         b.onClick?.();
       },
     }, b.label))));
@@ -69,7 +75,7 @@ export function confirmDialog({ title, message, ok = 'OK', cancel = 'Cancel', to
       if (finished) return;
       finished = true;
       activeConfirm = null;
-      el.remove();
+      closeOverlay(el);
       document.removeEventListener('keydown', onKey, true);
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
       resolve(value);
@@ -96,5 +102,35 @@ export function confirmDialog({ title, message, ok = 'OK', cancel = 'Cancel', to
     document.addEventListener('keydown', onKey, true);
     activeConfirm = done;
     okBtn.focus();
+  });
+}
+
+/** Informational game-styled popup with a single close button. */
+export function noticeDialog(title, message) {
+  return new Promise(resolve => {
+    const previousFocus = document.activeElement;
+    const done = () => { document.removeEventListener('keydown', onKey, true); closeOverlay(el); previousFocus?.isConnected && previousFocus.focus({ preventScroll: true }); resolve(); };
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(); } };
+    const el = overlay('notice', h('div', { class: 'overlay-title stroke' }, title),
+      h('p', { class: 'overlay-text' }, message),
+      h('button', { type: 'button', class: 'btn blue', onClick: done }, 'Got it'));
+    document.addEventListener('keydown', onKey, true);
+    el.querySelector('button').focus();
+  });
+}
+
+/** In-game selection popup for settings that should never invoke a native OS menu. */
+export function choiceDialog(title, choices) {
+  return new Promise(resolve => {
+    const previousFocus = document.activeElement;
+    const done = value => { document.removeEventListener('keydown', onKey, true); closeOverlay(el); previousFocus?.isConnected && previousFocus.focus({ preventScroll: true }); resolve(value); };
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
+    const el = overlay('choice', h('div', { class: 'overlay-title stroke' }, title),
+      h('div', { class: 'choice-list' }, choices.map(({ label, description, value }) => h('button', {
+        type: 'button', class: 'btn blue', onClick: () => done(value),
+      }, h('span', {}, label), description ? h('small', {}, description) : null))),
+      h('button', { type: 'button', class: 'btn grey small', onClick: () => done(null) }, 'Cancel'));
+    document.addEventListener('keydown', onKey, true);
+    el.querySelector('button').focus();
   });
 }

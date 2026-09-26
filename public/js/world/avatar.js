@@ -82,12 +82,8 @@ function merge(parts) {
 
 /** Cap of hair over the top/back/sides of the head (head-centered coordinates). */
 function hairCap() {
-  return [
-    new RoundedBoxGeometry(1.38, 0.5, 1.38, 3, 0.24).translate(0, 0.5, 0),
-    new RoundedBoxGeometry(1.38, 0.95, 0.52, 2, 0.2).translate(0, 0.2, -0.44),
-    new RoundedBoxGeometry(0.24, 0.62, 1.05, 2, 0.1).translate(-0.62, 0.3, -0.1),
-    new RoundedBoxGeometry(0.24, 0.62, 1.05, 2, 0.1).translate(0.62, 0.3, -0.1),
-  ];
+  // A soft cap follows the rounded head rather than reading as a stack of blocks.
+  return [new THREE.SphereGeometry(0.77, 20, 12).scale(1, 0.46, 1).translate(0, 0.48, -0.045)];
 }
 
 /**
@@ -137,23 +133,16 @@ function strand(points, { width, thickness, waves = 0, amp = 0, side, segments =
 function baconHair() {
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const parts = hairCap();
-  const sideX = V(1, 0, 0);
-  for (let i = 0; i < 5; i++) {
-    const x = -0.52 + i * 0.26;
-    parts.push(
-      strand([V(x, -0.2, -0.74), V(x * 1.02, 0.45, -0.72), V(x, 0.8, -0.2), V(x, 0.82, 0.3), V(x * 0.9, 0.7, 0.72)], {
-        width: 0.3, thickness: 0.14, waves: 3, amp: 0.05, side: sideX,
-      }),
-    );
+  // Rounded, flowing ribbons frame the face and curl over the crown.
+  for (const x of [-0.58, -0.35, 0.35, 0.58]) {
+    const side = x < 0 ? V(-1, 0, 0) : V(1, 0, 0);
+    parts.push(strand([V(x * .75, .57, -.47), V(x, .39, -.1), V(x * 1.12, .08, .32), V(x * 1.03, -.38, .49)],
+      { width:.23, thickness:.16, waves:1.5, amp:.045, side }));
   }
-  const up = V(0, 1, 0);
-  for (let i = 0; i < 3; i++) {
-    const y = 0.72 - i * 0.1;
-    parts.push(
-      strand([V(0.58, y + 0.08, 0.5), V(0.25, y + 0.02, 0.72), V(-0.15, y - 0.12, 0.74), V(-0.62, y - 0.34, 0.62)], {
-        width: 0.26, thickness: 0.13, waves: 2, amp: 0.06, side: up,
-      }),
-    );
+  for (let i = 0; i < 4; i++) {
+    const z = .62 - i * .12;
+    parts.push(strand([V(.54, .68, z - .14), V(.18, .76, z), V(-.22, .62, z + .08), V(-.62, .3, z)],
+      { width:.24, thickness:.16, waves:1, amp:.025, side:V(0,1,0) }));
   }
   return merge(parts);
 }
@@ -162,29 +151,39 @@ function spikyHair() {
   const parts = hairCap();
   const q = new THREE.Quaternion();
   const axis = new THREE.Vector3();
-  const add = (x, y, z, tilt, dirA, len = 0.8) => {
-    const g = new THREE.ConeGeometry(0.21, len, 5).translate(0, len / 2, 0);
-    axis.set(Math.sin(dirA), 0, -Math.cos(dirA));
-    g.applyQuaternion(q.setFromAxisAngle(axis, tilt));
+  const add = (x, y, z, len, radius, angle, lean) => {
+    const g = new THREE.ConeGeometry(radius, len, 9, 1).translate(0, len / 2, 0);
+    axis.set(Math.cos(angle), 0, Math.sin(angle));
+    g.applyQuaternion(q.setFromAxisAngle(axis, lean));
     parts.push(g.translate(x, y, z));
   };
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * TAU;
-    add(Math.cos(a) * 0.42, 0.66, Math.sin(a) * 0.42 - 0.05, 0.75, Math.atan2(Math.sin(a), Math.cos(a)));
+  // Uneven, tapered locks form a clean silhouette with a swept front fringe.
+  for (let i = 0; i < 11; i++) {
+    const a = i / 11 * TAU;
+    const r = i % 3 === 0 ? .46 : .36;
+    add(Math.cos(a) * r, .67, Math.sin(a) * r - .04, .59 + (i % 4) * .09, .16, a, .29);
   }
-  add(0, 0.72, -0.05, 0, 0, 0.95);
-  for (const x of [-0.35, 0, 0.35]) add(x, 0.62, 0.45, 1.05, Math.PI / 2, 0.7);
+  add(-.1, .68, -.06, 1.02, .23, 0, .1);
+  for (const x of [-.36, -.07, .25, .49]) add(x, .58, .49, .5 + x * .16, .14, 0, -.56);
   return merge(parts);
 }
 
 function longHair() {
-  return merge([
-    ...hairCap(),
-    new RoundedBoxGeometry(1.44, 1.95, 0.42, 2, 0.17).translate(0, -0.32, -0.5),
-    new RoundedBoxGeometry(0.3, 1.5, 0.82, 2, 0.12).translate(-0.67, -0.2, -0.05),
-    new RoundedBoxGeometry(0.3, 1.5, 0.82, 2, 0.12).translate(0.67, -0.2, -0.05),
-    new RoundedBoxGeometry(1.42, 0.3, 0.3, 2, 0.12).translate(0, 0.42, 0.56),
-  ]);
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const parts = hairCap();
+  for (let i = 0; i < 7; i++) {
+    const x = -.64 + i * .21;
+    parts.push(strand([V(x,.53,-.48),V(x*1.03,.12,-.61),V(x*1.08,-.51,-.64),V(x*1.02,-1.06,-.59)],
+      { width:.21, thickness:.17, waves:.8, amp:.025, side:V(0,0,-1) }));
+  }
+  for (const side of [-1,1]) for (let i = 0; i < 3; i++) {
+    const z = -.32 + i * .28;
+    parts.push(strand([V(side*.58,.52,z),V(side*.72,.1,z+.06),V(side*.74,-.51,z+.04),V(side*.67,-.94,z)],
+      { width:.22, thickness:.17, waves:.8, amp:.02, side:V(side,0,0) }));
+  }
+  for (let i = 0; i < 3; i++) parts.push(strand([V(-.58+i*.22,.65,.4),V(-.29+i*.2,.56,.67),V(-.05+i*.19,.32,.65)],
+    { width:.23, thickness:.13, side:V(0,1,0) }));
+  return merge(parts);
 }
 
 function starGeometry() {
@@ -348,6 +347,7 @@ export class Avatar {
   shakeHead() {
     this.shakeT = 0.6;
   }
+  sip() { this.sipT = 1.5; }
   flinch() {
     this.flinchT = 0.55;
   }
@@ -384,6 +384,14 @@ export class Avatar {
     if (total > 0) for (let k = 0; k < CHANNELS; k++) o[k] /= total;
 
     this.applyModifiers(dt, t, o);
+    this.sipT = Math.max(0, (this.sipT || 0) - dt);
+    if (this.sipT) { const k=Math.sin(this.sipT/1.5*Math.PI); o[RAX]=-1.3-k*1.2; o[HX]-=k*.25; }
+    this.sleepWeight = damp(this.sleepWeight || 0, this.rouletteSleeping && this.seated ? 1 : 0, 7, dt);
+    if (this.sleepWeight > .001) {
+      const k=this.sleepWeight; o[BX]+=k*1.05; o[HX]+=k*.35; o[BY]-=k*.25;
+      o[LAX]=lerp(o[LAX],-1.2,k); o[RAX]=lerp(o[RAX],-1.2,k);
+      this.wDizzy = Math.max(this.wDizzy,k);
+    }
     this.applyPose(dt, t, o);
   }
 

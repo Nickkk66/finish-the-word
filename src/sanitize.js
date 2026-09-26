@@ -29,6 +29,7 @@ export const sanitizeChair = (chair) => (typeof chair === 'string' && CHAIR_IDS.
 export const sanitizePet = (pet) => (typeof pet === 'string' && Object.hasOwn(PETS_BY_ID, pet) ? pet : null);
 export const sanitizeTable = table => TABLE_IDS.has(table) ? table : 'classic';
 export const sanitizeBack = back => BACK_IDS.has(back) ? back : 'none';
+export const sanitizeCapeColor = value => value === 'rainbow' || (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)) ? value : null;
 export const sanitizeLevel = level => Number.isFinite(level) ? Math.max(1, Math.min(999, Math.floor(level))) : 1;
 export const sanitizeTier = tier => Number.isInteger(tier) && tier >= 1 && tier <= 3 ? tier : 1;
 export function sanitizeCards(cards) {
@@ -67,7 +68,11 @@ export function sanitizeSettings(input, current) {
   const next = { ...current };
   if (!input || typeof input !== 'object') return next;
   const mode = MODES.find(m => m.id === input.mode);
-  if (mode && mode.id !== current.mode) Object.assign(next, { mode: mode.id, hearts: mode.hearts, turnSeconds: mode.turnSeconds });
+  if (mode) Object.assign(next, { mode: mode.id, ...(mode.id !== 'custom' ? {
+    hearts: mode.hearts, turnSeconds: mode.turnSeconds, petAbilities: mode.id !== 'roulette', botLevel: 'normal', public: false,
+  } : {}) });
+  if (mode?.id === 'custom') next.baseMode = current.mode === 'custom' ? current.baseMode || 'classic' : current.mode === 'roulette' ? 'classic' : current.mode;
+  else if (mode) delete next.baseMode;
   if (Number.isInteger(input.hearts) && input.hearts >= 1 && input.hearts <= 3) next.hearts = input.hearts;
   if (TURN_SECONDS.includes(input.turnSeconds)) next.turnSeconds = input.turnSeconds;
   if (typeof input.petAbilities === 'boolean') next.petAbilities = input.petAbilities;

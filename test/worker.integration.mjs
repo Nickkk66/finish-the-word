@@ -18,12 +18,13 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 for (const path of ['src', 'public', 'wrangler.toml', 'package.json']) await cp(join(root, path), join(snapshot, path), { recursive: true });
 const secret = 'integration-test-only';
 let worker;
+let workerLogs = '';
 const clients = [];
 async function start() {
   worker = spawn(process.execPath, [join(root, 'node_modules/wrangler/bin/wrangler.js'), 'dev', '--port', String(port), '--persist-to', storage, '--var', `ADMIN_CODE:${secret}`], { cwd: snapshot, stdio: ['ignore', 'pipe', 'pipe'] });
   let logs = '';
-  worker.stdout.on('data', data => { logs = (logs + data).slice(-12000); });
-  worker.stderr.on('data', data => { logs = (logs + data).slice(-12000); });
+  worker.stdout.on('data', data => { logs = (logs + data).slice(-12000); workerLogs = logs; });
+  worker.stderr.on('data', data => { logs = (logs + data).slice(-12000); workerLogs = logs; });
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(`${base}/api/health`)).ok) return; } catch {}
     if (worker.exitCode !== null) throw new Error(`Worker exited: ${logs}`);
@@ -65,11 +66,16 @@ async function connect(id, code, extra = {}) {
 try {
   await start();
   async function account(path, method = 'GET', body, token, expected = 200) {
-    const response = await fetch(`${base}/api/account/${path}`, {
-      method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    assert.equal(response.status, expected, path);
+    let response;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch(`${base}/api/account/${path}`, {
+        method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      if (response.status !== 500 || !(await response.clone().text()).includes('Network connection lost')) break;
+      await wait(150);
+    }
+    assert.equal(response.status, expected, `${path}: ${await response.clone().text()}\n${workerLogs}`);
     assert.equal(response.headers.get('access-control-allow-origin'), '*');
     return response.json();
   }
@@ -78,20 +84,30 @@ try {
   assert.equal(registered.profile.coins, 777);
   assert.equal(registered.profile.settings.prefillPrefix, false);
   assert.ok(registered.token && !registered.password && !registered.password_hash);
+  assert.match(registered.recoveryCode, /^[a-f0-9]{40}$/);
   await account('register', 'POST', { ...credentials, profile: {} }, null, 409);
   await account('login', 'POST', { ...credentials, password: 'incorrect-password' }, null, 401);
   const device = await account('login', 'POST', credentials);
   assert.deepEqual(device.profile, registered.profile);
-  await account('profile', 'PUT', { revision: 1, profile: { ...device.profile, coins: 999, id: 'cannotchangeid' } }, device.token);
+  await account('profile', 'PUT', { revision: 1, profile: { ...device.profile, coins: 999, id: 'cannotchangeid', receipts: Array.from({length:512}, (_,i) => `receipt-${i}`.padEnd(150, 'x')) } }, device.token);
   const saved = await account('me', 'GET', null, registered.token);
   assert.equal(saved.profile.coins, 999);
+  assert.equal(saved.profile.receipts.length, 512);
   assert.equal(saved.profile.id, 'guestintegration');
   await account('profile', 'PUT', { revision: 1, profile: registered.profile }, registered.token, 409);
   await account('profile', 'PUT', { revision: 2, profile: {} }, '0'.repeat(64), 401);
   await account('logout', 'POST', null, device.token);
   await account('me', 'GET', null, device.token, 401);
+  await account('reset', 'POST', { username: credentials.username, password: 'short', recoveryCode: 'wrong' }, null, 401);
+  const reset = await account('reset', 'POST', { username: credentials.username, password: 'short', recoveryCode: registered.recoveryCode });
+  assert.match(reset.recoveryCode, /^[a-f0-9]{40}$/);
+  await account('me', 'GET', null, registered.token, 401);
+  await account('reset', 'POST', { username: credentials.username, password: 'short', recoveryCode: registered.recoveryCode }, null, 401);
+  const fresh = await account('login', 'POST', { username: credentials.username, password: 'short' });
+  const replacement = await account('recovery', 'POST', null, fresh.token);
+  assert.match(replacement.recoveryCode, /^[a-f0-9]{40}$/);
   await stop(); await start();
-  assert.equal((await account('me', 'GET', null, registered.token)).profile.coins, 999);
+  assert.equal((await account('me', 'GET', null, fresh.token)).profile.coins, 999);
   console.log('ok account registration, login, persistence, identity, conflicts, logout and CORS');
 
   const quick = await api('/api/quickplay');
@@ -113,6 +129,22 @@ try {
   assert.equal((await other.next(m => m.t === 'grant')).coins, 777);
   host.send({ t: 'admin', action: 'announce', text: 's3x' });
   assert.equal((await other.next(m => m.t === 'announce')).text, '###');
+  host.send({ t: 'admin', action: 'coins', id: other.id, operation: 'set', amount: 400 });
+  assert.equal((await other.next(m => m.t === 'coinAdjust')).amount, 400);
+  host.send({ t: 'admin', action: 'coins', id: other.id, operation: 'add', amount: -50 });
+  assert.equal((await other.next(m => m.t === 'coinAdjust' && m.operation === 'add')).amount, -50);
+  host.send({ t: 'admin', action: 'sellChair', id: other.id, chairId: 'gamer' });
+  assert.equal((await other.next(m => m.t === 'sellChair')).chairId, 'gamer');
+  host.send({ t: 'admin', action: 'freeMerge', petId: 'kitty', tier: 1 });
+  assert.equal((await host.next(m => m.t === 'petMergeGrant')).tier, 2);
+  const privateRoom = await connect('PrivateIntegration', 'PRIVT');
+  host.send({ t: 'admin', action: 'announce', text: 'Every room sees this', global: true });
+  for (let i = 0; i < 80; i++) {
+    if ((await api('/api/announcements')).notices.some(v => v.text === 'Every room sees this')) break;
+    await wait(25);
+  }
+  assert.ok((await api('/api/announcements')).notices.some(v => v.text === 'Every room sees this'));
+  assert.ok(privateRoom.welcome && !privateRoom.inbox.some(m => m.t === 'announce'));
   console.log('ok hidden admin unlock, grants and filtered announcements');
 
   host.send({ t: 'host', action: 'settings', settings: { hearts: 1 } });

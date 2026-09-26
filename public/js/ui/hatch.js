@@ -3,6 +3,7 @@
 import { h } from './dom.js';
 import { sfx } from '../audio.js';
 import { PETS_BY_ID, RARITIES, abilityText } from '../shared/catalog.js';
+import { closeOverlay } from './overlays.js';
 
 const SHAKES = [500, 1000, 1450];   // ms timeline of the three shakes
 const REVEAL_AT = 1950;
@@ -54,7 +55,7 @@ export function playHatch(root, { block, petId, count, onEquip }) {
   function close() {
     timers.forEach(clearTimeout);
     document.removeEventListener('keydown', onKey, true);
-    el.remove();
+    closeOverlay(el);
   }
 
   SHAKES.forEach((ms, i) => timers.push(setTimeout(() => {

@@ -46,10 +46,11 @@ function instanced(geo, material, items, { cast = true, receive = true } = {}) {
  */
 export function createProps(scene) {
   const colliders = [];
+  const trees = [];
   const rnd = mulberry32(2024);
 
   const leafMat = new THREE.MeshLambertMaterial({ map: leavesTexture() });
-  scene.add(buildTrees(rnd, leafMat, colliders));
+  scene.add(buildTrees(rnd, leafMat, colliders, trees));
   scene.add(buildBushes(rnd, leafMat));
   scene.add(buildFlowers(rnd));
   scene.add(buildRocks(rnd, colliders));
@@ -58,14 +59,14 @@ export function createProps(scene) {
   scene.add(buildSpawnPad());
   scene.add(buildPier());
 
-  return { colliders };
+  return { colliders, trees };
 }
 
 // ---- Vegetation ------------------------------------------------------------------------------
 
 const LEAF_TINTS = ['#ffffff', '#e8f7d8', '#d6efc2', '#f4ffe6', '#cde8b5', '#e0f5c8'];
 
-function buildTrees(rnd, leafMat, colliders) {
+function buildTrees(rnd, leafMat, colliders, trees) {
   const trunks = [];
   const leaves = [];
   const placed = [];
@@ -79,6 +80,7 @@ function buildTrees(rnd, leafMat, colliders) {
     placed.push({ x, z });
     const h = 4.5 + rnd() * 3.5;
     const s = 5 + rnd() * 2.4;
+    trees.push({ x, z, y: h, perchRadius: s * .65 });
     const ry = (rnd() - 0.5) * 0.9;
     const kind = rnd();
     const color = LEAF_TINTS[(rnd() * LEAF_TINTS.length) | 0];

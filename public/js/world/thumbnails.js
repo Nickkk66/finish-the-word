@@ -35,7 +35,8 @@ export function createThumbnails(renderer) {
       const light = new THREE.DirectionalLight(0xffffff, 3); light.position.set(4, 8, 6); studio.add(light);
       studio.add(model);
       model.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(model);
+      // Frame the Secret Block itself; its large world glow should not shrink the icon.
+      const box = new THREE.Box3().setFromObject(req.kind === 'block' && req.id === 'secret' ? model.children[0] : model);
       if (box.isEmpty()) box.set(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
       const center = box.getCenter(new THREE.Vector3());
       const extent = box.getSize(new THREE.Vector3()).length() * 0.58;

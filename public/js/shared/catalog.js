@@ -159,5 +159,5 @@ export const CARDS_BY_ID = Object.fromEntries(CARDS.map((v) => [v.id, v]));
 export const CARD_IDS = new Set(CARDS.map((v) => v.id));
 export const CARD_BOXES = [
   { id: 'card_crate', name: 'Card Crate', price: 500, color: '#19b5aa', odds: { skip: 60, time_tax: 30, pressure: 9.9, heart: .1 }, x: -26, z: 26 },
-  { id: 'royal_cards', name: 'Royal Card Crate', price: 1500, color: '#e7a928', odds: { skip: 25, time_tax: 45, pressure: 29.5, heart: .5 }, x: -34, z: 20 },
+  { id: 'royal_cards', name: 'Royal Card Crate', price: 1500, color: '#e7a928', odds: { skip: 25, time_tax: 45, pressure: 25, heart: 5 }, x: -34, z: 20 },
 ];

@@ -10,7 +10,7 @@ const TYPING_THROTTLE_MS = 80;
 const RESULT_TIMEOUT_MS = 2500;   // re-allow submitting if a result never arrives
 
 function plainKey(e) {
-  return !e.ctrlKey && !e.metaKey && !e.altKey && !isTextField(document.activeElement) && !document.querySelector('.overlay');
+  return !e.ctrlKey && !e.metaKey && !e.altKey && !isTextField(document.activeElement) && !document.querySelector('.overlay, .panel:not(.leaving)');
 }
 
 /** onSubmit(word), onTyping(text) — text is sent throttled (~80ms). */

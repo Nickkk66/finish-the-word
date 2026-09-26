@@ -4,6 +4,7 @@
 import { h, fmt, replay, formatDuration } from './dom.js';
 import { icons } from './icons.js';
 import { profile, freeReadyIn } from '../profile.js';
+import { PETS, CARDS } from '../shared/catalog.js';
 
 function createCounter(emoji, cls, label) {
   const num = h('span', { class: 'counter-num' });
@@ -53,6 +54,21 @@ export function createSidebar({ onInvite, openPanel }) {
       h('span', { class: 'side-face' }, icon()),
       h('span', { class: 'side-label stroke' }, label),
       badge || null)]));
+  const unread = new Set();
+  try { for (const id of JSON.parse(localStorage.getItem('ftw_unread_collections') || '[]')) if (id === 'pets' || id === 'cards') unread.add(id); } catch {}
+  for (const [id, catalog] of [['pets', PETS], ['cards', CARDS]]) {
+    const fingerprint = JSON.stringify(catalog);
+    try {
+      if (localStorage.getItem(`ftw_catalog_${id}`) !== fingerprint) unread.add(id);
+      localStorage.setItem(`ftw_catalog_${id}`, fingerprint);
+    } catch {}
+  }
+  try { localStorage.setItem('ftw_unread_collections', JSON.stringify([...unread])); } catch {}
+  const dots = Object.fromEntries(['pets', 'cards'].map(id => [id, h('span', { class: 'collection-badge', hidden: !unread.has(id), 'aria-label': 'New item' })]));
+  for (const id of ['pets', 'cards']) {
+    buttons[id].append(dots[id]);
+    buttons[id].addEventListener('click', () => { unread.delete(id); dots[id].hidden = true; try { localStorage.setItem('ftw_unread_collections', JSON.stringify([...unread])); } catch {} });
+  }
 
   // ---- invite popover
   const popCode = h('div', { class: 'invite-pop-code' });
@@ -100,6 +116,11 @@ export function createSidebar({ onInvite, openPanel }) {
     coinsEl: coins.el,
     setRole(allowed) { buttons.gameSettings.hidden = !allowed; },
     setView() { /* Camera controls live in Settings. */ },
+    markNew(id) {
+      if (!dots[id]) return;
+      unread.add(id); dots[id].hidden = false;
+      try { localStorage.setItem('ftw_unread_collections', JSON.stringify([...unread])); } catch {}
+    },
     showInvite({ code, link, copied }) {
       popCode.replaceChildren(...[...code].map((ch) => h('span', { class: 'mini-tile' }, ch)));
       popMsg.textContent = copied ? '✅ Link copied!' : 'Copy this link:';

@@ -4,7 +4,7 @@ import { createAvatarPreview } from '../avatar.js';
 import { createAvatarEditor } from '../avatarEditor.js';
 import { modelArt } from '../art.js';
 import { profile, cleanName, level } from '../../profile.js';
-import { PETS, BACK_BLING } from '../../shared/catalog.js';
+import { PETS, BACK_BLING, CHAIRS } from '../../shared/catalog.js';
 import { NAME_MAX } from '../../shared/constants.js';
 
 export function profilePanel({ actions }) {
@@ -21,19 +21,30 @@ export function profilePanel({ actions }) {
       const progress = h('progress', { max: 100, 'aria-label': 'Level progress' });
       const stats = h('div', { class: 'stats' });
       const tabContent = h('div', { class: 'profile-tab-content scroll' });
-      const tabs = ['Look', 'Back Bling', 'Pets'].map((label) => h('button', { type: 'button', class: 'seg-btn', onClick: () => { tab = label; updateTab(); } }, label));
+      const tabs = ['Look', 'Back Bling', 'Pets', 'Chairs'].map((label) => h('button', { type: 'button', class: 'seg-btn', onClick: () => { tab = label; updateTab(); } }, label));
       body.append(h('div', { class: 'profile-columns' },
         h('div', { class: 'profile-summary' }, h('div', { class: 'avatar-stage' }, preview.el), h('label', { class: 'field-label' }, 'Name', name), h('div', { class: 'level-progress' }, levelText, progress), stats),
         h('div', { class: 'profile-customize' }, h('div', { class: 'seg profile-tabs' }, tabs), tabContent)));
       function updateTab() {
         tabs.forEach((b) => b.setAttribute('aria-pressed', String(b.textContent === tab)));
         if (tab === 'Look') { tabContent.replaceChildren(editor.el); return; }
-        const list = tab === 'Back Bling' ? BACK_BLING.filter((p) => profile.ownedBacks.includes(p.id)) : PETS.filter((p) => profile.pets[p.id]);
-        tabContent.replaceChildren(h('div', { class: 'profile-collection' }, list.length ? list.map((item) => {
+        const capeControls = tab === 'Back Bling' && (profile.ownedBacks.includes('cape') || profile.ownedBacks.includes('rainbow'))
+          ? h('div', { class: 'cape-controls' },
+            h('strong', {}, 'Cape color'),
+            h('div', { class: 'cape-colors' }, ['#d84752', '#368bec', '#56c870', '#ae69ed', '#f3c94f'].map(color => h('button', {
+              type: 'button', class: 'cape-swatch', style: { background: color }, 'aria-label': `Cape color ${color}`,
+              'aria-pressed': String(profile.capeColor === color), onClick: () => actions.setCapeColor(color),
+            })), h('button', { type: 'button', class: 'btn small purple', 'aria-pressed': String(profile.capeColor === 'rainbow'), onClick: () => actions.setCapeColor('rainbow') }, 'Rainbow')),
+            h('label', { class: 'field-label' }, 'Custom color', h('input', { type: 'color', value: profile.capeColor === 'rainbow' ? '#d84752' : profile.capeColor, onChange: e => actions.setCapeColor(e.target.value) }))) : null;
+        const list = tab === 'Back Bling' ? BACK_BLING.filter((p) => profile.ownedBacks.includes(p.id))
+          : tab === 'Chairs' ? CHAIRS.filter((p) => profile.ownedChairs.includes(p.id)) : PETS.filter((p) => profile.pets[p.id]);
+        tabContent.replaceChildren(...(capeControls ? [capeControls] : []), h('div', { class: 'profile-collection' }, list.length ? list.map((item) => {
           const isBack = tab === 'Back Bling';
-          const equipped = isBack ? profile.equippedBack === item.id : profile.equippedPet === item.id;
-          return h('button', { type: 'button', class: `profile-item${equipped ? ' equipped' : ''}`, onClick: () => isBack ? actions.cosmetic('back', item.id) : actions.equipPet(item.id, [3, 2, 1].find((tier) => profile.petTiers[item.id]?.[tier])) },
-            modelArt(actions, isBack ? 'back' : 'pet', item.id, item.name, 90), h('span', null, item.name), h('small', null, equipped ? 'Equipped' : 'Equip'));
+          const isChair = tab === 'Chairs';
+          const equipped = isBack ? profile.equippedBack === item.id : isChair ? profile.equippedChair === item.id : profile.equippedPet === item.id;
+          return h('button', { type: 'button', class: `profile-item${equipped ? ' equipped' : ''}`, onClick: () => isBack ? actions.cosmetic('back', item.id)
+            : isChair ? actions.cosmetic('chair', item.id) : actions.equipPet(item.id, [3, 2, 1].find((tier) => profile.petTiers[item.id]?.[tier])) },
+            modelArt(actions, isBack ? 'back' : isChair ? 'chair' : 'pet', item.id, item.name, 90), h('span', null, item.name), h('small', null, equipped ? 'Equipped' : 'Equip'));
         }) : h('p', { class: 'empty' }, 'Your collection will appear here.')));
       }
       function stat(label, value) { return h('div', { class: 'stat' }, h('span', { class: 'stat-label' }, label), h('span', { class: 'stat-value', title: String(value) }, value)); }

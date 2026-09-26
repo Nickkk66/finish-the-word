@@ -8,7 +8,7 @@ const write = (key, value) => { try { value ? localStorage.setItem(key, JSON.str
 
 export function createAccount({ onChange, beforeReplace }) {
   let session = read(KEY), applying = false, timer, inFlight = null, generation = 0;
-  const state = { username: session?.username || '', status: session ? 'connecting' : 'guest', busy: false, error: '' };
+  const state = { username: session?.username || '', status: session ? 'connecting' : 'guest', busy: false, error: '', recoveryCode: '' };
   const emit = () => onChange({ ...state });
   function status(value, error = '') { state.status = value; state.error = error; emit(); }
   async function request(path, method = 'GET', body, token = session?.token) {
@@ -73,6 +73,7 @@ export function createAccount({ onChange, beforeReplace }) {
       generation++; clearTimeout(timer);
       session = { username: data.username, token: data.token, revision: data.revision, dirty: false };
       write(KEY, session); state.username = data.username;
+      state.recoveryCode = data.recoveryCode || '';
       const backup = read(`ftw_backup_${data.username}`);
       if (backup?.dirty && backup.profile?.id === data.profile.id) {
         session.dirty = true; session.revision = backup.revision; write(KEY, session);
@@ -92,6 +93,12 @@ export function createAccount({ onChange, beforeReplace }) {
     ready, save,
     register: credentials => authenticate('register', credentials),
     login: credentials => authenticate('login', credentials),
+    reset: credentials => authenticate('reset', credentials),
+    async recovery() {
+      const data = await request('recovery', 'POST');
+      state.recoveryCode = data.recoveryCode;
+      emit();
+    },
     async useCloud() {
       const data = await request('me');
       write(`ftw_backup_${session.username}`, { profile: exportProfile(), revision: session.revision, dirty: false });
@@ -106,7 +113,7 @@ export function createAccount({ onChange, beforeReplace }) {
         write(`ftw_backup_${session.username}`, { profile: exportProfile(), revision: session.revision, dirty: session.dirty });
         try { await request('logout', 'POST'); } catch { /* revoke on expiry when offline */ }
       }
-      generation++; clearTimeout(timer); session = null; write(KEY, null); state.username = '';
+      generation++; clearTimeout(timer); session = null; write(KEY, null); state.username = ''; state.recoveryCode = '';
       apply(read(GUEST) || {}); status('guest');
     },
   };
