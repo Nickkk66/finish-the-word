@@ -331,6 +331,8 @@ try {
   for (const p of players) await p.shot('ended');
   await sleep(6000);
   const after = await A.state();
+  const chatText = await A.eval('document.querySelector(".chat-log")?.textContent || ""');
+  if (/rewarded play|SPEED DEMON:|WPM:/.test(chatText)) throw new Error('Match bonus details leaked into chat');
   log('phase after end:', after.match.phase);
   result.notes.push(`winner=${nameById[ended.winnerId] || ended.winnerId}`, `words=${ended.wordCount}`, `after=${after.match.phase}`);
   const coins = await Promise.all(players.map((p) => p.eval(`JSON.parse(localStorage.getItem('ftw_profile_v1')||'{}').coins`)));

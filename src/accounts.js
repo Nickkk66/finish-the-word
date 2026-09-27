@@ -1,6 +1,6 @@
 // Optional cloud saves. Gameplay economy remains the existing client-trusted model.
 // Passwords and session tokens are never stored in plaintext or returned in profiles.
-import { sanitizeLook, CHAIRS, TABLES, BACK_BLING, PETS, CARDS } from '../public/js/shared/catalog.js';
+import { sanitizeLook, CHAIRS, BACK_BLING, PETS, CARDS } from '../public/js/shared/catalog.js';
 
 const ITERATIONS = 100000; // Workers Web Crypto PBKDF2 iteration ceiling.
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -28,7 +28,6 @@ export function cloudProfile(value, fixedId) {
   const count = v => Number.isSafeInteger(v) && v >= 0 && v <= 1000000000 ? v : 0;
   const owned = (key, catalog, initial) => [...new Set([initial, ...(Array.isArray(value[key]) ? value[key] : []).filter(id => catalog.some(item => item.id === id))])];
   const ownedChairs = owned('ownedChairs', CHAIRS, 'wooden');
-  const ownedTables = owned('ownedTables', TABLES, 'classic');
   const ownedBacks = owned('ownedBacks', BACK_BLING, 'none');
   const petTiers = {}, pets = {};
   for (const { id } of PETS) {
@@ -41,9 +40,8 @@ export function cloudProfile(value, fixedId) {
   const result = {
     id: fixedId || (/^[a-z0-9]{8,40}$/i.test(value.id || '') ? value.id : random(12)),
     name: String(value.name || 'Player').replace(/[^A-Za-z0-9 _\-.']/g, '').slice(0, 16).trim() || 'Player',
-    look: sanitizeLook(value.look), ownedChairs, ownedTables, ownedBacks, petTiers, pets,
+    look: sanitizeLook(value.look), ownedChairs, ownedBacks, petTiers, pets,
     equippedChair: ownedChairs.includes(value.equippedChair) ? value.equippedChair : 'wooden',
-    equippedTable: ownedTables.includes(value.equippedTable) ? value.equippedTable : 'classic',
     equippedBack: ownedBacks.includes(value.equippedBack) ? value.equippedBack : 'none',
     capeColor: value.capeColor === 'rainbow' || /^#[0-9a-f]{6}$/i.test(value.capeColor || '') ? value.capeColor : '#d84752',
     equippedPet: pets[value.equippedPet] ? value.equippedPet : null,

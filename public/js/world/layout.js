@@ -128,7 +128,7 @@ const RESERVED = [
   { x: SPAWN_PAD.x, z: SPAWN_PAD.z, r: 9 },
   { x: -16, z: 16, r: 10 }, // lucky blocks
   { x: -29, z: 23, r: 12 }, // card crate plaza
-  { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, r: 11 },
+  { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, r: 15 },
 ];
 const RESERVED_RECTS = [
   { x0: 11, x1: 26, z0: -28, z1: 28 }, // shop row + walkway

@@ -13,13 +13,14 @@ import { CharacterMotor, Input, isTouchDevice } from './controls.js';
 import { CameraRig } from './camera.js';
 import { Effects } from './effects.js';
 import { setTextureAnisotropy } from './textures.js';
-import { DECK, groundHeight, seatX, seatZ } from './layout.js';
+import { DECK, LIGHTHOUSE, groundHeight, seatX, seatZ } from './layout.js';
 import { wrapAngle } from './math.js';
 import { createThumbnails } from './thumbnails.js';
 import { BlockPreview } from './block-preview.js';
 import { createObby } from './obby.js';
 import { createAmbient } from './ambient.js';
 import { createRouletteScene } from './roulette.js';
+import { createLighthouseInterior, LIGHTHOUSE_ROOM } from './lighthouse-interior.js';
 
 const MOVE_INTERVAL = 100; // ms: local moves are sent at most 10×/s
 const STAND = Object.freeze({ type: 'stand' });
@@ -75,6 +76,7 @@ export async function createWorld({ container, labelLayer }) {
   const ambient = createAmbient(scene);
   const rouletteShockListeners=[];
   const roulette = createRouletteScene(scene, labels, props.trees, id=>rouletteShockListeners.forEach(fn=>fn(id)));
+  const lighthouse = createLighthouseInterior(scene);
 
   // ---- Lobby signs + interactables ----
   const shopSigns = CHAIRS.map((chair) => {
@@ -117,6 +119,9 @@ export async function createWorld({ container, labelLayer }) {
     interactables.push({ i: { type: 'block', blockId: b.blockId }, x: b.x, z: b.z, y: b.promptY, range: 6, stamp: 0 });
   }
   for (const b of lobby.cardBoxes) interactables.push({ i: { type: 'cardBox', boxId: b.boxId }, x: b.x, z: b.z, y: b.promptY, range: 6, stamp: 0 });
+  const doorAngle = Math.atan2(-LIGHTHOUSE.x, -LIGHTHOUSE.z);
+  interactables.push({ i: { type: 'lighthouseDoor', to: 'lighthouse' }, x: LIGHTHOUSE.x + Math.sin(doorAngle) * 7.1, z: LIGHTHOUSE.z + Math.cos(doorAngle) * 7.1, y: 2.7, range: 2.8, stamp: 0 });
+  interactables.push({ i: { type: 'lighthouseDoor', to: 'island' }, x: LIGHTHOUSE_ROOM.exit.x, z: LIGHTHOUSE_ROOM.exit.z, y: LIGHTHOUSE_ROOM.exit.y, range: 2.9, stamp: 0 });
 
   // ---- State ----
   const players = new Map();
@@ -144,6 +149,7 @@ export async function createWorld({ container, labelLayer }) {
   const viewListeners = [];
   let firstPerson = false;
   let zone = 'island';
+  let outdoorCamera = null;
   let portalUntil = 0;
   let obbyStarted = 0;
   let obbyFinished = false;
@@ -234,7 +240,7 @@ export async function createWorld({ container, labelLayer }) {
       return;
     }
     let nearBlock = null, nearDistance = 4.5;
-    for (const spot of [...lobby.blocks, ...lobby.cardBoxes]) {
+    for (const spot of zone === 'island' ? [...lobby.blocks, ...lobby.cardBoxes] : []) {
       const d = Math.hypot(spot.x - e.pos.x, spot.z - e.pos.z);
       if (d < nearDistance) { nearBlock = spot; nearDistance = d; }
     }
@@ -247,6 +253,8 @@ export async function createWorld({ container, labelLayer }) {
       let best = null;
       let bestD = Infinity;
       for (const it of [...interactables, ...[roulette.meteorTarget()].filter(Boolean)]) {
+        if (zone === 'lighthouse' ? it.i.type !== 'lighthouseDoor' || it.i.to !== 'island' : it.i.type === 'lighthouseDoor' && it.i.to === 'island') continue;
+        if (zone === 'obby' && it.i.type !== 'lighthouseDoor') continue;
         if (it.stamp === frameNo || (it.i.type === 'seat' && seatOccupant[it.i.seat])) continue;
         const d = Math.hypot(it.x - e.pos.x, it.z - e.pos.z);
         if (d < it.range && d < bestD) {
@@ -347,7 +355,7 @@ export async function createWorld({ container, labelLayer }) {
         me.setMotorState(motor);
         if (input.consumeInteract() && prompt.visible && prompt.enabled && prompt.target) emitInteract(prompt.target.i);
       }
-      if (me.seat < 0 && now > portalUntil) {
+      if (me.seat < 0 && now > portalUntil && zone !== 'lighthouse') {
         const targets = zone === 'island' ? [{ x: LAYOUT.portal.x, y: .25, z: LAYOUT.portal.z }] : [obby.returnPortal, obby.startReturn];
         if (targets.some(p => Math.hypot(me.pos.x - p.x, me.pos.z - p.z) < 1.8 && Math.abs(me.pos.y - p.y) < 3)) {
           portalUntil = now + 3500;
@@ -378,7 +386,17 @@ export async function createWorld({ container, labelLayer }) {
     if (me) focus.copy(me.render);
     else focus.set(LAYOUT.spawn.x, 0, LAYOUT.spawn.z);
     rig.update(dt, time, focus, viewSeat());
-    roulette.camera(camera);
+    if (zone !== 'lighthouse') roulette.camera(camera);
+    if (zone === 'lighthouse') {
+      const dx = camera.position.x - LIGHTHOUSE_ROOM.center.x;
+      const dz = camera.position.z - LIGHTHOUSE_ROOM.center.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > 10.6) {
+        camera.position.x = LIGHTHOUSE_ROOM.center.x + dx * 10.6 / distance;
+        camera.position.z = LIGHTHOUSE_ROOM.center.z + dz * 10.6 / distance;
+      }
+      camera.position.y = Math.min(camera.position.y, 8.65);
+    }
     terrain.setSkyFocus(camera.position);
     effects.update(dt, camera);
 
@@ -522,8 +540,6 @@ export async function createWorld({ container, labelLayer }) {
       const a = e.avatar;
       if (kind === 'flair') {
         e.stack.flair(data.text ?? '', data.color);
-        effects.burst('correct', head, feet);
-        for (const other of players.values()) if (other.id !== id) other.avatar.flinch();
       }
       if (kind === 'correct') a.nod();
       else if (kind === 'wrong') a.shakeHead();
@@ -595,13 +611,25 @@ export async function createWorld({ container, labelLayer }) {
     teleportToPlayer(id) {
       const target = players.get(id);
       if (!target) return;
-      world.setZone(target.pos.x > 400 ? 'obby' : 'island');
+      world.setZone(target.pos.x > 400 ? 'obby' : target.pos.x > 250 ? 'lighthouse' : 'island');
       world.teleportLocal({ x: target.pos.x + 3, y: target.pos.y, z: target.pos.z });
     },
     setZone(value) {
-      zone = value === 'obby' ? 'obby' : 'island';
+      const wasInside = zone === 'lighthouse';
+      zone = value === 'obby' || value === 'lighthouse' ? value : 'island';
+      if (zone === 'lighthouse' && !wasInside) {
+        outdoorCamera = { distance: rig.distance, pitch: rig.pitch };
+        rig.distance = 7.5; rig.pitch = .2;
+      } else if (wasInside && zone !== 'lighthouse' && outdoorCamera) {
+        rig.distance = outdoorCamera.distance; rig.pitch = outdoorCamera.pitch;
+        outdoorCamera = null;
+      }
       obby.setVisible(zone === 'obby');
-      motor.platforms = zone === 'obby' ? obby.platforms : null;
+      lighthouse.room.visible = zone === 'lighthouse';
+      motor.platforms = zone === 'obby' ? obby.platforms : zone === 'lighthouse'
+        ? [{ x: LIGHTHOUSE_ROOM.center.x, y: -.2, z: LIGHTHOUSE_ROOM.center.z, w: 23, h: .4, d: 23, dx: 0, dz: 0 }]
+        : null;
+      motor.bounds = zone === 'lighthouse' ? { x: LIGHTHOUSE_ROOM.center.x, z: LIGHTHOUSE_ROOM.center.z, r: LIGHTHOUSE_ROOM.radius } : null;
       if (zone === 'obby') {
         obbyStarted = performance.now(); obbyFinished = false; checkpoint = { ...OBBY.spawn, index: 0 };
       }

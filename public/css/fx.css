@@ -153,6 +153,12 @@
 .choice-list .btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; width:100%; min-height:49px; padding:7px 10px; white-space:normal; line-height:1.15; }
 .choice-list .btn small { font:600 12px/1.2 var(--font); opacity:.9; text-wrap:balance; }
 .overlay-title { font: 700 30px / 1.1 var(--font); }
+.confirm-details { display: grid; gap: 9px; width: 100%; margin: 7px 0 10px; text-align: left; }
+.confirm-detail { display: grid; gap: 2px; padding: 10px 14px; border: 2px solid #29304b22; border-radius: 14px; background: #ffffffb8; }
+.confirm-detail.prominent { background: linear-gradient(110deg, #efe1ff, #fff3d1); border-color: #b76bff77; }
+.confirm-detail-label { color: #7454a5; font: 800 11px / 1.1 var(--font); letter-spacing: .11em; }
+.confirm-detail-text { color: #2d3550; font: 700 16px / 1.28 var(--font); }
+.confirm-detail.prominent .confirm-detail-text { font-size: 24px; }
 .overlay-text { margin: 0; font: 600 16px / 1.4 var(--font); color: #4a5563; }
 .overlay-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .overlay-emoji { font-size: 44px; line-height: 1; }

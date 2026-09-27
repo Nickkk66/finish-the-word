@@ -83,7 +83,19 @@ export class Effects {
   burst(kind, head, feet) {
     switch (kind) {
       case 'correct':
-        this.sparkBurst(head, 28, PALETTES.correct, 3, 7, 0.55, 1.0, 0.45, 0.95);
+        this.sparkBurst(head, 36, PALETTES.correct, 3, 7, 0.55, 1.0, 0.45, 0.95);
+        this.ring(feet, 5.5, .5, '#70ffb0');
+        break;
+      case 'coin':
+        this.sparkBurst(head, 16, PALETTES.gold, 2, 5, .55, .9, .35, .7);
+        break;
+      case 'streak':
+        this.sparkRing(feet, 32, PALETTES.gold);
+        this.ring(feet, 7, .7, '#ffd43b');
+        break;
+      case 'reward':
+        this.sparkBurst(head, 44, PALETTES.gold, 3, 8, .7, 1.2, .5, 1.0);
+        this.ring(feet, 8, .8, '#ffd43b');
         break;
       case 'wrong':
         this.icon(xMarkTexture(), head.x, head.y + 1, head.z, { life: 0.95, size: 2 });

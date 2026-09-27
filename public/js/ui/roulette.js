@@ -60,7 +60,7 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
     start.disabled = ready < 2;
     title.textContent = m?.phase === 'ended' ? (m.winnerId ? 'THE LAST ONE AWAKE' : 'THE RITUAL ENDS') : rouletteRules(['roulette','rouletteReveal'].includes(m?.phase) ? m.mode : st.settings.mode).name.toUpperCase();
     const name = id => st.players.get(id)?.name || 'Someone';
-    note.textContent = lobby ? (mine?.seat < 0 ? 'Take a seat in the light. Choose your own bet, from 25 coins.' : `Waiting at the table · ${ready} ready${st.rouletteEntry ? ' · confirm your entry below' : ''}`)
+    note.textContent = lobby ? (mine?.seat < 0 ? (mine?.rouletteBet ? 'Your entry is still committed. Sit down again to play.' : 'Take a seat in the light. Choose your own bet, from 25 coins.') : `Waiting at the table · ${ready} ready${st.rouletteEntry && !mine?.rouletteBet ? ' · confirm your entry below' : ''}`)
       : m?.phase === 'roulette' ? (turn ? 'Your cup. Drink or pass.' : `${name(m.typerId)} holds the cup…`)
       : m?.phase === 'rouletteReveal' ? (r.event.action === 'pass' ? `${name(r.event.id)} slides the cup away…` : 'Drink. Wait. Do you feel anything…?')
       : m?.phase === 'ended' ? (m.winnerId ? `${name(m.winnerId)} claims ${fmt(r?.pot || 0)} coins.` : 'Entries are returned.') : '';

@@ -66,7 +66,7 @@ export function showError({ title, message, buttons }) {
 /** Resolves true/false. Esc = cancel. */
 export function cancelConfirmation() { activeConfirm?.(false); }
 
-export function confirmDialog({ title, message, ok = 'OK', cancel = 'Cancel', tone = 'red' }) {
+export function confirmDialog({ title, message, details = null, ok = 'OK', cancel = 'Cancel', tone = 'red' }) {
   if (activeConfirm) return Promise.resolve(false);
   return new Promise((resolve) => {
     const previousFocus = document.activeElement;
@@ -95,7 +95,10 @@ export function confirmDialog({ title, message, ok = 'OK', cancel = 'Cancel', to
     const okBtn = h('button', { type: 'button', class: `btn ${tone}`, onClick: () => done(true) }, ok);
     const el = overlay('confirm',
       h('div', { class: 'overlay-title stroke' }, title),
-      h('p', { class: 'overlay-text' }, message),
+      details ? h('div', { class: 'confirm-details' }, details.map(({ label, text, prominent }) =>
+        h('div', { class: `confirm-detail${prominent ? ' prominent' : ''}` },
+          h('span', { class: 'confirm-detail-label' }, label), h('span', { class: 'confirm-detail-text' }, text))))
+        : h('p', { class: 'overlay-text' }, message),
       h('div', { class: 'overlay-buttons' },
         h('button', { type: 'button', class: 'btn grey', onClick: () => done(false) }, cancel),
         okBtn));

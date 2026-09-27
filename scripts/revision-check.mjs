@@ -41,32 +41,31 @@ try {
   await p.clickText('3', '.panel-gameSettings .seg-btn');
   await p.wait('window.__ftw.state.settings.mode === "custom"');
   assert.equal(await p.eval('window.__ftw.state.settings.hearts'), 3);
-  await p.clickText('Table:', '.panel-gameSettings button');
-  await p.wait('!!document.querySelector(".overlay.choice")');
-  await p.key('Escape', 'Escape', 27);
-  await delay(220);
+  assert.equal(await p.eval('document.querySelector(".panel-gameSettings").textContent.includes("Choose table")'), false);
   await p.click('.panel-close');
   await delay(220);
 
-  await p.send({ t: 'unlock', code: 'local-ui-test-only' });
-  await p.wait('window.__ftw.state.isAdmin');
-  await p.click('[aria-label="Settings"]');
-  await p.clickText('Open admin tools');
-  await p.wait('!!document.querySelector(".panel-settings input[type=number]")');
-  await p.eval('document.querySelector(".panel-settings input[type=number]").value = 120');
-  await p.clickText('Set coins');
-  await p.wait('window.__ftw.profile.coins === 120');
-  await p.eval('document.querySelector(".panel-settings input[type=number]").value = -20');
-  await p.clickText('Add / remove coins');
-  await p.wait('window.__ftw.profile.coins === 100');
-  await p.clickText('Close admin tools');
-  assert.equal(await p.eval('document.querySelector(".panel-settings input[type=number]")?.getClientRects().length || 0'), 0);
-  await p.click('.panel-close');
-  await delay(220);
+  if (process.env.TEST_ADMIN_CODE) {
+    await p.send({ t: 'unlock', code: process.env.TEST_ADMIN_CODE });
+    await p.wait('window.__ftw.state.isAdmin');
+    await p.click('[aria-label="Settings"]');
+    await p.clickText('Open admin tools');
+    await p.wait('!!document.querySelector(".panel-settings input[type=number]")');
+    await p.eval('document.querySelector(".panel-settings input[type=number]").value = 120');
+    await p.clickText('Set coins');
+    await p.wait('window.__ftw.profile.coins === 120');
+    await p.eval('document.querySelector(".panel-settings input[type=number]").value = -20');
+    await p.clickText('Add / remove coins');
+    await p.wait('window.__ftw.profile.coins === 100');
+    await p.clickText('Close admin tools');
+    assert.equal(await p.eval('document.querySelector(".panel-settings input[type=number]")?.getClientRects().length || 0'), 0);
+    await p.click('.panel-close');
+    await delay(220);
+  }
   await p.click('[aria-label="Profile"]');
   await p.clickText('Chairs', '.profile-tabs button');
   assert.match(await p.eval('document.querySelector(".profile-tab-content").textContent'), /Wooden/);
   await p.shot('profile-chairs');
   assert.deepEqual(p.errors, []);
-  console.log('ok card notice, popup exit, native game choices, custom rules, admin coins, profile chairs');
+  console.log('ok card notice, popup exit, native game choices, custom rules, profile chairs');
 } finally { await b.close(); }

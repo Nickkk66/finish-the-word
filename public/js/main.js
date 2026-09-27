@@ -1,8 +1,9 @@
-import { isRouletteMode, rouletteRules } from './shared/roulette.js';
+import { isRouletteMode } from './shared/roulette.js';
 // Boot + glue: profile → world (menu mode) → menu → connect → wire net <-> world <-> UI.
 
 import { DEFAULT_SETTINGS, MAX_PLAYERS, PROTOCOL_VERSION, ROOM_CODE_REGEX, makeRoomCode, EMOTES, HINT_PRICE, OBBY } from './shared/constants.js';
-import { BLOCKS, CHAIRS, PETS_BY_ID, TABLES, BACK_BLING, CARDS_BY_ID, CARD_BOXES, rollBlock } from './shared/catalog.js';
+import { LIGHTHOUSE_ROOM } from './world/lighthouse-interior.js';
+import { BLOCKS, CHAIRS, PETS_BY_ID, BACK_BLING, CARDS_BY_ID, CARD_BOXES, rollBlock } from './shared/catalog.js';
 import {
   profile, onProfileChange, setName, setLook, buyOrEquipChair, payForBlock, addPet, equipPet,
   recordWord, recordMatch, setSetting, claimFree, FREE_COINS,
@@ -102,7 +103,7 @@ async function purchase(item, commit, stillValid = () => true) {
   } finally { purchasePending = false; }
 }
 
-function syncLoadout() { sendLoadout({ chair: profile.equippedChair, pet: profile.equippedPet, petTier: profile.equippedPetTier, table: profile.equippedTable, back: profile.equippedBack, capeColor: profile.capeColor, level: level(), cards: { ...profile.cards } }); }
+function syncLoadout() { sendLoadout({ chair: profile.equippedChair, pet: profile.equippedPet, petTier: profile.equippedPetTier, back: profile.equippedBack, capeColor: profile.capeColor, level: level(), cards: { ...profile.cards } }); }
 
 // ------------------------------------------------------------------ UI
 
@@ -117,7 +118,12 @@ const actions = {
   async enterRoulette(amount = 25) {
     if (state.betPending) return;
     if (!Number.isSafeInteger(amount) || amount < 25 || amount > profile.coins) return toast('Enter a whole number from 25 up to your coin balance.', 'bad');
-    if (!await confirmDialog({ title: 'Join the cursed table?', message: `${fmt(amount)} game coins go into the pool. Each doubling above the smallest entry removes 20% of base poison risk, capped at 40% off. Equal entries have equal odds. Every turn raises the prize ×${rouletteRules(state.settings.mode).prizeGrowth} and poison chance ×${rouletteRules(state.settings.mode).riskGrowth}. Last awake wins. Standing up before the match returns your entry; leaving during the match forfeits it.`, ok: 'Place entry', tone: 'purple' })) return;
+    if (!await confirmDialog({ title: 'Join the cursed table?', details: [
+      { label: 'YOUR ENTRY', text: `${fmt(amount)} coins`, prominent: true },
+      { label: 'THE STAKES', text: 'Bigger bets lower your poison odds. The prize grows each turn.' },
+      { label: 'THE WINNER', text: 'Last one awake takes the pot.' },
+      { label: 'ENTRY IS COMMITTED', text: 'Standing up or leaving will not return it.' },
+    ], ok: 'Place entry', tone: 'purple' })) return;
     state.betPending = { requestId: crypto.randomUUID(), amount, balance: profile.coins };
     net.send({ t: 'bet', ...state.betPending }); refreshRoom();
   },
@@ -136,10 +142,11 @@ const actions = {
   },
   chair(chairId) { return actions.cosmetic('chair', chairId); },
   async cosmetic(kind, id) {
-    const catalog = kind === 'chair' ? CHAIRS : kind === 'table' ? TABLES : BACK_BLING;
+    if (!['chair', 'back'].includes(kind)) return;
+    const catalog = kind === 'chair' ? CHAIRS : BACK_BLING;
     const item = catalog.find((v) => v.id === id);
     if (!item) return;
-    const owned = kind === 'chair' ? profile.ownedChairs : kind === 'table' ? profile.ownedTables : profile.ownedBacks;
+    const owned = kind === 'chair' ? profile.ownedChairs : profile.ownedBacks;
     const finish = () => {
       const result = buyOrEquip(kind, id);
       if (result === 'poor' || result === 'invalid') return false;
@@ -260,10 +267,16 @@ const actions = {
   thumbnail: (kind, id, size) => world ? world.renderThumbnail(kind, id, size) : Promise.reject(new Error('World not ready')),
   preference: setSetting,
   setView(view) { world?.setFirstPerson(view === 'first'); setSetting('view', view); },
-  returnToIsland() { if (state.zone === 'obby') return onInteract({ type: 'portal', to: 'island' }); },
+  returnToIsland() { if (state.zone === 'obby' || state.zone === 'lighthouse') return onInteract({ type: 'portal', to: 'island' }); },
   unlock: (code) => net.send({ t: 'unlock', code }),
   admin: (action, fields = {}) => net.send({ t: 'admin', action, ...fields }),
-  teleportToPlayer: (id) => world.teleportToPlayer(id),
+  teleportToPlayer(id) {
+    const x = state.players.get(id)?.pos?.x;
+    if (!Number.isFinite(x)) return;
+    state.zone = x > 400 ? 'obby' : x > 250 ? 'lighthouse' : 'island';
+    world.teleportToPlayer(id);
+    hud.update(state);
+  },
   async moderate(action, id) {
     if (action === 'unban' || await confirmDialog({ title: `${action === 'ban' ? 'Ban' : 'Kick'} ${nameOf(id)}?`, message: action === 'ban' ? 'They cannot rejoin this room.' : 'They will leave this room and the current match.', ok: action === 'ban' ? 'Ban' : 'Kick' })) return net.send({ t: 'mod', action, id });
     return false;
@@ -540,7 +553,10 @@ async function onInteract(i) {
   } else if (i.type === 'stand') {
     if (standPending) return;
     standPending = true;
-    const ok = !isAliveParticipant() || await confirmForfeit('Stand up?', 'Stand up');
+    const pendingEntry = state.players.get(state.you)?.rouletteBet;
+    const ok = isAliveParticipant()
+      ? await confirmForfeit('Stand up?', 'Stand up')
+      : pendingEntry ? await confirmDialog({ title: 'Leave your seat?', message: `Your ${fmt(pendingEntry)} coin entry stays committed. Sit again to play, or leave and forfeit it.`, ok: 'Stand up' }) : true;
     standPending = false;
     if (ok) net.send({ t: 'stand' });
   } else if (i.type === 'shopChair') {
@@ -549,17 +565,18 @@ async function onInteract(i) {
     actions.openBlock(i.blockId);
   } else if (i.type === 'cardBox') {
     actions.openCardBox(i.boxId);
-  } else if (i.type === 'portal') {
+  } else if (i.type === 'portal' || i.type === 'lighthouseDoor') {
     if (teleporting || isAliveParticipant()) return;
     teleporting = true;
     net.send({ t: 'celebrate', kind: 'portal', to: i.to });
-    const overlay = h('div', { class: 'teleport-overlay' }, h('div', { class: 'teleport-spinner' }), h('div', { class: 'stroke' }, i.to === 'obby' ? 'Traveling to the obby…' : 'Returning to the island…'));
+    const overlay = h('div', { class: 'teleport-overlay' }, h('div', { class: 'teleport-spinner' }), h('div', { class: 'stroke' }, i.to === 'obby' ? 'Traveling to the obby…' : i.to === 'lighthouse' ? 'The lightkeeper calls…' : 'Returning to the island…'));
     const roomCode = state.code;
     setTimeout(() => { if (state.inRoom && state.code === roomCode) uiRoot.append(overlay); }, 500);
     setTimeout(() => {
       if (!state.inRoom || state.code !== roomCode) return;
       state.zone = i.to;
-      world.setZone(i.to); world.teleportLocal(i.to === 'obby' ? OBBY.spawn : { x: 0, y: .25, z: 72 });
+      world.setZone(i.to);
+      world.teleportLocal(i.to === 'obby' ? OBBY.spawn : i.to === 'lighthouse' ? LIGHTHOUSE_ROOM.spawn : i.type === 'lighthouseDoor' ? { x: -30.8, y: 0, z: -29.2 } : { x: 0, y: .25, z: 72 });
       if (i.to === 'obby') net.send({ t: 'obby', event: 'start' });
       hud.update(state);
     }, 900);
@@ -599,6 +616,7 @@ function resolvePrompt(i) {
     return box ? { text: `Cards · $${fmt(box.price)}`, key: 'E', enabled: profile.coins >= box.price && !MATCH_PHASES.has(state.match?.phase) } : null;
   }
   if (i.type === 'portal') return { text: i.to === 'obby' ? 'Travel to obby' : 'Return to island', key: 'E', enabled: !isAliveParticipant() };
+  if (i.type === 'lighthouseDoor') return { text: i.to === 'lighthouse' ? 'Enter lighthouse' : 'Leave lighthouse', key: 'E', enabled: !isAliveParticipant() };
   return null;
 }
 
@@ -663,7 +681,7 @@ function hello() {
     look: profile.look,
     chair: profile.equippedChair,
     pet: profile.equippedPet,
-    petTier: profile.equippedPetTier, table: profile.equippedTable, back: profile.equippedBack, capeColor: profile.capeColor, level: level(),
+    petTier: profile.equippedPetTier, back: profile.equippedBack, capeColor: profile.capeColor, level: level(),
     cards: { ...profile.cards }, adminToken: unlockToken || undefined, public: requestedPublic,
     v: PROTOCOL_VERSION,
   };
@@ -881,6 +899,10 @@ net.on('result', ({ id, word, ok, reason, mistakes, wpm = 0, combo = 0, coins = 
     const next = m?.phase === 'typing' && m.chain.at(-1)?.word === word ? m.prefix.length : 1;
     setBubble(id, { text: word.toUpperCase(), highlight: next, tone: 'good' });
     world.playEffect(id, 'correct');
+    if (combo >= 3) {
+      world.playEffect(id, 'streak');
+      world.playEffect(id, 'flair', { text: `${combo} WORD STREAK!`, color: '#ffe45c' });
+    }
     world.playEffect(id, 'flair', { text: `x${wpm} WPM`, color: '#8deaff' });
     flairs.forEach((flair, index) => setTimeout(() => world.playEffect(id, 'flair', { text: flair.label, color: flair.color }), 450 + index * 550));
     world.setPlayerStatus(id, { combo });
@@ -893,7 +915,7 @@ net.on('result', ({ id, word, ok, reason, mistakes, wpm = 0, combo = 0, coins = 
         if (result.levelUp) { world.playEffect(id, 'flair', { text: `LEVEL ${level()}!`, color: '#ffe45c' }); sfx.levelUp(); }
         syncLoadout();
       }
-      if (coins) { rewardPop(`+${coins} 💵`, sidebar.coinsEl); sfx.coin(combo); }
+      if (coins) { world.playEffect(id, 'coin'); rewardPop(`+${coins} 💵`, sidebar.coinsEl); sfx.coin(combo); }
     }
     return;
   }
@@ -954,17 +976,17 @@ net.on('win', ({ id, flairs = [] }) => {
 });
 
 net.on('reward', (reward) => {
-  const { coins, won, words, durationMs = 0, eligibleMs = 0, bonuses = [] } = reward;
+  const { coins, won, words } = reward;
   const before = level();
   if (!recordMatch(reward)) return;
   if (level() > before) { sfx.levelUp(); toast(`Level ${level()}!`, 'good'); }
   syncLoadout();
   setTimeout(() => {
     sfx.coin();
+    world.playEffect(state.you, 'reward');
     rewardPop(`+${fmt(coins)} 💵`, sidebar.coinsEl);
     const why = words > 0 ? `${words} word${words === 1 ? '' : 's'}${won ? ' and the WIN' : ''}` : (won ? 'the WIN' : 'playing');
     toast(`💵 +${fmt(coins)} for ${why}!`, 'good', 3000);
-    chat.add({ system: true, text: `Match ${formatDuration(durationMs)} · rewarded play ${formatDuration(eligibleMs)} · ${bonuses.map((b) => `${b.label}: ${b.coins}`).join(' · ')} · total ${coins} coins` });
   }, 1400);
 });
 

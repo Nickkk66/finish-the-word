@@ -119,17 +119,18 @@ export function rollBlock(block, random = Math.random) {
   return entries[entries.length - 1][0];
 }
 
+// Scene styles selected by game mode. Tables are not player-owned or purchasable.
 export const TABLES = [
-  { id: 'classic', name: 'Classic', rarity: 'Common', price: 0 },
-  { id: 'picnic', name: 'Picnic', rarity: 'Common', price: 600 },
-  { id: 'glass', name: 'Glass', rarity: 'Uncommon', price: 1500 },
-  { id: 'donut', name: 'Donut', rarity: 'Uncommon', price: 2500 },
-  { id: 'poker', name: 'Poker', rarity: 'Rare', price: 4000 },
-  { id: 'pizza', name: 'Pizza', rarity: 'Rare', price: 5000 },
-  { id: 'ice', name: 'Ice', rarity: 'Epic', price: 8000 },
-  { id: 'lava', name: 'Lava', rarity: 'Epic', price: 12000 },
-  { id: 'galaxy', name: 'Galaxy', rarity: 'Legendary', price: 20000 },
-  { id: 'royal', name: 'Royal', rarity: 'Legendary', price: 30000 },
+  { id: 'classic', name: 'Classic' },
+  { id: 'picnic', name: 'Picnic' },
+  { id: 'glass', name: 'Glass' },
+  { id: 'donut', name: 'Donut' },
+  { id: 'poker', name: 'Poker' },
+  { id: 'pizza', name: 'Pizza' },
+  { id: 'ice', name: 'Ice' },
+  { id: 'lava', name: 'Lava' },
+  { id: 'galaxy', name: 'Galaxy' },
+  { id: 'royal', name: 'Royal' },
 ];
 export const TABLE_IDS = new Set(TABLES.map((v) => v.id));
 export const BACK_BLING = [

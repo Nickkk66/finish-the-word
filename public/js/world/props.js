@@ -292,8 +292,7 @@ function buildLighthouse(colliders, scene) {
   }
   dark.push(new THREE.SphereGeometry(0.38, 12, 8).translate(0, topY + 5.15, 0));
   red.push(new THREE.ConeGeometry(2.6, 2.3, 28).translate(0, topY + 3.95, 0));
-  // Door + windows on the side facing the island (+Z after the group rotation).
-  dark.push(new THREE.BoxGeometry(1.5, 2.5, 0.4).translate(0, BASE_H + 1.25, radiusAt(BASE_H) - 0.08));
+  // Windows on the side facing the island (+Z after the group rotation).
   for (const y of [8.5, 13.5, 18]) {
     dark.push(new THREE.BoxGeometry(0.9, 1.2, 0.4).translate(0, y, radiusAt(y) - 0.02));
   }
@@ -314,6 +313,30 @@ function buildLighthouse(colliders, scene) {
   base.position.y = BASE_H / 2 - 0.3;
   base.castShadow = base.receiveShadow = true;
   group.add(base);
+
+  // A short entry vestibule joins the reachable door to the tower's stone base.
+  for (const x of [-1.2, 1.2]) {
+    const side = new THREE.Mesh(new THREE.BoxGeometry(.28, 2.75, 2.15), colorMaterial('#f7f7f2'));
+    side.position.set(x, 1.36, 4.49); side.castShadow = true; group.add(side);
+  }
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(2.9, .28, 2.4), colorMaterial('#d93731'));
+  awning.position.set(0, 2.95, 4.53); awning.castShadow = true; group.add(awning);
+  // A reachable brass-framed door sits just beyond the tower's collision footprint.
+  const door = new THREE.Mesh(new THREE.BoxGeometry(2.1, 3, .18), colorMaterial('#292334'));
+  door.position.set(0, 1.48, 5.48);
+  group.add(door);
+  for (const x of [-1.16, 1.16]) {
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(.19, 3.22, .32), colorMaterial('#d7a95d'));
+    frame.position.set(x, 1.59, 5.58); group.add(frame);
+  }
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(2.55, .21, .33), colorMaterial('#d7a95d'));
+  lintel.position.set(0, 3.21, 5.58); group.add(lintel);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(.13, 10, 8), colorMaterial('#ffe3a3'));
+  knob.position.set(.76, 1.5, 5.69); group.add(knob);
+  for (let i = 0; i < 3; i++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(2.55 + i * .24, .15, .7), stone);
+    step.position.set(0, .12 + i * .09, 6.45 - i * .55); group.add(step);
+  }
 
   const lantern = new THREE.Mesh(
     new THREE.CylinderGeometry(1.9, 1.9, 2.4, 20),

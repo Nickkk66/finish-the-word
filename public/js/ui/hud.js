@@ -277,7 +277,7 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onRetur
     hintButton.disabled = !!st.hintPending || st.hintTurn === m?.turnId || profile.coins < HINT_PRICE;
     hintButton.textContent = st.hintPending ? 'Finding hint…' : st.hintTurn === m?.turnId ? 'Hint purchased' : `Hint · ${HINT_PRICE}`;
     cardsButton.disabled = !!st.cardPending;
-    returnButton.hidden = st.zone !== 'obby';
+    returnButton.hidden = st.zone !== 'obby' && st.zone !== 'lighthouse';
     hintAnswer.hidden = !myTyping || !st.hintWord;
     hintAnswer.textContent = st.hintWord ? `Your hint: ${st.hintWord.toUpperCase()}` : '';
 

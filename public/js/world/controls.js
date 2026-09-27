@@ -259,6 +259,7 @@ export class CharacterMotor {
     this.speed = 0;
     this.anim = 'idle';
     this.platforms = null;
+    this.bounds = null;
     this.standingOn = null;
     this.contact = null;
   }
@@ -311,7 +312,14 @@ export class CharacterMotor {
         }
       }
     }
-    if (!this.platforms) clampWalkable(p);
+    if (this.bounds) {
+      const ox = p.x - this.bounds.x, oz = p.z - this.bounds.z;
+      const distance = Math.hypot(ox, oz);
+      if (distance > this.bounds.r) {
+        p.x = this.bounds.x + ox * this.bounds.r / distance;
+        p.z = this.bounds.z + oz * this.bounds.r / distance;
+      }
+    } else if (!this.platforms) clampWalkable(p);
 
     p.y += this.vel.y * dt;
     let ground = this.platforms ? -Infinity : groundHeight(p.x, p.z);

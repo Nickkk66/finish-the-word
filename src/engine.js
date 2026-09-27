@@ -8,7 +8,7 @@ import {
   COUNTDOWN_MS, CHOOSE_MS, ROUND_END_MS, MATCH_END_MS,
   RECONNECT_GRACE_MS, DEFAULT_SETTINGS, MODES, REWARDS, FLAIRS, EMOTES, HINT_PRICE, OBBY,
 } from '../public/js/shared/constants.js';
-import { PETS_BY_ID, CARDS_BY_ID, TABLE_IDS, CHAIR_IDS } from '../public/js/shared/catalog.js';
+import { PETS_BY_ID, CARDS_BY_ID, CHAIR_IDS } from '../public/js/shared/catalog.js';
 import { ROULETTE_INTRO_MS, ROULETTE_DRINK_MS, ROULETTE_PASS_MS, inRouletteFire, rouletteOdds, METEOR_INTERVAL_MS, METEOR_FLIGHT_MS, METEOR_SITES } from '../public/js/shared/roulette.js';
 import { rules, TWISTS } from './modes.js';
 import { adminToken, constantTimeEqual } from './auth.js';
@@ -17,7 +17,7 @@ import { botProfile, planPick, planTurn } from './bots.js';
 import {
   sanitizeName, randomPlayerName, sanitizeLook, sanitizeChair, sanitizePet, sanitizeChat,
   sanitizeTyping, normalizeWord, displayWord, sanitizeMove, sanitizeSettings,
-  sanitizeBack, sanitizeCapeColor, sanitizeTable, sanitizeLevel, sanitizeTier, sanitizeCards,
+  sanitizeBack, sanitizeCapeColor, sanitizeLevel, sanitizeTier, sanitizeCards,
 } from './sanitize.js';
 
 const HARD_LETTERS = [...'jkqvwxyz'];
@@ -120,7 +120,6 @@ export class GameEngine {
     this.phaseTimer = null;
     this.movesTimer = null;
     this.botTimer = null;
-    this.tableOverride = null;
     this.pendingPresetBotReset = false;
     this.rouletteEntry = 25;
     this.rouletteHazardsAt = 0;
@@ -198,7 +197,7 @@ export class GameEngine {
       look: sanitizeLook(msg.look),
       chair: sanitizeChair(msg.chair),
       pet: sanitizePet(msg.pet),
-      back: sanitizeBack(msg.back), capeColor: sanitizeCapeColor(msg.capeColor), table: sanitizeTable(msg.table), level: sanitizeLevel(msg.level), petTier: sanitizeTier(msg.petTier),
+      back: sanitizeBack(msg.back), capeColor: sanitizeCapeColor(msg.capeColor), level: sanitizeLevel(msg.level), petTier: sanitizeTier(msg.petTier),
     };
     let player = this.players.get(id);
     const isNew = !player;
@@ -253,10 +252,10 @@ export class GameEngine {
     }
   }
 
-  addPlayer({ id, isBot, conn, name, look, chair, pet, back = 'none', capeColor = null, table = 'classic', level = 1, petTier = 1 }) {
+  addPlayer({ id, isBot, conn, name, look, chair, pet, back = 'none', capeColor = null, level = 1, petTier = 1 }) {
     const player = {
       id, name, isBot, look, chair, pet,
-      back, capeColor, table, level, petTier, rouletteBet: null, isAdmin: false, adminTag: false, ipHash: conn?.ipHash,
+      back, capeColor, level, petTier, rouletteBet: null, isAdmin: false, adminTag: false, ipHash: conn?.ipHash,
       cards: {}, requests: new Map(), obbyStartAt: null,
       seat: -1, wins: 0, pos: null,
       conn, connected: true, graceTimer: null,
@@ -278,7 +277,8 @@ export class GameEngine {
   removePlayer(id) {
     const player = this.players.get(id);
     if (!player) return;
-    this.refundStake(player);
+    // A placed entry stays committed if its owner leaves the room.
+    player.rouletteBet = null;
     this.cancel(player.graceTimer);
     this.cancel(player.fireTimer);
     this.fail(id, 'left'); // knocked out if still playing
@@ -387,7 +387,6 @@ export class GameEngine {
   }
 
   onStand(player) {
-    this.refundStake(player);
     if (player.seat < 0 || !this.allow(player, 'seat')) return;
     this.fail(player.id, 'forfeit'); // standing up mid-match knocks you out
     player.seat = -1;
@@ -431,11 +430,9 @@ export class GameEngine {
     if ('petTier' in msg) player.petTier = sanitizeTier(msg.petTier);
     if ('back' in msg) player.back = sanitizeBack(msg.back);
     if ('capeColor' in msg) player.capeColor = sanitizeCapeColor(msg.capeColor);
-    if ('table' in msg) { player.table = sanitizeTable(msg.table); if (player.id === this.hostId) this.tableOverride = null; }
     if ('level' in msg) player.level = sanitizeLevel(msg.level);
     if ('cards' in msg && !ACTIVE_PHASES.has(this.match.phase)) player.cards = sanitizeCards(msg.cards);
     this.broadcastPlayer(player);
-    if (player.id === this.hostId && 'table' in msg) this.broadcastRoom();
   }
 
   onHost(player, msg) {
@@ -447,7 +444,7 @@ export class GameEngine {
       case 'start': return this.hostStart();
       case 'addBot': return this.addBot(player);
       case 'removeBot': return this.removeBot();
-      case 'settings': return this.changeSettings(msg.settings);
+      case 'settings': return this.changeSettings(msg.settings, player);
       default:
     }
   }
@@ -521,7 +518,7 @@ export class GameEngine {
   // Cosmetic events are approved and relayed by the room; clients cannot impersonate another player.
   onCelebrate(player, msg) {
     if (!['portal', 'hatch'].includes(msg.kind) || this.isPlaying(player.id) || !this.allow(player, 'emote')) return;
-    if (msg.kind === 'portal' && (player.seat >= 0 || !['island', 'obby'].includes(msg.to))) return;
+    if (msg.kind === 'portal' && (player.seat >= 0 || !['island', 'obby', 'lighthouse'].includes(msg.to))) return;
     this.broadcast({ t: 'celebrate', id: player.id, kind: msg.kind, ...(msg.kind === 'portal' ? { to: msg.to } : {}) });
   }
 
@@ -565,7 +562,7 @@ export class GameEngine {
     if (!this.allow(player, 'admin')) return;
     if (!player.isAdmin) return this.denied(player);
     switch (msg.action) {
-      case 'takeHost': this.hostId = player.id; this.tableOverride = null; this.broadcastRoom(); break;
+      case 'takeHost': this.hostId = player.id; this.broadcastRoom(); break;
       case 'forceStart': this.hostStart(); break;
       case 'endMatch': if (ACTIVE_PHASES.has(this.match.phase)) this.endMatch(null); break;
       case 'reset':
@@ -573,7 +570,7 @@ export class GameEngine {
         for (const player of this.players.values()) this.refundStake(player);
         this.cancel(this.phaseTimer); this.stopBot();
         for (const p of this.players.values()) { p.seat = -1; this.broadcastPlayer(p); }
-        this.settings = { ...DEFAULT_SETTINGS }; this.tableOverride = null;
+        this.settings = { ...DEFAULT_SETTINGS };
         this.enterLobby(); this.broadcastRoom(); this.broadcastMatch(); this.reportListing(); break;
       case 'announce': {
         const text = sanitizeChat(msg.text);
@@ -611,7 +608,6 @@ export class GameEngine {
       }
       case 'removeLeaderboard': if (typeof msg.id === 'string' && ID_RE.test(msg.id)) this.onRemoveLeaderboard(msg.id); break;
       case 'tag': if (typeof msg.on === 'boolean') { player.adminTag = msg.on; this.broadcastPlayer(player); } break;
-      case 'table': if (TABLE_IDS.has(msg.table)) { this.tableOverride = msg.table; this.broadcastRoom(); } break;
       default:
     }
   }
@@ -631,7 +627,12 @@ export class GameEngine {
     this.broadcast(systemChat(`${player.name} beat the obby in ${Math.round(elapsed / 1000)}s!`));
   }
 
-  roomTable() { return isRouletteMode(this.settings.mode) || (isRouletteMode(this.match.mode) && ACTIVE_PHASES.has(this.match.phase)) ? 'poker' : this.tableOverride ?? this.players.get(this.hostId)?.table ?? 'classic'; }
+  roomTable() {
+    const settings = ACTIVE_PHASES.has(this.match.phase) ? this.match.settings : this.settings;
+    const mode = settings?.mode;
+    const tables = { classic: 'classic', blitz: 'lava', long: 'royal', double: 'glass', sudden: 'ice', random: 'galaxy', chaos: 'donut', roulette: 'poker', roulette_deadly: 'poker' };
+    return tables[mode === 'custom' ? settings.baseMode : mode] ?? 'classic';
+  }
   reportListing() { this.onListing({ code: this.code, humans: [...this.players.values()].filter(p => !p.isBot && p.connected).length, public: this.settings.public }); }
 
   // ---- Host actions -------------------------------------------------------------------
@@ -661,12 +662,14 @@ export class GameEngine {
   }
 
   // Settings apply from the next match.
-  changeSettings(input) {
+  changeSettings(input, actor) {
     const next = sanitizeSettings(input, this.settings);
+    if (next.mode !== this.settings.mode && actor?.rouletteBet) {
+      return this.send(actor, { t: 'error', code: 'entry_committed', message: 'Your entry is committed. Play the round or leave and forfeit it before changing modes.' });
+    }
     if (next.mode !== this.settings.mode) for (const player of this.players.values()) this.refundStake(player);
     const preset = input?.mode && input.mode !== 'custom' && MODES.some(mode => mode.id === input.mode);
     if (preset) {
-      this.tableOverride = 'classic';
       if (ACTIVE_PHASES.has(this.match.phase) || this.match.phase === 'ended') this.pendingPresetBotReset = true;
       else for (const bot of [...this.players.values()].filter(player => player.isBot)) this.removePlayer(bot.id);
     }

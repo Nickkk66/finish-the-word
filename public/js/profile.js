@@ -2,7 +2,7 @@
 // Coins, cosmetics and lifetime stats are client-side only; the server just trusts loadout ids.
 
 import { START_COINS, NAME_MAX } from './shared/constants.js';
-import { randomLook, sanitizeLook, CHAIRS, CHAIR_IDS, PETS_BY_ID, TABLES, BACK_BLING, CARDS } from './shared/catalog.js';
+import { randomLook, sanitizeLook, CHAIRS, CHAIR_IDS, PETS_BY_ID, BACK_BLING, CARDS } from './shared/catalog.js';
 
 const STORAGE_KEY = 'ftw_profile_v1';
 export const FREE_COINS = 100;
@@ -45,7 +45,6 @@ function normalize(raw) {
     const total = tiers[1] + tiers[2] + tiers[3];
     if (total) { pets[id] = total; petTiers[id] = tiers; }
   }
-  const ownedTables = [...new Set(['classic', ...(Array.isArray(p.ownedTables) ? p.ownedTables : []).filter((id) => TABLES.some((v) => v.id === id))])];
   const ownedBacks = [...new Set(['none', ...(Array.isArray(p.ownedBacks) ? p.ownedBacks : []).filter((id) => BACK_BLING.some((v) => v.id === id))])];
   const equippedPetTier = [1, 2, 3].find((tier) => tier === p.equippedPetTier && petTiers[p.equippedPet]?.[tier]) || [1, 2, 3].find((tier) => petTiers[p.equippedPet]?.[tier]) || 1;
   const settings = p.settings && typeof p.settings === 'object' ? p.settings : {};
@@ -66,8 +65,7 @@ function normalize(raw) {
     discoveredPets: [...new Set([...Object.keys(pets), ...(Array.isArray(p.discoveredPets) ? p.discoveredPets.filter((id) => PETS_BY_ID[id]) : [])])],
     equippedPet: pets[p.equippedPet] ? p.equippedPet : null,
     equippedPetTier,
-    ownedTables, ownedBacks,
-    equippedTable: ownedTables.includes(p.equippedTable) ? p.equippedTable : 'classic',
+    ownedBacks,
     equippedBack: ownedBacks.includes(p.equippedBack) ? p.equippedBack : 'none',
     capeColor: p.capeColor === 'rainbow' || /^#[0-9a-f]{6}$/i.test(p.capeColor || '') ? p.capeColor : '#d84752',
     cards: Object.fromEntries(CARDS.map((card) => [card.id, count(p.cards?.[card.id])])),
@@ -231,15 +229,16 @@ export function claimReceipt(id) {
 
 export function buyOrEquip(kind, id) {
   if (kind === 'chair') return buyOrEquipChair(id);
-  const item = (kind === 'table' ? TABLES : BACK_BLING).find((v) => v.id === id);
+  if (kind !== 'back') return 'invalid';
+  const item = BACK_BLING.find((v) => v.id === id);
   if (!item) return 'invalid';
-  const owned = kind === 'table' ? profile.ownedTables : profile.ownedBacks;
+  const owned = profile.ownedBacks;
   let result = 'equipped';
   if (!owned.includes(id)) {
     if (!spend(item.price)) return 'poor';
     owned.push(id); result = 'bought';
   }
-  profile[kind === 'table' ? 'equippedTable' : 'equippedBack'] = id;
+  profile.equippedBack = id;
   commit(); return result;
 }
 

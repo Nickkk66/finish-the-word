@@ -4,7 +4,7 @@ import { icons } from '../icons.js';
 import { profile } from '../../profile.js';
 import { MODES, BOT_LEVELS } from '../../shared/constants.js';
 import { choiceDialog, confirmDialog } from '../overlays.js';
-import { TABLES, CHAIRS } from '../../shared/catalog.js';
+import { CHAIRS } from '../../shared/catalog.js';
 
 function segmented(options, onPick) {
   const buttons = options.map(([label, value]) => h('button', { type: 'button', class: 'seg-btn', onClick: () => onPick(value) }, label));
@@ -100,20 +100,12 @@ export function gameSettingsPanel({ state, actions }) {
       const pets = segmented([['On', true], ['Off', false]], (v) => custom({ petAbilities: v }));
       const bot = segmented(Object.entries(BOT_LEVELS).map(([id, v]) => [v.name, id]), (v) => custom({ botLevel: v }));
       const publicRoom = segmented([['Public', true], ['Private', false]], (v) => custom({ public: v }));
-      const table = button('Choose table', async () => {
-        const choices = TABLES.filter(t => state.isAdmin || profile.ownedTables.includes(t.id));
-        const id = await choiceDialog('Choose a table', choices.map(v => ({ label: v.name, value: v.id })));
-        if (!id) return;
-        if (state.isAdmin) actions.admin('table', { table: id });
-        else actions.cosmetic('table', id);
-        custom({});
-      });
       const notice = h('p', { class: 'host-notice' });
       const players = h('div', { class: 'moderation-list' });
       const banned = state.bannedPlayers;
       const unban = h('div', { class: 'moderation-list' });
       const tools = h('div', { class: 'host-tools' }, button('Add Bot', () => { custom({}); actions.host('addBot'); }), button('Remove Bot', () => { custom({}); actions.host('removeBot'); }, 'orange'), button('Start now', () => actions.host('start'), 'green'));
-      body.append(notice, h('div', { class: 'set-group' }, row('Mode', mode), row('Hearts', hearts.el), row('Turn time', turn.el), row('Pet abilities', pets.el), row('Bots', bot.el), row('Room visibility', publicRoom.el), row('Table', table)), tools,
+      body.append(notice, h('div', { class: 'set-group' }, row('Mode', mode), row('Hearts', hearts.el), row('Turn time', turn.el), row('Pet abilities', pets.el), row('Bots', bot.el), row('Room visibility', publicRoom.el)), tools,
         h('h3', { class: 'section-title stroke' }, 'Players'), players, unban);
       function update() {
         const allowed = state.hostId === state.you || state.isAdmin;
@@ -123,7 +115,6 @@ export function gameSettingsPanel({ state, actions }) {
         mode.textContent = `Mode: ${MODES.find(v => v.id === state.settings.mode)?.name || 'Classic'} ▾`; mode.disabled = !allowed;
         hearts.set(state.settings.hearts, !allowed || isRoulette); turn.set(state.settings.turnSeconds, !allowed || isRoulette); pets.set(state.settings.petAbilities, !allowed || isRoulette);
         bot.set(state.settings.botLevel, !allowed); publicRoom.set(!!state.public, !allowed); tools.hidden = !allowed;
-        table.textContent = isRoulette ? 'Cursed table · included' : `Table: ${TABLES.find(v => v.id === state.table)?.name || 'Classic'} ▾`; table.disabled = !allowed || isRoulette;
         players.replaceChildren(...[...state.players.values()].map((p) => h('div', { class: 'moderation-row' }, h('span', null, `${p.name}${p.isBot ? ' · BOT' : ''}`),
           p.id !== state.you && allowed ? h('div', { class: 'host-tools' }, button('Kick', () => actions.moderate('kick', p.id), 'orange'), button('Ban', async () => { if (await actions.moderate('ban', p.id)) { banned.set(p.id, p.name); update(); } }, 'red')) : null)));
         unban.replaceChildren(...[...banned].map(([id, name]) => h('div', { class: 'moderation-row' }, `${name} · banned`, button('Unban', () => { actions.moderate('unban', id); banned.delete(id); update(); }))));
