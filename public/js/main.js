@@ -567,6 +567,7 @@ async function onInteract(i) {
     actions.openCardBox(i.boxId);
   } else if (i.type === 'portal' || i.type === 'lighthouseDoor') {
     if (teleporting || isAliveParticipant()) return;
+    if((state.players.get(state.you)?.seat??-1)>=0){toast('Stand up to leave the table.', 'info');return;}
     teleporting = true;
     net.send({ t: 'celebrate', kind: 'portal', to: i.to });
     world.setTravelLocked(true);
@@ -803,10 +804,10 @@ function refreshRoom() {
 function refreshMode() {
   const m = state.match;
   const active = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? isRouletteMode(m.mode) : isRouletteMode(state.settings.mode));
-  rouletteHud.update(state, active);
-  if (active) hud.hide(); else if (state.inRoom) hud.show();
+  rouletteHud.update(state, active && state.zone!=='lighthouse');
+  if (active && state.zone!=='lighthouse') hud.hide(); else if (state.inRoom) hud.show();
   world?.setRoulette?.(active, m, state.rouletteEntry, MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode);
-  if (active && !state.rouletteShown) {
+  if (active && !state.rouletteShown && state.zone!=='lighthouse') {
     panels.close(); cancelConfirmation();
     uiRoot.classList.add('roulette-cinematic');setTimeout(()=>uiRoot.classList.remove('roulette-cinematic'),7000);
     const intro=h('div',{class:'roulette-intro'},'Something has found us.'); uiRoot.append(intro); setTimeout(()=>intro.remove(),7000);
@@ -1038,7 +1039,7 @@ net.on('travel',({id,to,pos})=>{
   if(id!==state.you){world.finishPortal(id,pos);return;}
   state.zone=to;world.setZone(to);world.teleportLocal(pos);world.finishPortal(id,pos);
   if(to==='obby')net.send({t:'obby',event:'start'});
-  hud.update(state);
+  refreshRoom();
   setTimeout(()=>{travelOverlay?.remove();travelOverlay=null;teleporting=false;world.setTravelLocked(false);},250);
 });
 net.on('celebrate', ({ id, kind, to, door }) => {

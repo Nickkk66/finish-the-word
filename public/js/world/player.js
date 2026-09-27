@@ -1,3 +1,4 @@
+import { lighthouseSeat, lighthouseSeatPosition } from '../shared/lighthouse.js';
 // One player in the world: avatar, head labels, pet, seat hops and (for remote players)
 // snapshot interpolation of network moves.
 
@@ -124,8 +125,9 @@ export class PlayerEntity {
   sit(seat, instant = false) {
     this.seat = seat;
     if (!instant) this.startHop(1.4);
-    this.pos.set(seatX(seat, SIT_RADIUS), DECK.top, seatZ(seat, SIT_RADIUS));
-    this.yaw = seatYaw(seat);
+    const inside=lighthouseSeatPosition(seat);
+    this.pos.set(inside?.x??seatX(seat,SIT_RADIUS),inside?.y??DECK.top,inside?.z??seatZ(seat,SIT_RADIUS));
+    this.yaw=inside?.ry??seatYaw(seat);
     if (instant) this.place(this.pos.x, this.pos.y, this.pos.z, this.yaw);
     this.avatar.setSeated(true);
     this.snapCount = 0;
@@ -139,10 +141,10 @@ export class PlayerEntity {
     this.avatar.setTyping(false);
     if (seat < 0) return;
     this.startHop(1.2);
-    const x = seatX(seat, STAND_RADIUS);
-    const z = seatZ(seat, STAND_RADIUS);
-    this.pos.set(x, groundHeight(x, z), z);
-    this.yaw = seatAngle(seat);
+    const inside=lighthouseSeatPosition(seat,true);
+    const x=inside?.x??seatX(seat,STAND_RADIUS),z=inside?.z??seatZ(seat,STAND_RADIUS);
+    this.pos.set(x,inside?.y??groundHeight(x,z),z);
+    this.yaw=inside?.ry??seatAngle(seat);
     this.prev.copy(this.pos);
     this.snapCount = 0;
   }
@@ -289,7 +291,10 @@ export class PlayerEntity {
     let y;
     let z;
     let yaw;
-    if (this.seat >= 0) {
+    if (lighthouseSeat(this.seat)) {
+      const seat=lighthouseSeat(this.seat),a=seat.angle+.2;
+      x=299+Math.sin(a)*8;z=-1.5+Math.cos(a)*8;y=3.1;yaw=a+Math.PI;
+    } else if (this.seat >= 0) {
       // Hovers in the gap beside its owner's chair, facing the table.
       const a = seatAngle(this.seat) + Math.PI / 8;
       x = Math.sin(a) * (LAYOUT.seatRadius + 1.6);

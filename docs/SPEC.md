@@ -12,10 +12,21 @@ reconnecting visitors. Active participants cannot use travel or movement even wi
 Existing disconnect/forfeit rules remain in force. No lighthouse game has been selected: its own
 match/participation lifecycle is still pending that choice and must use the same authoritative lock.
 
-The lighthouse room has supported, walkable stairs and a landing, nautical furniture, textured
-surfaces, and three real exterior-camera windows. At most one visible window renders every 200ms
-at 384px; offscreen windows and unoccupied interiors do not render. Render target, shadow update,
-XR state and sky position are restored afterward. The island entrance rock corridor is clear.
+The lighthouse interior radius is now 14 units (previously 11.7), with a shared walkable radius of
+12.8, supported stairs/landing, nautical furniture, and eight functional chairs. World seat IDs 0–7
+belong to the island and 8–15 to the lighthouse. The same `sit {seat}` / `stand` protocol validates
+zone, proximity, occupancy and active participation. Lighthouse seats use equipped chair models,
+normal avatar poses/cameras, remote synchronization and reconnect grace, but are excluded from island
+countdowns, participants and roulette entry. Stand restores a shared, safe position behind the chair.
+
+The island-facing windows use a baked still of the actual game island. The ocean window plays a muted,
+inline eight-second WebM loop looking down at the water, with a static poster fallback. Playback pauses
+outside the room. There are no runtime window cameras or render targets. Assets live in
+`public/assets/lighthouse`; `node scripts/capture-lighthouse-views.mjs` regenerates them from the local
+scene (requires a running dev server). Both media types intentionally show a fixed daylight view.
+The island entrance rock corridor remains clear.
+
+Game choice is narrowed to 1-4-24, Sevens or Rummy; none has been selected or implemented yet.
 
 Accepted server `cardUsed` starts a 1.2-second pocket/hand/table slide on all clients, with a brief
 island-only camera shot. No input lock, timer change, extra consumption or delayed effects occurs.

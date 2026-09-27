@@ -21,7 +21,7 @@ try {
   await delay(800);
   await p.shot('interior');
   assert.equal(await p.eval('window.__ftw.world.debugSnapshot().grounded'), true);
-  await p.eval('window.__ftw.world.teleportLocal({x:300,y:0,z:8.7})');
+  await p.eval('window.__ftw.world.teleportLocal({x:300,y:0,z:11.7})');
   await p.wait('document.querySelector(".w-prompt")?.textContent.includes("Leave lighthouse")');
   await p.eval('document.querySelector(".w-prompt").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}))');
   await p.wait('window.__ftw.state.zone === "island"');

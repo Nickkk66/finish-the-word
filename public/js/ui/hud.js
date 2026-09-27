@@ -8,7 +8,7 @@ import { icons } from './icons.js';
 import { createWordInput, createLetterPicker } from './turnControls.js';
 import { countdownPop } from './fx.js';
 import { sfx } from '../audio.js';
-import { MODES, HINT_PRICE } from '../shared/constants.js';
+import { MODES, HINT_PRICE, SEAT_COUNT } from '../shared/constants.js';
 import { profile } from '../profile.js';
 
 const TIMER_R = 42;
@@ -80,9 +80,10 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onRetur
   function statusView(secondsLeft) {
     const m = st.match;
     const me = st.you;
+    if(st.zone==='lighthouse')return {parts:[(st.players.get(me)?.seat??-1)>=SEAT_COUNT?'The keeper’s table':'Take a seat in the lighthouse']};
     const phase = m ? m.phase : 'lobby';
     if (phase === 'lobby') {
-      const seated = [...st.players.values()].filter((p) => p.seat >= 0).length;
+      const seated = [...st.players.values()].filter((p) => p.seat >= 0 && p.seat < SEAT_COUNT).length;
       if ((st.players.get(me)?.seat ?? -1) < 0) return { parts: ['Sit at the table to play! (2+ players)'] };
       return { parts: [seated >= 2 ? 'Get ready...' : 'Waiting for another player to sit...'] };
     }
@@ -132,7 +133,8 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onRetur
 
   function renderSub(m, part) {
     let text = '';
-    if (st.zone === 'obby' && m && ACTIVE_PHASES.has(m.phase)) text = 'Match starting — take the portal back to play next round!';
+    if(st.zone==='lighthouse')text='';
+    else if (st.zone === 'obby' && m && ACTIVE_PHASES.has(m.phase)) text = 'Match starting — take the portal back to play next round!';
     else if (m && ACTIVE_PHASES.has(m.phase)) {
       if (part && !part.alive) text = "You're out! Cheer on the others 📣";
       else if (!part) text = (st.players.get(st.you)?.seat ?? -1) >= 0 ? "You'll play in the next match" : 'Sit at the table to join the next match';
@@ -266,7 +268,7 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onRetur
 
     renderStatus(m?.phase === 'countdown' ? lastSecond : null);
     renderSub(m, part);
-    badges.textContent = `${st.public ? 'Public' : 'Private'} · ${MODES.find((v) => v.id === (m?.mode || st.settings.mode))?.name || 'Classic'}${m?.minLength > 3 ? ` · ${m.minLength}+ letters` : ''}${m?.wordCount ? ` · Chain ${m.wordCount}` : ''}`;
+    badges.textContent = st.zone==='lighthouse'?'Lighthouse':`${st.public ? 'Public' : 'Private'} · ${MODES.find((v) => v.id === (m?.mode || st.settings.mode))?.name || 'Classic'}${m?.minLength > 3 ? ` · ${m.minLength}+ letters` : ''}${m?.wordCount ? ` · Chain ${m.wordCount}` : ''}`;
     const comboCount = m?.participants.find((p) => p.id === (m.typerId || st.you))?.combo || 0;
     combo.hidden = comboCount < 3;
     const multiplier = comboCount >= 8 ? 3 : comboCount >= 5 ? 2 : 1.5;

@@ -1,3 +1,4 @@
+import { LIGHTHOUSE_ROOM, lighthouseSeat, lighthouseSeatPosition, TOTAL_WORLD_SEATS } from '../public/js/shared/lighthouse.js';
 import { portalRoute, zoneAt } from '../public/js/shared/travel.js';
 import { isRouletteMode, rouletteRules } from '../public/js/shared/roulette.js';
 // Server-authoritative game logic for one room (docs/SPEC.md §3 and §4).
@@ -362,7 +363,7 @@ export class GameEngine {
       if (!player.isAdmin) return;
       player.zone=zone;
     }
-    if(zone==='lighthouse' && (Math.hypot(pos.x-300,pos.z)>10.2 || pos.y < -.1 || pos.y > 12)) return;
+    if(zone==='lighthouse' && (Math.hypot(pos.x-LIGHTHOUSE_ROOM.center.x,pos.z)>LIGHTHOUSE_ROOM.radius+.1 || pos.y < -.1 || pos.y > 12)) return;
     player.pos = pos;
     this.syncFire(player);
     player.moved = true;
@@ -384,10 +385,13 @@ export class GameEngine {
   }
 
   onSit(player, seat) {
-    if (!Number.isInteger(seat) || seat < 0 || seat >= SEAT_COUNT || seat === player.seat) return;
-    if (this.isPlaying(player.id) || player.travel || player.zone!=='island' || !this.allow(player, 'seat')) return;
+    if (!Number.isInteger(seat) || seat < 0 || seat >= TOTAL_WORLD_SEATS || seat === player.seat) return;
+    const inside=lighthouseSeat(seat);
+    if (this.isPlaying(player.id) || player.travel || player.zone!==(inside?'lighthouse':'island') || !this.allow(player, 'seat')) return;
+    if(inside&&(!player.pos||Math.hypot(player.pos.x-inside.x,player.pos.z-inside.z)>5.5||Math.abs(player.pos.y)>1))return;
     if (this.seatOwner(seat)) return this.send(player, { t: 'error', code: 'seat_taken', message: 'That seat is taken.' });
     player.seat = seat;
+    if(inside)player.pos=lighthouseSeatPosition(seat);
     this.syncFire(player);
     this.broadcastPlayer(player);
     this.syncCountdown();
@@ -396,6 +400,8 @@ export class GameEngine {
   onStand(player) {
     if (player.seat < 0 || !this.allow(player, 'seat')) return;
     this.fail(player.id, 'forfeit'); // standing up mid-match knocks you out
+    const inside=lighthouseSeatPosition(player.seat,true);
+    if(inside)player.pos=inside;
     player.seat = -1;
     this.broadcastPlayer(player);
     this.syncCountdown();
@@ -1061,7 +1067,7 @@ export class GameEngine {
   onBet(player, msg) {
     this.request(player, 'bet', msg, () => {
       const result = { t: 'betResult', requestId: msg.requestId, ok: false };
-      if (!isRouletteMode(this.settings.mode) || !['lobby', 'countdown'].includes(this.match.phase) || player.seat < 0) return { ...result, error: 'Sit at the table between matches first.' };
+      if (!isRouletteMode(this.settings.mode) || !['lobby', 'countdown'].includes(this.match.phase) || player.seat < 0 || player.seat >= SEAT_COUNT) return { ...result, error: 'Sit at the table between matches first.' };
       if (!Number.isSafeInteger(msg.amount) || msg.amount < 25 || !Number.isSafeInteger(msg.balance) || msg.balance < msg.amount) return { ...result, error: 'Your balance or the entry amount changed.' };
       if (player.rouletteBet) return { ...result, error: 'You already entered this match.' };
       const receipt = `${this.code}:${player.id}:${this.now()}:${++this.matchSerial}`;
@@ -1204,7 +1210,7 @@ export class GameEngine {
   }
 
   seated() {
-    return [...this.players.values()].filter((p) => p.seat >= 0).sort((a, b) => a.seat - b.seat);
+    return [...this.players.values()].filter((p) => p.seat >= 0 && p.seat < SEAT_COUNT).sort((a, b) => a.seat - b.seat);
   }
   readyPlayers() {
     return this.seated().filter(p => !isRouletteMode(this.settings.mode) || p.isBot || p.rouletteBet?.amount >= 25);

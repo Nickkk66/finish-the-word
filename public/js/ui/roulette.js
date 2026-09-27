@@ -1,3 +1,4 @@
+import { SEAT_COUNT } from '../shared/constants.js';
 import { rouletteRules } from '../shared/roulette.js';
 import { h, fmt } from './dom.js';
 import { sfx } from '../audio.js';
@@ -44,7 +45,7 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
     pass.disabled = r?.passed?.includes(st.you);
     pass.textContent = pass.disabled ? 'Pass used' : 'Pass · 1 per round';
     clock.hidden = !['roulette', 'countdown'].includes(m?.phase);
-    enter.hidden = !lobby || mine?.seat < 0 || !st.rouletteEntry || mine?.rouletteBet != null;
+    enter.hidden = !lobby || mine?.seat < 0 || mine?.seat >= SEAT_COUNT || !st.rouletteEntry || mine?.rouletteBet != null;
     wagerField.hidden=enter.hidden; wager.max=profile.coins;
     enter.disabled = !!st.betPending || profile.coins < 25;
     enter.textContent = st.betPending ? 'Entering…' : `Enter · your bet`;
@@ -55,7 +56,7 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
       odds.append(h('div',{class:'risk-readout'},h('strong',null,`${(r.risk*100).toFixed(1)}%`),h('span',null,'Poison chance')));
       if(reduction>0)odds.append(h('div',{class:'risk-tag',title:`${(base*100).toFixed(1)}% base chance, reduced by ${(reduction*100).toFixed(1)} percentage points`},h('strong',null,`−${(reduction*100).toFixed(1)}%`),h('small',null,'CHANCE OFF')));
     }
-    const ready = [...st.players.values()].filter(p => p.seat >= 0 && (p.isBot || !st.rouletteEntry || p.rouletteBet != null)).length;
+    const ready = [...st.players.values()].filter(p => p.seat >= 0 && p.seat < SEAT_COUNT && (p.isBot || !st.rouletteEntry || p.rouletteBet != null)).length;
     start.hidden = !lobby || !(st.you === st.hostId || st.isAdmin);
     start.disabled = ready < 2;
     title.textContent = m?.phase === 'ended' ? (m.winnerId ? 'THE LAST ONE AWAKE' : 'THE RITUAL ENDS') : rouletteRules(['roulette','rouletteReveal'].includes(m?.phase) ? m.mode : st.settings.mode).name.toUpperCase();

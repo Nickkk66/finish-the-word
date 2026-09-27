@@ -19,8 +19,9 @@ try{
  const remote=await c.eval(`window.__ftw.world.debugSnapshot().portalAnimations.includes(${JSON.stringify(id)})`);assert.equal(remote,true);
  await a.cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'w',code:'KeyW',windowsVirtualKeyCode:87});
  await a.wait('window.__ftw.state.zone==="lighthouse"');await delay(700);await a.shot('room');
- assert.ok((await a.eval('window.__ftw.world.debugSnapshot().lighthouse.windowRenders'))>=3);
- await a.eval('window.__ftw.world.teleportLocal({x:307,y:0,z:7,ry:Math.PI})');await delay(200);
+ assert.equal(await a.eval('window.__ftw.world.debugSnapshot().lighthouse.windowRenders'),0);
+ await a.wait('window.__ftw.world.debugSnapshot().lighthouse.waterPlaying');
+ await a.eval('window.__ftw.world.teleportLocal({x:310,y:0,z:7,ry:Math.PI})');await delay(200);
  await a.cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'w',code:'KeyW',windowsVirtualKeyCode:87});
  await a.wait('window.__ftw.world.debugSnapshot().localPosition[1]>=5.7',6000);
  await a.cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'w',code:'KeyW',windowsVirtualKeyCode:87});await delay(150);
@@ -42,5 +43,5 @@ try{
  // Forge a travel packet during the game; server must not move anyone.
  await actor.send({t:'celebrate',kind:'portal',to:'lighthouse'});await delay(200);assert.equal((await actor.state()).zone,'island');
  assert.deepEqual(a.errors,[]);assert.deepEqual(c.errors,[]);
- console.log('PASS directed off-center travel, remote animation, movement lock, desktop/mobile rooms, real windows, walked all stairs, distant return, accepted/rejected/replayed cards and active-match travel rejection');
+ console.log('PASS directed off-center travel, remote animation, movement lock, desktop/mobile rooms, baked windows, walked all stairs, distant return, accepted/rejected/replayed cards and active-match travel rejection');
 }finally{await b.close();}

@@ -1,3 +1,4 @@
+import { LIGHTHOUSE_ROOM, lighthouseSeat } from '../shared/lighthouse.js';
 // Camera rig with three modes, blended smoothly when switching:
 //   follow – Roblox-style third person orbit around the local avatar (drag / wheel)
 //   table  – behind/above the local seat looking across the table (limited orbit)
@@ -91,19 +92,20 @@ export class CameraRig {
       P.set(CENTER_X + Math.sin(a) * r, 30 + Math.sin(t * 0.11) * 4, CENTER_Z + Math.cos(a) * r);
       L.set(CENTER_X - Math.sin(a) * 6, 5, CENTER_Z - Math.cos(a) * 6);
     } else if (this.firstPerson) {
-      const yaw = this.mode === 'table' ? seatAngle(seat) + this.seatedYaw : this.yaw;
+      const yaw = this.mode === 'table' ? (lighthouseSeat(seat)?.angle??seatAngle(seat)) + this.seatedYaw : this.yaw;
       P.copy(focus); P.y += this.mode === 'table' ? 5.4 : 4.9;
       L.set(P.x - Math.sin(yaw) * Math.cos(this.firstPitch), P.y - Math.sin(this.firstPitch), P.z - Math.cos(yaw) * Math.cos(this.firstPitch));
       this.target.copy(P);
     } else if (this.mode === 'table') {
       // Far enough that the whole table (±11 units wide incl. chairs) fits horizontally.
       const halfH = Math.atan(Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * cam.aspect);
-      const dist = Math.max(21, 11.5 / Math.tan(halfH)) + this.tableZoom;
-      const a = seatAngle(seat) + this.tableYaw;
+      const inside=lighthouseSeat(seat),cx=inside?LIGHTHOUSE_ROOM.table.x:CENTER_X,cz=inside?LIGHTHOUSE_ROOM.table.z:CENTER_Z;
+      const dist = inside?Math.min(12.7,11+this.tableZoom):Math.max(21, 11.5 / Math.tan(halfH)) + this.tableZoom;
+      const a = (inside?.angle??seatAngle(seat)) + this.tableYaw;
       const p = this.tablePitch;
-      const cy = DECK.top + 3.7;
-      P.set(CENTER_X + Math.sin(a) * Math.cos(p) * dist, cy + Math.sin(p) * dist, CENTER_Z + Math.cos(a) * Math.cos(p) * dist);
-      L.set(CENTER_X - Math.sin(a) * 1.5, cy, CENTER_Z - Math.cos(a) * 1.5);
+      const cy = (inside?0:DECK.top) + 3.7;
+      P.set(cx + Math.sin(a) * Math.cos(p) * dist, cy + Math.sin(p) * dist, cz + Math.cos(a) * Math.cos(p) * dist);
+      L.set(cx - Math.sin(a) * 1.5, cy, cz - Math.cos(a) * 1.5);
     } else {
       const tx = focus.x;
       const ty = focus.y + 4.4;
