@@ -515,7 +515,7 @@ export class GameEngine {
       if (card.effect === 'skip') target.pending.skip = true;
       if (card.effect === 'time') target.pending.time += card.value;
       if (card.effect === 'mistakes') target.pending.mistakes += card.value;
-      this.broadcast({ t: 'cardUsed', actorId: player.id, targetId: target.id, cardId: card.id, effect: card.effect });
+      this.broadcast({ t: 'cardUsed', actorId: player.id, targetId: target.id, cardId: card.id, effect: card.effect, shielded: card.effect === 'heart' && !!target.shield });
       if (card.effect === 'heart') this.fail(target.id, 'card');
       else this.broadcastMatch();
       return { ...answer, ok: true };

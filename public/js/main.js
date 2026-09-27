@@ -721,6 +721,7 @@ function exitRoom() {
   world.setLeaderboard([]);
   world.setMenuMode(true);
   world.setRoulette?.(false, null);
+  world.clearCards();
   rouletteHud.update(state, false);
   world.setZone('island');
   teleporting=false;world.setTravelLocked(false);travelOverlay?.remove();
@@ -1026,11 +1027,21 @@ net.on('cardResult', (msg) => {
   } else toast('That card could not be used. It remains in your inventory.', 'info');
   panels.refresh(); hud.update(state);
 });
-net.on('cardUsed', ({ actorId, targetId, cardId }) => {
+net.on('cardUsed', ({ actorId, targetId, cardId, effect, shielded }) => {
   const card = CARDS_BY_ID[cardId];
-  world.playCard(actorId,targetId,cardId);
-  world.playEffect(targetId, 'flair', { text: card?.name || 'CARD!', color: card?.color || '#fff' });
-  chat.add({ system: true, text: `${nameOf(actorId)} used ${card?.name || 'a card'} on ${nameOf(targetId)}.` });
+  if(effect==='skipped'){
+    chat.add({system:true,text:`${nameOf(targetId)} used their Free Pass: turn skipped, no heart lost.`});return;
+  }
+  if(!card)return;
+  const result=card.effect==='skip'?'next turn skipped · no heart lost':
+    card.effect==='time'?'−2 seconds next turn':
+    card.effect==='mistakes'?'2 fewer mistakes next turn · minimum 1':
+    shielded?'pet shield blocked Heartbreaker':'lost 1 heart';
+  const message=`${nameOf(targetId)}: ${result}`;
+  world.playCard(actorId,targetId,cardId,message);
+  world.playEffect(targetId, 'flair', { text: result, color: card.color });
+  toast(`${nameOf(actorId)} played ${card.name}. ${message}`, 'info', 5500);
+  chat.add({ system: true, text: `${nameOf(actorId)} played ${card.name} on ${nameOf(targetId)} — ${result}.` });
 });
 net.on('emote', ({ id, name }) => world.playEmote(id, name));
 let travelOverlay=null;
@@ -1108,6 +1119,7 @@ net.on('rouletteOut', ({ id }) => { world?.knockOutRoulette?.(id); if(id===state
 function applyMatch(m, resync = false) {
   const prev = state.match;
   state.match = m;
+  if(m.phase==='lobby'||m.startedAt!==prev?.startedAt)world.clearCards();
   if (prev?.turnId !== m.turnId || m.phase !== 'typing') {
     cancelCardTarget();
     if (turnConfirmation != null) { cancelConfirmation(); turnConfirmation = null; }

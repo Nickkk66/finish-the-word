@@ -4,7 +4,7 @@ const b=await browser(),base=process.env.BASE||'http://127.0.0.1:8787';
 try{
  const p=await b.page('night-scenery');await p.nav(`${base}/?debug=1`);await p.wait('window.__ftw?.world');await p.clickText('Create Private');await p.wait('window.__ftw.state.inRoom');
  await p.send({t:'host',action:'settings',settings:{mode:'roulette'}});
- await p.wait('window.__ftw.world.debugSnapshot().roulette.trails>0');await p.shot('trails');
+ await p.wait('window.__ftw.world.debugSnapshot().roulette.trails>1');await p.shot('trails');assert.equal(await p.eval('window.__ftw.world.debugSnapshot().roulette.owlBoard'),'howto');
  await p.wait('!window.__ftw.world.debugSnapshot().roulette.cinematic');
  let s=await p.eval('window.__ftw.world.debugSnapshot()');assert.ok(s.scenery.broken);assert.equal(s.scenery.damagedFence,4);assert.ok(s.scenery.crateGlow.every(n=>n>0&&n<.3));
  await p.eval('window.__ftw.world.teleportLocal({x:-19,y:0,z:-16,ry:Math.PI})');await delay(500);await p.shot('destruction');

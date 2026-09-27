@@ -5,6 +5,7 @@
 // Model space: faces +Z, feet at y = 0. Legs 0..2, torso 2..4, head ~4..5.25.
 
 import * as THREE from 'three';
+import { LAYOUT } from '../shared/constants.js';
 import { sipLift } from '../shared/roulette.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -396,8 +397,15 @@ export class Avatar {
     if (lift > 0) { o[RAX]=lerp(o[RAX],-1.9,lift); o[RAZ]=lerp(o[RAZ],-.5,lift); o[HX]-=lift*.12; }
     this.sleepWeight = damp(this.sleepWeight || 0, this.rouletteSleeping && this.seated ? 1 : 0, 24, dt);
     if (this.sleepWeight > .001) {
-      const k=this.sleepWeight; o[BX]+=k*1.48; o[HX]+=k*.53; o[BY]-=k*.45;
-      o[LAX]=lerp(o[LAX],-1.2,k); o[RAX]=lerp(o[RAX],-1.2,k);
+      const k=this.sleepWeight;
+      o[BX]=lerp(o[BX],1.1,k);o[BZ]*=1-k;
+      o[HX]=lerp(o[HX],Math.PI/2-1.1,k);o[HY]*=1-k;o[HZ]*=1-k;
+      // With the face flat, its lower edge is half a head below the neck.
+      // Solve that edge against the table instead of rotating the head through it.
+      const restY=LAYOUT.tableHeight+.035-CENTER_Y-Math.cos(1.1)+HEAD_SIZE/2;
+      o[BY]=lerp(o[BY],restY,k);
+      o[LAX]=lerp(o[LAX],-2.67,k);o[RAX]=lerp(o[RAX],-2.67,k);
+      o[LAZ]=lerp(o[LAZ],.12,k);o[RAZ]=lerp(o[RAZ],.12,k);
       this.wDizzy = Math.max(this.wDizzy,k);
     }
     this.applyPose(dt, t, o);
@@ -569,8 +577,9 @@ export class Avatar {
     this.head.rotation.set(o[HX], o[HY], o[HZ]);
     this.spin.rotation.set(o[BX] + spinX, spinY, o[BZ]);
     const em = this.emote;
-    this.body.position.set(em?.name === 'dance' ? Math.sin(em.t * Math.PI * 4) * 0.3 : 0, o[BY] + fy, fz);
+    this.body.position.set(em?.name === 'dance' ? Math.sin(em.t * Math.PI * 4) * 0.3 : 0, o[BY] + fy, fz + (this.sleepWeight || 0)*1.25);
     if (em?.name === 'dance2') this.spin.rotation.y += Math.sin(em.t * Math.PI * 4) * 0.26;
+    this.lArm.position.y=this.rArm.position.y=3.5+(this.sleepWeight||0)*.15;
     this.body.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
 
     this.updateStars(t);

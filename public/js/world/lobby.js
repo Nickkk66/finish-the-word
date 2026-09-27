@@ -95,7 +95,11 @@ export function createLobby(scene) {
   const cardBoxes = CARD_BOXES.map(def => {
     const model = buildCardBox(def.id);
     model.position.set(def.x, 0, def.z); scene.add(model); enableShadows(model);
-    const glow=new THREE.Mesh(new THREE.CylinderGeometry(2.15,2.55,3.4,24,1,true),new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,uniforms:{strength:{value:0},tint:{value:new THREE.Color(def.color)}},vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'uniform float strength;uniform vec3 tint;varying vec2 vUv;void main(){gl_FragColor=vec4(tint,pow(1.-vUv.y,3.)*strength);}' }));glow.position.set(def.x,1.7,def.z);scene.add(glow);crateGlows.push(glow);
+    const glow=new THREE.Mesh(new THREE.PlaneGeometry(7,7),new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+      uniforms:{strength:{value:0},tint:{value:new THREE.Color(def.color)}},
+      vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+      fragmentShader:'uniform float strength;uniform vec3 tint;varying vec2 vUv;void main(){float r=length((vUv-.5)*2.);float a=pow(max(0.,1.-r*r),3.);gl_FragColor=vec4(tint,a*strength);}' }));
+    glow.rotation.x=-Math.PI/2;glow.position.set(def.x,.035,def.z);scene.add(glow);crateGlows.push(glow);
     model.traverse(o=>{if(o.material?.emissive){o.material=o.material.clone();o.userData.originalEmissive=o.material.emissive.clone();o.userData.originalIntensity=o.material.emissiveIntensity;}});
     crateGlows.push(model);
     if (model.userData.update) animated.push(model);
@@ -127,7 +131,7 @@ export function createLobby(scene) {
     blocks,
     cardBoxes,
     debug:()=>({broken:!!rouletteMode,crateGlow:crateGlows.filter(o=>o.material?.uniforms).map(o=>o.material.uniforms.strength.value)}),
-    setRoulette(on,mode) { const next=on?mode:null;if(rouletteMode===next)return;rouletteMode=next;winsBoard.userData.setBroken(on);for(const glow of crateGlows){if(glow.material?.uniforms)glow.material.uniforms.strength.value=on?.23:0;else glow.traverse(o=>{if(o.userData.originalEmissive){o.material.emissive.copy(on?new THREE.Color('#7250b0'):o.userData.originalEmissive);o.material.emissiveIntensity=on?.22:o.userData.originalIntensity;}});}drawHowTo(howCanvas,next);howTexture.needsUpdate=true; },
+    setRoulette(on,mode) { const next=on?mode:null;if(rouletteMode===next)return;rouletteMode=next;winsBoard.userData.setBroken(on);for(const glow of crateGlows){if(glow.material?.uniforms)glow.material.uniforms.strength.value=on?.23:0;else glow.traverse(o=>{if(o.userData.originalEmissive){o.material.emissive.copy(on?o.material.color:o.userData.originalEmissive);o.material.emissiveIntensity=on?.10:o.userData.originalIntensity;}});}drawHowTo(howCanvas,next);howTexture.needsUpdate=true; },
     setLeaderboardTitle(title) {
       boardTitle = String(title).slice(0, 40);
       drawLeaderboard(winsCanvas, boardRows, boardTitle); winsTexture.needsUpdate = true;

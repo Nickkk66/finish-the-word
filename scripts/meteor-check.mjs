@@ -11,8 +11,10 @@ try{
  console.log('Night scene ready; waiting for the real three-minute server meteor.');
  await p.wait('window.__ftw.world.debugSnapshot().roulette.meteor',185000);
  assert.equal(await p.eval('window.__ftw.world.debugSnapshot().roulette.cinematic'),false);
- await p.shot('falling');await delay(2700);
  const meteor=await p.eval('window.__ftw.world.debugSnapshot().roulette.meteor');
+ await p.eval(`window.__ftw.world.teleportLocal({x:${meteor.x+16},y:0,z:${meteor.z+18},ry:${Math.atan2(-16,-18)}})`);
+ await delay(1250);assert.ok(await p.eval('window.__ftw.world.debugSnapshot().roulette.trails>0'));
+ await p.shot('falling');await delay(1100);
  await p.eval(`window.__ftw.world.teleportLocal({x:${meteor.x},y:0,z:${meteor.z}})`);
  await delay(700);await p.shot('collect');
  await p.key('e','KeyE',69);

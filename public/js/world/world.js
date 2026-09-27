@@ -129,7 +129,7 @@ export async function createWorld({ container, labelLayer }) {
 
   // ---- State ----
   const players = new Map();
-  const cardPlay=createCardPlay(scene,players);
+  const cardPlay=createCardPlay(scene,players,labels);
   const cardTargets = new Map();
   const targetGeometry = new THREE.CylinderGeometry(2.2, 2.2, 6, 24, 1, true).translate(0, 3, 0);
   function clearCardTargets() {
@@ -595,7 +595,8 @@ export async function createWorld({ container, labelLayer }) {
       }
     },
     cancelCardTargeting: clearCardTargets,
-    playCard(actorId,targetId,cardId) {cardPlay.play(actorId,targetId,cardId);},
+    playCard(actorId,targetId,cardId,message) {cardPlay.play(actorId,targetId,cardId,message);},
+    clearCards() {cardPlay.clear();},
     playHatch(id) { world.playEffect(id, 'hatch'); },
     setTravelLocked(on) { travelLocked=!!on; if(on){motor.vel.set(0,0,0);input.consumeJumpPress();input.consumeInteract();} },
     playPortal(id,door) {
@@ -652,7 +653,7 @@ export async function createWorld({ container, labelLayer }) {
         scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), night: terrain.nightAmount(),
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
-        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,seat:e.seat,render:e.render.toArray(),yaw:e.renderYaw})),
+        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,seat:e.seat,render:e.render.toArray(),yaw:e.renderYaw,sleeping:!!e.avatar.rouletteSleeping,sleepWeight:e.avatar.sleepWeight||0,headBottom:e.avatar.rouletteSleeping?new THREE.Box3().setFromObject(e.avatar.headMesh).min.y:null})),
         grounded: motor.grounded, platformKind: motor.standingOn?.kind ?? null };
     },
 

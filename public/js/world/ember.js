@@ -33,26 +33,31 @@ export function createFire(radius=1,height=3,count=10){
   return group;
 }
 
-// A persistent wake in world space: one additive draw, independent of the rock's rotation.
-export function createMeteorTrail(scene, length = 19) {
-  const count = 30, positions = new Float32Array(count * 3), sizes = new Float32Array(count);
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('age', new THREE.BufferAttribute(sizes, 1));
-  const material = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: `attribute float age; varying float fade; void main(){fade=1.-age;vec4 p=modelViewMatrix*vec4(position,1.);gl_PointSize=min(100.,(160.+160.*fade)/max(1.,-p.z));gl_Position=projectionMatrix*p;}`,
-    fragmentShader: `varying float fade; void main(){float r=length(gl_PointCoord-.5)*2.;float a=pow(max(0.,1.-r),1.5)*fade*.85;gl_FragColor=vec4(1.,.25+.65*fade,.06+.3*fade,a);}` });
-  const mesh = new THREE.Points(geometry, material); mesh.frustumCulled = false; mesh.visible = false; scene.add(mesh);
-  return { mesh, update(head, direction, progress, t) {
-    mesh.visible = progress > 0 && progress < 1;
-    const extent = Math.min(length, progress * 85);
-    for (let i=0;i<count;i++) {
-      const age=i/(count-1), distance=age*extent;
-      positions[i*3]=head.x+direction.x*distance+Math.sin(i*3+t*4)*age*.45;
-      positions[i*3+1]=head.y+direction.y*distance;
-      positions[i*3+2]=head.z+direction.z*distance+Math.cos(i*2+t*3)*age*.45;
-      sizes[i]=age;
+// Overlapping world-sized billboards form a continuous wake, independent of rock rotation.
+// Unlike GL points, their width does not collapse to a few pixels at island camera distances.
+export function createMeteorTrail(scene, length = 22) {
+  const count=48, geometry=new THREE.PlaneGeometry(1,1);
+  geometry.setAttribute('age',new THREE.InstancedBufferAttribute(Float32Array.from({length:count},(_,i)=>i/(count-1)),1));
+  const material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:`attribute float age;varying vec2 vUv;varying float fade;
+      void main(){vUv=uv;fade=1.-age;vec4 center=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);
+      center.xy+=position.xy*(.7+3.7*pow(fade,.65));gl_Position=projectionMatrix*center;}`,
+    fragmentShader:`varying vec2 vUv;varying float fade;void main(){float r=length(vUv-.5)*2.;
+      float alpha=pow(max(0.,1.-r),2.)*smoothstep(0.,.22,fade)*.65;
+      gl_FragColor=vec4(1.,.18+.68*fade,.025+.35*pow(fade,3.),alpha);}`});
+  const mesh=new THREE.InstancedMesh(geometry,material,count),matrix=new THREE.Matrix4();
+  // Water is transparent and does not write depth. Draw the airborne wake after it,
+  // while retaining normal depth testing against solid scenery and the meteor itself.
+  mesh.renderOrder=3;mesh.frustumCulled=false;mesh.visible=false;scene.add(mesh);
+  return {mesh,update(head,direction,progress,t){
+    mesh.visible=progress>0&&progress<1;
+    const extent=Math.min(length,progress*85);
+    for(let i=0;i<count;i++){
+      const age=i/(count-1),distance=age*extent;
+      matrix.makeTranslation(head.x+direction.x*distance+Math.sin(i*.7+t*8)*age*.22,
+        head.y+direction.y*distance,head.z+direction.z*distance+Math.cos(i*.6+t*6)*age*.22);
+      mesh.setMatrixAt(i,matrix);
     }
-    geometry.attributes.position.needsUpdate=true; geometry.attributes.age.needsUpdate=true;
+    mesh.instanceMatrix.needsUpdate=true;
   }};
 }

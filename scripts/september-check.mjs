@@ -39,9 +39,17 @@ try{
  await actor.send({t:'useCard',requestId:'bad-card',turnId:state.match.turnId-1,cardId:'skip',targetId:target});await delay(120);assert.equal(await a.eval('window.__ftw.world.debugSnapshot().cardPlay.played'),0);
  const request={t:'useCard',requestId:'good-card',turnId:state.match.turnId,cardId:'skip',targetId:target};await actor.send(request);
  await a.wait('window.__ftw.world.debugSnapshot().cardPlay.active');assert.equal(await c.eval('window.__ftw.world.debugSnapshot().cardPlay.played'),1);await a.shot('card');
- await actor.send(request);await delay(1300);assert.equal(await a.eval('window.__ftw.world.debugSnapshot().cardPlay.played'),1);assert.equal(await a.eval('window.__ftw.world.debugSnapshot().cardPlay.active'),false);
+ await actor.send(request);await delay(2000);assert.equal(await a.eval('window.__ftw.world.debugSnapshot().cardPlay.played'),1);assert.equal(await a.eval('window.__ftw.world.debugSnapshot().cardPlay.active'),false);
+ for(const p of [a,c]){const landed=await p.eval('window.__ftw.world.debugSnapshot().cardPlay.landed');assert.equal(landed.length,1);assert.equal(landed[0].targetId,target);assert.equal(landed[0].artLoaded,true);}
+ await a.shot('card-landed');await c.shot('card-landed');
+ for(const p of [a,c])assert.ok(await p.eval('document.body.textContent.includes("next turn skipped")'));
+ await delay(6000);
+ for(const p of [a,c])assert.equal((await p.eval('window.__ftw.world.debugSnapshot().cardPlay.landed')).length,1);
  // Forge a travel packet during the game; server must not move anyone.
  await actor.send({t:'celebrate',kind:'portal',to:'lighthouse'});await delay(200);assert.equal((await actor.state()).zone,'island');
+ // A departed target must not leave an orphaned card behind.
+ const recipient=target===(await a.state()).you?a:c;await recipient.send({t:'stand'});
+ for(const p of [a,c])await p.wait('window.__ftw.world.debugSnapshot().cardPlay.landed.length===0');
  assert.deepEqual(a.errors,[]);assert.deepEqual(c.errors,[]);
  console.log('PASS directed off-center travel, remote animation, movement lock, desktop/mobile rooms, baked windows, walked all stairs, distant return, accepted/rejected/replayed cards and active-match travel rejection');
 }finally{await b.close();}

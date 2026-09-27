@@ -204,6 +204,7 @@ test('heart cards honor shields, eliminate and end a match; invalid cards never 
   room.send(conn, request);
   assert.equal(target.hearts, 2);
   assert.equal(target.shield, false);
+  assert.equal(conn.last('cardUsed').shielded, true);
   assert.equal(room.engine.players.get(actor).cards.heart, 1);
   room.clock.advance(1000);
   room.engine.startTurn(actor);
@@ -213,6 +214,7 @@ test('heart cards honor shields, eliminate and end a match; invalid cards never 
   assert.equal(m.phase, 'ended');
   assert.equal(m.winnerId, actor);
   assert.equal(target.alive, false);
+  assert.equal(conn.last('cardUsed').shielded, false);
 });
 
 test('in-match inventory updates and reconnects cannot refill spent cards', () => {

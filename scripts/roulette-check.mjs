@@ -57,7 +57,10 @@ try {
         await a.wait('window.__ftw.world.debugSnapshot().roulette.rimError !== null');
         assert.ok(await a.eval('window.__ftw.world.debugSnapshot().roulette.rimError < .001'));
         await a.shot('sip');
-        if((await a.state()).match.roulette.event?.poisoned){await a.wait('window.__ftw.world.debugSnapshot().roulette.ghosts > 0');await a.wait('document.querySelector(".game-ui").classList.contains("roulette-shock")');await a.shot('soul');await delay(900);await a.shot('ghost-late');}
+        if((await a.state()).match.roulette.event?.poisoned){await a.wait('window.__ftw.world.debugSnapshot().roulette.ghosts > 0');await a.wait('document.querySelector(".game-ui").classList.contains("roulette-shock")');await a.shot('soul');await delay(900);await a.shot('ghost-late');
+          const snap=await a.eval('window.__ftw.world.debugSnapshot()'),sleeper=snap.playerPositions.find(p=>p.sleeping);
+          assert.ok(sleeper&&sleeper.sleepWeight>.99);assert.ok(sleeper.headBottom>=3.30&&sleeper.headBottom<3.40,JSON.stringify(sleeper));
+          assert.ok(snap.roulette.restingCups.some(c=>c.id===sleeper.id));}
       }
     }
     await delay(150);

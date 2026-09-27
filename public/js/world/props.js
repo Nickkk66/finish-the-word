@@ -357,18 +357,28 @@ function buildLighthouse(colliders, scene) {
   group.add(lantern);
 
   const sweep=new THREE.Group();scene.add(sweep);sweep.position.set(LIGHTHOUSE.x,topY+1.6,LIGHTHOUSE.z);
-  const beamGeometry=new THREE.ConeGeometry(12,108,24,1,true);
-  beamGeometry.translate(0,-54,0); // cone tip is exactly the lamp origin
-  const beam=new THREE.Mesh(beamGeometry,new THREE.ShaderMaterial({
+  // A feathered camera-facing shaft avoids the faceted shell of a transparent cone.
+  // Its center reaches WATER_Y at 100 studs; extend below water so there is no end cap.
+  const beam=new THREE.Mesh(new THREE.PlaneGeometry(1,1,1,40),new THREE.ShaderMaterial({
     transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
-    uniforms:{strength:{value:0}},
-    vertexShader:'varying float alongBeam;varying vec3 worldNormal;varying vec3 worldPosition;void main(){alongBeam=uv.y;worldNormal=normalize(mat3(modelMatrix)*normal);worldPosition=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(worldPosition,1.);}',
-    fragmentShader:'uniform float strength;varying float alongBeam;varying vec3 worldNormal;varying vec3 worldPosition;void main(){float lengthFade=smoothstep(0.,.24,alongBeam);float edgeFade=smoothstep(.02,.48,abs(dot(normalize(worldNormal),normalize(cameraPosition-worldPosition))));gl_FragColor=vec4(.96,.89,.68,lengthFade*edgeFade*strength);}',
+    uniforms:{strength:{value:0},drop:{value:topY+2.4}},
+    vertexShader:`uniform float drop;varying vec2 vUv;varying float waterHeight;
+      void main(){vUv=uv;vec3 axis=vec3(0.,-drop*1.7,170.);
+      vec3 center=axis*uv.y;vec3 eye=(inverse(modelMatrix)*vec4(cameraPosition,1.)).xyz;
+      vec3 side=normalize(cross(axis,eye-center));vec3 local=center+side*position.x*(.65+uv.y*40.);
+      vec4 world=modelMatrix*vec4(local,1.);waterHeight=world.y;
+      gl_Position=projectionMatrix*viewMatrix*world;}`,
+    fragmentShader:`uniform float strength;varying vec2 vUv;varying float waterHeight;
+      void main(){float across=abs(vUv.x*2.-1.);
+      float softEdge=exp(-across*across*3.)*(1.-smoothstep(.65,1.,across));
+      float surface=smoothstep(-.85,-.35,waterHeight);
+      float lengthFade=1.-smoothstep(.7,1.,vUv.y);
+      gl_FragColor=vec4(.96,.89,.68,softEdge*surface*lengthFade*strength);}`,
   }));
-  beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,-1,0),new THREE.Vector3(0,-(topY+2.4),100).normalize());sweep.add(beam);
+  beam.frustumCulled=false;beam.renderOrder=2;sweep.add(beam);
   group.userData.beamOrigin=sweep.position.toArray();
   const bulb=new THREE.PointLight('#ffe6a0',0,15,2);bulb.position.copy(sweep.position);scene.add(bulb);
-  group.userData.updateNight=(night,t)=>{sweep.visible=night>.01;sweep.rotation.y=lighthouseSweepAngle(t);beam.material.uniforms.strength.value=.32*night;bulb.intensity=16*night;lantern.material.emissiveIntensity=.1+night*2.2;};
+  group.userData.updateNight=(night,t)=>{sweep.visible=night>.01;sweep.rotation.y=lighthouseSweepAngle(t);beam.material.uniforms.strength.value=.19*night;bulb.intensity=16*night;lantern.material.emissiveIntensity=.1+night*2.2;};
   colliders.push({ x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, r: 5.7 });
   return group;
 }

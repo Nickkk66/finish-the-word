@@ -53,7 +53,7 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
     branch.position.set(tree.x+Math.sin(a)*r/2,tree.y-.42,tree.z+Math.cos(a)*r/2);
     branch.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(Math.sin(a),0,Math.cos(a)));root.add(branch);
   }
-  const board=BOARDS.find(b=>b.kind==='wins');owlAt(board.x+6,7.4,board.z,board.ry,1.3);
+  const board=BOARDS.find(b=>b.kind==='howto');owlAt(board.x,14.15,board.z,board.ry,1.3);
   const owlLight=new THREE.PointLight('#c5c5ff',7,6,1.5);owlLight.position.set(board.x,16,board.z+2);root.add(owlLight);
   const rockMat=new THREE.MeshStandardMaterial({map:surfaceTexture('rock'),roughness:.95,bumpMap:surfaceTexture('rock'),bumpScale:.18});
 
@@ -87,12 +87,25 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
   const pickupLabel=new Label(labels,'w-meteor-reward',{maxDist:100,scaleRef:26});pickupLabel.el.textContent='+150 COINS';pickupLabel.visible=false;
   let meteorDrop=null,meteorLands=0,meteorPrompt=null,pickupStarted=-Infinity;
   const ghosts=[];
+  const restingCups=new Map();let cupMatch=null;
   let active=false,match=null,players=null,previousEvent='',eventStart=0,event=null,knockoutPlayed=false,introStart=-Infinity;
   let cashCount=0,rimError=null,lastGhost='';
   const target=new THREE.Vector3(),from=new THREE.Vector3(),mouth=new THREE.Vector3(),lip=new THREE.Vector3(),normalCamera=new THREE.Vector3(),cinematicTarget=new THREE.Vector3();
   const y=DECK.top+LAYOUT.tableHeight+.16;cup.position.set(0,y,4.5);
   const introAge=()=>performance.now()-introStart;
   function atSeat(id,radius=4.7){const seat=players?.get(id)?.seat;return target.set(seat>=0?seatX(seat,radius):0,y,seat>=0?seatZ(seat,radius):4.5);}
+  function besideHead(id,out){
+    const seat=players.get(id).seat,a=Math.atan2(seatX(seat),seatZ(seat))+.36;
+    return out.set(Math.sin(a)*3.65,y,Math.cos(a)*3.65);
+  }
+  function restCup(id){
+    const actor=players?.get(id);if(!actor||actor.seat<0||restingCups.has(id))return;
+    const resting=cup.clone();resting.visible=true;resting.rotation.set(0,0,0);
+    // Beside the collapsed head, inside the felt rim; never reuse the circulating cup.
+    besideHead(id,resting.position);
+    root.add(resting);restingCups.set(id,resting);
+  }
+  function clearRestingCups(){for(const c of restingCups.values())root.remove(c);restingCups.clear();}
   function soul(id,key){
     if(key===lastGhost)return;lastGhost=key;const actor=players?.get(id);if(!actor)return;
     const ghost=new Label(labels,'w-roulette-soul',{maxDist:100,scaleRef:28});ghost.el.textContent='💀';
@@ -103,6 +116,8 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
     set(on,m,entities,entry=25){
       if(on&&!active){introStart=performance.now();sfx.omen();hazards.forEach(h=>{h.impacted=false;h.visualFall=0;});}
       active=on;root.visible=on;pot.visible=on;players=entities;match=m;
+      if(!on||m?.startedAt!==cupMatch||m?.phase==='lobby'){clearRestingCups();cupMatch=m?.startedAt;}
+      for(const p of on&&m?.phase!=='lobby'?m?.participants||[]:[])if(!p.alive&&entities.get(p.id)?.avatar.rouletteSleeping)restCup(p.id);
       if(!on){previousEvent='';event=null;meteorDrop=null;meteorPrompt=null;treasure.visible=false;treasureWake.mesh.visible=false;treasureLabel.visible=false;pickup.visible=false;pickupLabel.visible=false;for(const g of ghosts)g.label.destroy();ghosts.length=0;return;}
       const total=m?.roulette?.pot || [...entities.values()].reduce((sum,e)=>sum+(e.data.rouletteBet || (e.data.isBot?entry:0)),0);
       pot.el.textContent=`${total.toLocaleString()} COINS${m?.roulette?' · ×'+m.roulette.multiplier.toFixed(2):''}`;
@@ -139,11 +154,11 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
       }
       const age=introAge()/1000;normalCamera.copy(camera.position);
       if(age<2){camera.position.set(0,17,38);cinematicTarget.set(-5,38-age*5,-20);}
-      else {camera.position.set(38,35,52);cinematicTarget.set(0,2,0);}
+      else {camera.position.set(38,35,52);cinematicTarget.set(7,Math.max(2,46-(age-2)*25),-12);}
       if(age>5.7){const k=Math.min(1,(age-5.7)/1.3);camera.position.lerp(normalCamera,k*k*(3-2*k));const forward=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(25).add(normalCamera);cinematicTarget.lerp(forward,k);}
       camera.lookAt(cinematicTarget);
     },
-    knockout(id){const actor=players?.get(id);if(actor)actor.avatar.rouletteSleeping=true;soul(id,`${match?.startedAt}:${id}`);},
+    knockout(id){const actor=players?.get(id);if(actor)actor.avatar.rouletteSleeping=true;restCup(id);soul(id,`${match?.startedAt}:${id}`);},
     update(t,dt){
       if(!active)return;
       const now=performance.now(),elapsed=(now-eventStart)/1000;
@@ -160,9 +175,15 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
             cup.position.lerp(mouth.clone().sub(lip),k);
             if(k===1)rimError=cup.position.clone().add(lip).distanceTo(mouth);
           }
-          if(event.poisoned&&elapsed>4.05&&!knockoutPlayed){knockoutPlayed=true;if(actor){actor.avatar.rouletteSleeping=true;soul(event.id,`${match.startedAt}:${event.id}`);sfx.sting();onShock(event.id);}}
+          if(actor&&event.poisoned&&elapsed>3.1){
+            const k=Math.min(1,(elapsed-3.1)/.6);cup.position.lerp(besideHead(event.id,target),k*k*(3-2*k));
+          }
+          if(event.poisoned&&elapsed>4.05&&!knockoutPlayed){knockoutPlayed=true;if(actor){actor.avatar.rouletteSleeping=true;restCup(event.id);soul(event.id,`${match.startedAt}:${event.id}`);sfx.sting();onShock(event.id);}}
         }
       }else{atSeat(match?.typerId);cup.position.lerp(target,1-Math.exp(-dt*8));}
+      // Once set down beside an eliminated player, only their resting cup remains there.
+      cup.visible=match?.phase!=='ended'&&!(event?.poisoned&&match?.phase==='rouletteReveal'&&restingCups.has(event.id));
+      for(const [id,c] of restingCups)if(!players.has(id)||players.get(id).seat<0){root.remove(c);restingCups.delete(id);}
       for(const owl of owls)owl.userData.update?.(t,dt);
       for(const h of hazards){
         const targetFall=Math.max(0,Math.min(1,(introAge()/1000-2.1-h.i*.4)/1.4));
@@ -193,6 +214,6 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
       }
       for(let i=ghosts.length-1;i>=0;i--){const g=ghosts[i],age=(now-g.start)/1000;g.label.anchor.copy(g.base).add(new THREE.Vector3(Math.sin(age*3)*.7,age*3.5,0));g.label.el.style.opacity=String(Math.max(0,1-age/4));if(age>4){g.label.destroy();ghosts.splice(i,1);}}
     },
-    debug:()=>({active,trails:hazards.filter(h=>h.wake.mesh.visible).length+(treasureWake.mesh.visible?1:0),meteor:meteorDrop,pickup:pickup.visible,burningTrees:burningTrees.length,cup:cup.position.toArray(),pot:pot.el.textContent,owls:owls.length,cashCount,rimError,ghosts:ghosts.length,craters:hazards.filter(h=>h.impacted).length,cinematic:active&&introAge()<ROULETTE_INTRO_MS}),
+    debug:()=>({active,owlBoard:board.kind,restingCups:[...restingCups].map(([id,c])=>({id,position:c.position.toArray()})),trails:hazards.filter(h=>h.wake.mesh.visible).length+(treasureWake.mesh.visible?1:0),meteor:meteorDrop,pickup:pickup.visible,burningTrees:burningTrees.length,cup:cup.position.toArray(),pot:pot.el.textContent,owls:owls.length,cashCount,rimError,ghosts:ghosts.length,craters:hazards.filter(h=>h.impacted).length,cinematic:active&&introAge()<ROULETTE_INTRO_MS}),
   };
 }

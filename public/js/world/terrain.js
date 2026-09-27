@@ -339,8 +339,8 @@ function buildWater() {
         vec2 fromBeacon = vWorld.xz - uLighthouse;
         float reach = dot(fromBeacon,uLighthouseDir);
         float across = abs(dot(fromBeacon,vec2(-uLighthouseDir.y,uLighthouseDir.x)));
-        float footprint = smoothstep(45.,85.,reach) * (1.-smoothstep(135.,175.,reach))
-                        * exp(-pow(across/(3.+reach*.055),2.));
+        float footprint = exp(-pow((reach-100.)/29.,2.))
+                        * exp(-pow(across/10.,2.));
         col += vec3(.88,.75,.38) * footprint * uNight;
         gl_FragColor = vec4(col, max(mix(0.94, 0.66, shallow), f * 0.9));
         #include <colorspace_fragment>
