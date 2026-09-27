@@ -1,3 +1,4 @@
+import { isRouletteMode, rouletteRules } from '../public/js/shared/roulette.js';
 // Server-authoritative game logic for one room (docs/SPEC.md §3 and §4).
 // Pure and transport-agnostic: no Cloudflare or Node APIs. Time, timers and randomness
 // are injected so tests can drive a room with a fake clock, and a connection is any
@@ -568,7 +569,7 @@ export class GameEngine {
       case 'forceStart': this.hostStart(); break;
       case 'endMatch': if (ACTIVE_PHASES.has(this.match.phase)) this.endMatch(null); break;
       case 'reset':
-        if (this.match.mode === 'roulette' && ACTIVE_PHASES.has(this.match.phase)) this.endRoulette(null);
+        if (isRouletteMode(this.match.mode) && ACTIVE_PHASES.has(this.match.phase)) this.endRoulette(null);
         for (const player of this.players.values()) this.refundStake(player);
         this.cancel(this.phaseTimer); this.stopBot();
         for (const p of this.players.values()) { p.seat = -1; this.broadcastPlayer(p); }
@@ -630,7 +631,7 @@ export class GameEngine {
     this.broadcast(systemChat(`${player.name} beat the obby in ${Math.round(elapsed / 1000)}s!`));
   }
 
-  roomTable() { return this.settings.mode === 'roulette' || (this.match.mode === 'roulette' && ACTIVE_PHASES.has(this.match.phase)) ? 'poker' : this.tableOverride ?? this.players.get(this.hostId)?.table ?? 'classic'; }
+  roomTable() { return isRouletteMode(this.settings.mode) || (isRouletteMode(this.match.mode) && ACTIVE_PHASES.has(this.match.phase)) ? 'poker' : this.tableOverride ?? this.players.get(this.hostId)?.table ?? 'classic'; }
   reportListing() { this.onListing({ code: this.code, humans: [...this.players.values()].filter(p => !p.isBot && p.connected).length, public: this.settings.public }); }
 
   // ---- Host actions -------------------------------------------------------------------
@@ -742,7 +743,7 @@ export class GameEngine {
         ability, // locked in for the whole match
       };
     });
-    if (settings.mode === 'roulette') return this.startRoulette(seated);
+    if (isRouletteMode(settings.mode)) return this.startRoulette(seated);
     this.startRound(pickRandom(this.match.participants, this.random).id);
   }
 
@@ -901,7 +902,7 @@ export class GameEngine {
     const m = this.match;
     const participant = this.participant(id);
     if (!ACTIVE_PHASES.has(m.phase) || !participant?.alive) return;
-    if (m.mode === 'roulette') return this.rouletteOut(id);
+    if (isRouletteMode(m.mode)) return this.rouletteOut(id);
     const endsRound = id === m.typerId || id === m.chooserId; // the round cannot go on without them
 
     let shielded = false;
@@ -935,7 +936,7 @@ export class GameEngine {
   endMatch(winnerId) {
     const m = this.match;
     if (m.paid || !ACTIVE_PHASES.has(m.phase)) return;
-    if (m.mode === 'roulette') return this.endRoulette(winnerId);
+    if (isRouletteMode(m.mode)) return this.endRoulette(winnerId);
     m.paid = true;
     const durationMs = Math.max(0, this.now() - m.startedAt);
     const contributors = m.participants.filter(p => !p.isBot && p.words > 0).length;
@@ -979,7 +980,7 @@ export class GameEngine {
 
   syncHazards() {
     const mode = ACTIVE_PHASES.has(this.match.phase) || this.match.phase === 'ended' ? this.match.mode : this.settings.mode;
-    const on = mode === 'roulette';
+    const on = isRouletteMode(mode);
     if (on && !this.fireMode) this.rouletteHazardsAt = this.now() + ROULETTE_INTRO_MS;
     if (on && !this.fireMode) this.scheduleMeteor();
     if (!on && this.fireMode) { this.cancel(this.meteorTimer); this.meteorTimer=null; this.meteor=null; this.broadcast({t:'meteor',meteor:null}); }
@@ -1010,7 +1011,7 @@ export class GameEngine {
     this.meteor=null;
     const reward={t:'meteorReward',coins:150,receipt:meteor.id};
     this.remember(player,meteor.id,reward);this.send(player,reward);
-    this.broadcast({t:'meteor',meteor:null});
+    this.broadcast({t:'meteor',meteor:null,collected:{id:meteor.id,x:meteor.x,z:meteor.z,by:player.id}});
   }
 
   fireActive(player) {
@@ -1035,7 +1036,7 @@ export class GameEngine {
   onBet(player, msg) {
     this.request(player, 'bet', msg, () => {
       const result = { t: 'betResult', requestId: msg.requestId, ok: false };
-      if (this.settings.mode !== 'roulette' || !['lobby', 'countdown'].includes(this.match.phase) || player.seat < 0) return { ...result, error: 'Sit at the table between matches first.' };
+      if (!isRouletteMode(this.settings.mode) || !['lobby', 'countdown'].includes(this.match.phase) || player.seat < 0) return { ...result, error: 'Sit at the table between matches first.' };
       if (!Number.isSafeInteger(msg.amount) || msg.amount < 25 || !Number.isSafeInteger(msg.balance) || msg.balance < msg.amount) return { ...result, error: 'Your balance or the entry amount changed.' };
       if (player.rouletteBet) return { ...result, error: 'You already entered this match.' };
       const receipt = `${this.code}:${player.id}:${this.now()}:${++this.matchSerial}`;
@@ -1058,7 +1059,7 @@ export class GameEngine {
 
   startRoulette(seated) {
     const m = this.match;
-    m.roulette = { pot: 0, basePot: 0, multiplier: 1, risk: 1/6, turns: 0, passed: new Set(), event: null, serial: 0 };
+    m.roulette = { pot: 0, basePot: 0, multiplier: 1, risk: rouletteRules(m.mode).startingRisk, turns: 0, passed: new Set(), event: null, serial: 0 };
     m.stakes = {};
     for (const player of seated) {
       const amount = player.isBot ? this.rouletteEntry : player.rouletteBet?.amount || 0;
@@ -1106,8 +1107,8 @@ export class GameEngine {
     r.event = { id, action, poisoned, risk, serial: ++r.serial, next };
     this.setPhase('rouletteReveal', action === 'drink' ? ROULETTE_DRINK_MS : ROULETTE_PASS_MS, () => {
       r.turns++;
-      r.multiplier = Math.min(100, 1.05 ** r.turns);
-      r.risk = Math.min(.95, (1/6) * 1.25 ** r.turns);
+      r.multiplier = Math.min(100, rouletteRules(m.mode).prizeGrowth ** r.turns);
+      r.risk = Math.min(.95, rouletteRules(m.mode).startingRisk * rouletteRules(m.mode).riskGrowth ** r.turns);
       r.pot = Math.floor(r.basePot * r.multiplier);
       if (poisoned) this.rouletteOut(id);
       else this.rouletteTurn(next);
@@ -1181,7 +1182,7 @@ export class GameEngine {
     return [...this.players.values()].filter((p) => p.seat >= 0).sort((a, b) => a.seat - b.seat);
   }
   readyPlayers() {
-    return this.seated().filter(p => this.settings.mode !== 'roulette' || p.isBot || p.rouletteBet?.amount >= 25);
+    return this.seated().filter(p => !isRouletteMode(this.settings.mode) || p.isBot || p.rouletteBet?.amount >= 25);
   }
 
   seatOwner(seat) {
@@ -1276,6 +1277,6 @@ export class GameEngine {
   }
 
   broadcastRoom() {
-    this.broadcast({ t: 'room', hostId: this.hostId, settings: { ...this.settings }, table: this.roomTable(), public: this.settings.public, ...(this.settings.mode === 'roulette' ? { rouletteEntry: this.rouletteEntry } : {}) });
+    this.broadcast({ t: 'room', hostId: this.hostId, settings: { ...this.settings }, table: this.roomTable(), public: this.settings.public, ...(isRouletteMode(this.settings.mode) ? { rouletteEntry: this.rouletteEntry } : {}) });
   }
 }

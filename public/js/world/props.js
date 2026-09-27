@@ -8,6 +8,7 @@ import { barkTexture, leavesTexture, spawnDecalTexture, stoneTexture, woodTextur
 import { colorMaterial } from './materials.js';
 import {
   LIGHTHOUSE,
+  lighthouseSweepAngle,
   PATHS,
   PIER,
   SPAWN_PAD,
@@ -80,7 +81,7 @@ function buildTrees(rnd, leafMat, colliders, trees) {
     placed.push({ x, z });
     const h = 4.5 + rnd() * 3.5;
     const s = 5 + rnd() * 2.4;
-    trees.push({ x, z, y: h, perchRadius: s * .65 });
+    trees.push({ x, z, y: h, crownY: h + s * .95, perchRadius: s * .65 });
     const ry = (rnd() - 0.5) * 0.9;
     const kind = rnd();
     const color = LEAF_TINTS[(rnd() * LEAF_TINTS.length) | 0];
@@ -322,11 +323,15 @@ function buildLighthouse(colliders, scene) {
   group.add(lantern);
 
   const sweep=new THREE.Group();scene.add(sweep);sweep.position.set(LIGHTHOUSE.x,topY+1.6,LIGHTHOUSE.z);
-  const beam=new THREE.Mesh(new THREE.ConeGeometry(11,100,32,1,true),new THREE.MeshBasicMaterial({color:'#ffeec0',transparent:true,opacity:.045,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
-  beam.rotation.x=-Math.PI/2;beam.position.z=50;sweep.add(beam);
-  const spot=new THREE.SpotLight('#fff1c9',2200,180,.14,.65,1.4);sweep.add(spot);spot.target.position.set(0,-13,100);sweep.add(spot.target);
+  const beam=new THREE.Mesh(new THREE.ConeGeometry(12,108,20,1,true),new THREE.ShaderMaterial({
+    transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+    uniforms:{strength:{value:0}},
+    vertexShader:'varying float alongBeam;varying vec3 worldNormal;varying vec3 worldPosition;void main(){alongBeam=uv.y;worldNormal=normalize(mat3(modelMatrix)*normal);worldPosition=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(worldPosition,1.);}',
+    fragmentShader:'uniform float strength;varying float alongBeam;varying vec3 worldNormal;varying vec3 worldPosition;void main(){float lengthFade=smoothstep(0.,.2,alongBeam)*(1.-smoothstep(.82,1.,alongBeam));float edgeFade=smoothstep(.02,.48,abs(dot(normalize(worldNormal),normalize(cameraPosition-worldPosition))));gl_FragColor=vec4(.96,.89,.68,lengthFade*edgeFade*strength);}',
+  }));
+  beam.position.set(0,-12,52);beam.rotation.x=-Math.atan2(52,12);sweep.add(beam);
   const bulb=new THREE.PointLight('#ffe6a0',0,15,2);bulb.position.copy(sweep.position);scene.add(bulb);
-  group.userData.updateNight=(night,t)=>{sweep.visible=night>.01;sweep.rotation.y=Math.atan2(LIGHTHOUSE.x,LIGHTHOUSE.z)+Math.sin(t*.19)*1.1;spot.intensity=2200*night;beam.material.opacity=.055*night;bulb.intensity=12*night;lantern.material.emissiveIntensity=.1+night*1.3;};
+  group.userData.updateNight=(night,t)=>{sweep.visible=night>.01;sweep.rotation.y=lighthouseSweepAngle(t);beam.material.uniforms.strength.value=.32*night;bulb.intensity=16*night;lantern.material.emissiveIntensity=.1+night*2.2;};
   colliders.push({ x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, r: 5.7 });
   return group;
 }

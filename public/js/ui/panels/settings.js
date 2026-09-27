@@ -1,3 +1,4 @@
+import { isRouletteMode, rouletteRules } from '../../shared/roulette.js';
 import { h, replay } from '../dom.js';
 import { icons } from '../icons.js';
 import { profile } from '../../profile.js';
@@ -85,14 +86,15 @@ export function gameSettingsPanel({ state, actions }) {
   return { id: 'gameSettings', title: 'Game Settings', color: 'orange', icon: icons.gear,
     mount(body) {
       const mode = button('Choose mode', async () => {
-        const id = await choiceDialog('Choose a mode', MODES.filter(v => v.id !== 'custom').map(v => ({ label: v.name, description: v.description, value: v.id })));
-        if (id === 'roulette') {
-          if (!await confirmDialog({ title: 'The Last Sip', message: 'Choose your own entry, from 25 game coins. Each doubling above the smallest entry removes 20% of base poison risk, capped at 40% off. Equal bets have equal odds. Every turn multiplies the prize by 1.05 and poison chance by 1.25 (up to 95%). Drink or pass within 10 seconds; one pass each until a knockout. Last awake takes the prize. Asteroid fire drains 25 coins per 5 seconds standing inside it.', ok: 'Enter Roulette', tone: 'purple' })) return;
+        const sortedModes=[...MODES.filter(v=>!isRouletteMode(v.id)),...MODES.filter(v=>isRouletteMode(v.id))];
+        const id = await choiceDialog('Choose a mode', sortedModes.map(v => ({ label: v.name, description: v.description, value: v.id, group: isRouletteMode(v.id) ? 'Roulette' : 'Finish the Word' })));
+        if (isRouletteMode(id)) {
+          if (!await confirmDialog({ title: 'The Last Sip', message: `${rouletteRules(id).name}: starts at ${(rouletteRules(id).startingRisk*100).toFixed(1)}% poison chance. Choose your own entry, from 25 game coins. Each doubling above the smallest entry removes 20% of base poison risk, capped at 40% off. Equal bets have equal odds. Every turn multiplies the prize by ${rouletteRules(id).prizeGrowth} and poison chance by ${rouletteRules(id).riskGrowth} (up to 95%). Drink or pass within 10 seconds; one pass each until a knockout. Last awake takes the prize. Asteroid fire drains 25 coins per 5 seconds standing inside it.`, ok: 'Enter Roulette', tone: 'purple' })) return;
           actions.closePanels();
         }
         if (id) actions.hostSettings({ mode: id });
       });
-      const custom = patch => actions.hostSettings({ ...(state.settings.mode === 'roulette' ? {} : { mode: 'custom' }), ...patch });
+      const custom = patch => actions.hostSettings({ ...(isRouletteMode(state.settings.mode) ? {} : { mode: 'custom' }), ...patch });
       const hearts = segmented([['1', 1], ['2', 2], ['3', 3]], (v) => custom({ hearts: v }));
       const turn = segmented([['8s', 8], ['10s', 10], ['15s', 15], ['20s', 20]], (v) => custom({ turnSeconds: v }));
       const pets = segmented([['On', true], ['Off', false]], (v) => custom({ petAbilities: v }));
@@ -115,7 +117,7 @@ export function gameSettingsPanel({ state, actions }) {
         h('h3', { class: 'section-title stroke' }, 'Players'), players, unban);
       function update() {
         const allowed = state.hostId === state.you || state.isAdmin;
-        const isRoulette = state.settings.mode === 'roulette';
+        const isRoulette = isRouletteMode(state.settings.mode);
         notice.textContent = allowed ? 'Changes apply to the next match.' : 'Only the host can change these game settings.';
         notice.classList.toggle('restricted', !allowed);
         mode.textContent = `Mode: ${MODES.find(v => v.id === state.settings.mode)?.name || 'Classic'} ▾`; mode.disabled = !allowed;

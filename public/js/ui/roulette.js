@@ -1,3 +1,4 @@
+import { rouletteRules } from '../shared/roulette.js';
 import { h, fmt } from './dom.js';
 import { sfx } from '../audio.js';
 import { profile } from '../profile.js';
@@ -9,14 +10,16 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
   const clock = h('span', { class: 'roulette-clock' });
   const drink = h('button', { class: 'btn purple', type: 'button', onClick: () => onAction('drink') }, 'Drink');
   const pass = h('button', { class: 'btn grey', type: 'button', onClick: () => onAction('pass') }, 'Pass');
-  const wager = h('input', {class:'roulette-wager',type:'number',min:25,step:1,value:25,'aria-label':'Your bet in coins'});
+  const wager = h('input', {class:'roulette-wager',type:'text',inputmode:'numeric',pattern:'[0-9]*',value:profile.coins,'aria-label':'Your bet in coins'});
   const odds = h('div',{class:'roulette-odds'});
   const enter = h('button', { class: 'btn green', type: 'button', onClick: () => onEnter(Number(wager.value)) });
   const start = h('button', { class: 'btn purple', type: 'button', onClick: onStart }, 'Begin the ritual');
-  const controls = h('div', { class: 'roulette-actions' }, clock, drink, pass, wager, enter, start);
+  const wagerField=h('label',{class:'roulette-wager-field'},h('span',null,'Your bet'),wager);
+  const controls = h('div', { class: 'roulette-actions' }, clock, drink, pass, wagerField, enter, start);
   const el = h('div', { class: 'roulette-hud', hidden: true }, h('div', { class: 'roulette-heading' }, title, pot), h('div', { class: 'roulette-bottom' }, note, odds, controls));
   const heartbeat=h('div',{class:'roulette-heartbeat','aria-hidden':'true'});el.append(heartbeat);
-  let state, nextBeat = 0;
+  let state, nextBeat = 0, betEdited=false, betRoom=null;
+  wager.addEventListener('input',()=>{betEdited=true;wager.value=wager.value.replace(/[^0-9]/g,'');});
   const timer = setInterval(() => {
     if (!el.hidden && state) {
       const left = Math.max(0,(state.deadline-performance.now())/1000);
@@ -26,6 +29,8 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
     }
   }, 100);
   function update(st, active) {
+    if(betRoom!==st.code){betRoom=st.code;betEdited=false;}
+    if(!betEdited)wager.value=String(profile.coins);
     state = st; el.hidden = !active;
     heartbeat.hidden = !active || st.match?.typerId!==st.you || st.match?.phase!=='roulette';
     if (!active) return;
@@ -40,20 +45,20 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
     pass.textContent = pass.disabled ? 'Pass used' : 'Pass · 1 per round';
     clock.hidden = !['roulette', 'countdown'].includes(m?.phase);
     enter.hidden = !lobby || mine?.seat < 0 || !st.rouletteEntry || mine?.rouletteBet != null;
-    wager.hidden=enter.hidden; wager.max=profile.coins;
+    wagerField.hidden=enter.hidden; wager.max=profile.coins;
     enter.disabled = !!st.betPending || profile.coins < 25;
     enter.textContent = st.betPending ? 'Entering…' : `Enter · your bet`;
     odds.replaceChildren();
     odds.hidden = !r || !['roulette','rouletteReveal'].includes(m.phase);
     if(!odds.hidden) {
       const base=r.baseRisk??r.risk, reduction=r.reduction||0;
-      if(reduction>0)odds.append(h('s',null,`${(base*100).toFixed(1)}%`),h('span',{class:'roulette-discount'},` −${(reduction*100).toFixed(1)}% = `));
-      odds.append(h('strong',null,`${(r.risk*100).toFixed(1)}% poison chance`));
+      odds.append(h('div',{class:'risk-readout'},h('strong',null,`${(r.risk*100).toFixed(1)}%`),h('span',null,'Poison chance')));
+      if(reduction>0)odds.append(h('div',{class:'risk-tag',title:`${(base*100).toFixed(1)}% base chance, reduced by ${(reduction*100).toFixed(1)} percentage points`},h('strong',null,`−${(reduction*100).toFixed(1)}%`),h('small',null,'CHANCE OFF')));
     }
     const ready = [...st.players.values()].filter(p => p.seat >= 0 && (p.isBot || !st.rouletteEntry || p.rouletteBet != null)).length;
     start.hidden = !lobby || !(st.you === st.hostId || st.isAdmin);
     start.disabled = ready < 2;
-    title.textContent = m?.phase === 'ended' ? (m.winnerId ? 'THE LAST ONE AWAKE' : 'THE RITUAL ENDS') : 'THE LAST SIP';
+    title.textContent = m?.phase === 'ended' ? (m.winnerId ? 'THE LAST ONE AWAKE' : 'THE RITUAL ENDS') : rouletteRules(['roulette','rouletteReveal'].includes(m?.phase) ? m.mode : st.settings.mode).name.toUpperCase();
     const name = id => st.players.get(id)?.name || 'Someone';
     note.textContent = lobby ? (mine?.seat < 0 ? 'Take a seat in the light. Choose your own bet, from 25 coins.' : `Waiting at the table · ${ready} ready${st.rouletteEntry ? ' · confirm your entry below' : ''}`)
       : m?.phase === 'roulette' ? (turn ? 'Your cup. Drink or pass.' : `${name(m.typerId)} holds the cup…`)

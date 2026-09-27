@@ -154,6 +154,22 @@ test('individual entries reject fractional, negative, below minimum, unsafe or u
  const {r,a}=setup();bet(r,a,'valid',777);assert.equal(a.last('betResult').amount,777);
 });
 
+test('Death Wish starts at 50 percent risk and grows its prize faster than The Last Sip',()=>{
+ const {r,a,b}=setup();
+ r.send(a,{t:'host',action:'settings',settings:{mode:'roulette_deadly'}});
+ bet(r,a,'a',25);bet(r,b,'b',100);r.send(a,{t:'host',action:'start'});
+ const m=r.engine.match;
+ assert.equal(m.mode,'roulette_deadly');assert.equal(m.roulette.risk,.5);
+ assert.equal(m.roulette.pot,125);assert.equal(r.engine.roomTable(),'poker');
+ r.engine.rouletteTurn('bob');
+ assert.ok(Math.abs(r.engine.matchView().roulette.risk-.3)<1e-10);
+ r.engine.random=()=>.99;r.engine.rouletteAction('bob','drink');r.clock.advance(4800);
+ assert.equal(m.roulette.multiplier,1.25);assert.equal(m.roulette.pot,156);
+ assert.equal(m.roulette.risk,.6);
+ r.engine.endMatch(null);assert.equal(a.last('rouletteReward').coins,25);assert.equal(b.last('rouletteReward').coins,100);
+ assert.deepEqual(r.errors,[]);
+});
+
 test('night meteor arrives every three minutes, requires landing and proximity and rewards only one collector',()=>{
  const r=createRoom(),a=r.join('alice'),b=r.join('bob');r.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});
  r.clock.advance(179999);assert.equal(r.engine.meteor,null);r.clock.advance(1);const meteor=r.engine.meteor;assert.ok(meteor);assert.equal(a.last('meteor').meteor.landsIn,2400);
@@ -161,6 +177,7 @@ test('night meteor arrives every three minutes, requires landing and proximity a
  r.send(a,{t:'move',x:meteor.x,y:0,z:meteor.z,ry:0,anim:'idle'});r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.all('meteorReward').length,0);
  r.clock.advance(2400);r.send(b,{t:'collectMeteor',id:meteor.id});assert.equal(b.all('meteorReward').length,0);
  r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.last('meteorReward').coins,150);assert.equal(r.engine.meteor,null);
+ assert.deepEqual(b.last('meteor').collected,{id:meteor.id,x:meteor.x,z:meteor.z,by:'alice'});
  r.send(b,{t:'move',x:meteor.x,y:0,z:meteor.z,ry:0,anim:'idle'});r.send(b,{t:'collectMeteor',id:meteor.id});assert.equal(b.all('meteorReward').length,0);
  r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.all('meteorReward').length,1);
  const again=r.join('alice');assert.equal(again.last('meteorReward').receipt,meteor.id);

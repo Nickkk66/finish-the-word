@@ -73,7 +73,8 @@ export async function createWorld({ container, labelLayer }) {
   const preview = new BlockPreview(labels, thumbnails);
   const obby = createObby(scene, labels);
   const ambient = createAmbient(scene);
-  const roulette = createRouletteScene(scene, labels, props.trees);
+  const rouletteShockListeners=[];
+  const roulette = createRouletteScene(scene, labels, props.trees, id=>rouletteShockListeners.forEach(fn=>fn(id)));
 
   // ---- Lobby signs + interactables ----
   const shopSigns = CHAIRS.map((chair) => {
@@ -490,6 +491,7 @@ export async function createWorld({ container, labelLayer }) {
     onInteract(cb) {
       interactListeners.push(cb);
     },
+    onRouletteShock(cb) { rouletteShockListeners.push(cb); },
 
     setPromptResolver(fn) {
       promptResolver = typeof fn === 'function' ? fn : null;
@@ -543,8 +545,8 @@ export async function createWorld({ container, labelLayer }) {
 
     setLeaderboardTitle(title) { lobby.setLeaderboardTitle(title); },
     setTable(id) { table.setTable(id); },
-    setRoulette(on, match, entry) { terrain.setNight(on); lobby.setRoulette(on); roulette.set(on, match, players, entry); },
-    setMeteor(drop) { roulette.setMeteor(drop); },
+    setRoulette(on, match, entry, mode) { terrain.setNight(on); lobby.setRoulette(on,mode); roulette.set(on, match, players, entry); },
+    setMeteor(drop,collected) { roulette.setMeteor(drop,collected); },
     knockOutRoulette(id) { roulette.knockout(id); },
     renderThumbnail: thumbnails.render,
     setPetCollection(ids) { preview.setCollection(ids); },

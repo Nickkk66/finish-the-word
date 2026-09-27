@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { canvasTexture, grassTexture, makeCanvas, sandTexture } from './textures.js';
-import { GRASS_R, PATHS, PLAZAS, SHORE_R, WATER_Y, terrainHeight } from './layout.js';
+import { GRASS_R, PATHS, PLAZAS, SHORE_R, WATER_Y, LIGHTHOUSE, lighthouseSweepAngle, terrainHeight } from './layout.js';
 import { TAU, clamp, mulberry32 } from './math.js';
 
 const SKY_TOP = '#6ec3f4';
@@ -84,6 +84,7 @@ export function createTerrain(scene) {
       sun.intensity = 2.3 - night * 2.28;
       hemi.intensity = 1.6 - night * 1.575;
       water.material.uniforms.uNight.value = night;
+      water.material.uniforms.uLighthouseDir.value.set(Math.sin(lighthouseSweepAngle(t)),Math.cos(lighthouseSweepAngle(t)));
       seabed.material.color.set('#1d6fae').multiplyScalar(1 - night * .94);
       scene.fog.color.copy(dayHorizon).lerp(darkHorizon, night);
       clouds.visible = night < .8;
@@ -279,6 +280,8 @@ function buildWater() {
         uDeep: { value: new THREE.Color('#2f9be0') },
         uShallow: { value: new THREE.Color('#6fdcf0') },
         uShoreR: { value: SHORE_R },
+        uLighthouse: { value: new THREE.Vector2(LIGHTHOUSE.x,LIGHTHOUSE.z) },
+        uLighthouseDir: { value: new THREE.Vector2(-.72,-.69) },
       },
     ]),
     vertexShader: /* glsl */ `
@@ -298,6 +301,8 @@ function buildWater() {
       uniform vec3 uDeep;
       uniform vec3 uShallow;
       uniform float uShoreR;
+      uniform vec2 uLighthouse;
+      uniform vec2 uLighthouseDir;
       varying vec3 vWorld;
       #include <common>
       #include <fog_pars_fragment>
@@ -329,6 +334,14 @@ function buildWater() {
         float f = clamp(foam + foam2 * 0.55, 0.0, 1.0);
         col = mix(col, vec3(1.0), f * 0.85);
         col *= mix(vec3(1.), vec3(.008,.012,.03), uNight);
+        // The beacon sweeps an offshore patch on the water. Soft edges keep the
+        // visible shaft from appearing to stop against the island boundary.
+        vec2 fromBeacon = vWorld.xz - uLighthouse;
+        float reach = dot(fromBeacon,uLighthouseDir);
+        float across = abs(dot(fromBeacon,vec2(-uLighthouseDir.y,uLighthouseDir.x)));
+        float footprint = smoothstep(45.,85.,reach) * (1.-smoothstep(135.,175.,reach))
+                        * exp(-pow(across/(3.+reach*.055),2.));
+        col += vec3(.88,.75,.38) * footprint * uNight;
         gl_FragColor = vec4(col, max(mix(0.94, 0.66, shallow), f * 0.9));
         #include <colorspace_fragment>
         #include <fog_fragment>

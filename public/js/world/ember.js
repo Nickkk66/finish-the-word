@@ -21,9 +21,14 @@ function flameMap(){
 }
 export function createFire(radius=1,height=3,count=10){
   const group=new THREE.Group(),sprites=[];
-  for(let i=0;i<count;i++){const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:flameMap(),color:i%3===0?'#ffe6a6':'#ffffff',transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));const a=i*2.4,r=radius*Math.sqrt((i+.5)/count);sprite.position.set(Math.cos(a)*r,height*.35,Math.sin(a)*r);group.add(sprite);sprites.push(sprite);}
+  // Billboard flames in one instanced draw instead of a draw for every sprite.
+  const material=new THREE.ShaderMaterial({uniforms:{map:{value:flameMap()},time:{value:0},height:{value:height}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:`uniform float time;uniform float height;varying vec2 vUv;varying float fade;void main(){vUv=uv;float phase=instanceMatrix[3].x*3.+instanceMatrix[3].z*7.;float wave=.85+.15*sin(time*6.+phase);vec4 center=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);vec2 scale=vec2(length(modelViewMatrix[0].xyz),length(modelViewMatrix[1].xyz));center.xy+=position.xy*vec2(height*.65*wave,height*(.85+.15*sin(time*5.+phase)))*scale;fade=.7+.15*sin(time*8.+phase);gl_Position=projectionMatrix*center;}`,
+    fragmentShader:`uniform sampler2D map;varying vec2 vUv;varying float fade;void main(){vec4 c=texture2D(map,vUv);gl_FragColor=vec4(c.rgb,c.a*fade);}`});
+  const flames=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),material,count),matrix=new THREE.Matrix4();
+  for(let i=0;i<count;i++){const a=i*2.4,r=radius*Math.sqrt((i+.5)/count);matrix.makeTranslation(Math.cos(a)*r,height*.35,Math.sin(a)*r);flames.setMatrixAt(i,matrix);}flames.frustumCulled=false;group.add(flames);
   const sparks=new THREE.Points(new THREE.BufferGeometry(),new THREE.PointsMaterial({color:'#ffc978',size:.09,transparent:true,depthWrite:false}));
   const positions=new Float32Array(24*3);sparks.geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));group.add(sparks);
-  group.userData.update=(t)=>{sprites.forEach((s,i)=>{const wave=.8+.2*Math.sin(t*7+i*2);s.scale.set(height*.65*wave,height*(.8+.2*Math.sin(t*5+i)),1);s.material.opacity=.68+.18*Math.sin(t*9+i);});for(let i=0;i<24;i++){const age=(t*.45+i/24)%1,a=i*2.4;positions[i*3]=Math.cos(a+age)*radius*(1-age*.4);positions[i*3+1]=age*height*1.7;positions[i*3+2]=Math.sin(a+age)*radius;}sparks.geometry.attributes.position.needsUpdate=true;};
+  group.userData.update=(t)=>{material.uniforms.time.value=t;for(let i=0;i<24;i++){const age=(t*.45+i/24)%1,a=i*2.4;positions[i*3]=Math.cos(a+age)*radius*(1-age*.4);positions[i*3+1]=age*height*1.7;positions[i*3+2]=Math.sin(a+age)*radius;}sparks.geometry.attributes.position.needsUpdate=true;};
   return group;
 }

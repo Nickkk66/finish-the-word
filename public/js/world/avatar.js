@@ -395,9 +395,9 @@ export class Avatar {
     this.applyModifiers(dt, t, o);
     const lift = this.sipStarted == null ? 0 : sipLift((performance.now()-this.sipStarted)/1000);
     if (lift > 0) { o[RAX]=lerp(o[RAX],-1.9,lift); o[RAZ]=lerp(o[RAZ],-.5,lift); o[HX]-=lift*.12; }
-    this.sleepWeight = damp(this.sleepWeight || 0, this.rouletteSleeping && this.seated ? 1 : 0, 7, dt);
+    this.sleepWeight = damp(this.sleepWeight || 0, this.rouletteSleeping && this.seated ? 1 : 0, 24, dt);
     if (this.sleepWeight > .001) {
-      const k=this.sleepWeight; o[BX]+=k*1.05; o[HX]+=k*.35; o[BY]-=k*.25;
+      const k=this.sleepWeight; o[BX]+=k*1.48; o[HX]+=k*.53; o[BY]-=k*.45;
       o[LAX]=lerp(o[LAX],-1.2,k); o[RAX]=lerp(o[RAX],-1.2,k);
       this.wDizzy = Math.max(this.wDizzy,k);
     }

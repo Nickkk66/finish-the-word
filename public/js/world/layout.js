@@ -60,6 +60,7 @@ export const BOARDS = [
 ];
 
 export const LIGHTHOUSE = { x: -37, z: -35 };
+export const lighthouseSweepAngle = t => Math.atan2(LIGHTHOUSE.x, LIGHTHOUSE.z) + Math.sin(t * .19) * 1.1;
 
 /** Walkable wooden pier sticking out of the south beach into the water. */
 export const PIER = { x: 0, z0: 58, z1: 80, half: 2.4, top: 0.25 };

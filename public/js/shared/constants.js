@@ -51,7 +51,8 @@ export const MODES = [
   { id: 'sudden', name: 'Sudden Death', description: 'One heart. One mistake.', hearts: 1, turnSeconds: 15 },
   { id: 'random', name: 'Random Letter', description: 'Any letter in the last word can be next.', hearts: 2, turnSeconds: 15 },
   { id: 'chaos', name: 'Chaos', description: 'A new twist every round.', hearts: 2, turnSeconds: 15 },
-  { id: 'roulette', name: 'Roulette', description: 'The cursed cup. Drink or pass. Last awake wins.', hearts: 1, turnSeconds: 10 },
+  { id: 'roulette', name: 'The Last Sip', description: 'The cursed cup. Drink or pass. Last awake wins.', hearts: 1, turnSeconds: 10 },
+  { id: 'roulette_deadly', name: 'Death Wish', description: '50% starting poison risk. Prize grows ×1.25 each turn.', hearts: 1, turnSeconds: 10 },
   { id: 'custom', name: 'Custom', description: 'Your own room rules.', hearts: 2, turnSeconds: 15 },
 ];
 export const MODE_IDS = new Set(MODES.map((m) => m.id));

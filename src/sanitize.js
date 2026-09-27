@@ -1,3 +1,4 @@
+import { isRouletteMode, rouletteRules } from '../public/js/shared/roulette.js';
 // Validation / normalisation of untrusted client input. Every function accepts any
 // value (wrong types included) and returns a safe value or a "nothing" marker.
 import { NAME_MAX, CHAT_MAX, MAX_WORD_LENGTH, MODES, BOT_LEVELS } from '../public/js/shared/constants.js';
@@ -69,9 +70,9 @@ export function sanitizeSettings(input, current) {
   if (!input || typeof input !== 'object') return next;
   const mode = MODES.find(m => m.id === input.mode);
   if (mode) Object.assign(next, { mode: mode.id, ...(mode.id !== 'custom' ? {
-    hearts: mode.hearts, turnSeconds: mode.turnSeconds, petAbilities: mode.id !== 'roulette', botLevel: 'normal', public: false,
+    hearts: mode.hearts, turnSeconds: mode.turnSeconds, petAbilities: !isRouletteMode(mode.id), botLevel: 'normal', public: false,
   } : {}) });
-  if (mode?.id === 'custom') next.baseMode = current.mode === 'custom' ? current.baseMode || 'classic' : current.mode === 'roulette' ? 'classic' : current.mode;
+  if (mode?.id === 'custom') next.baseMode = current.mode === 'custom' ? current.baseMode || 'classic' : isRouletteMode(current.mode) ? 'classic' : current.mode;
   else if (mode) delete next.baseMode;
   if (Number.isInteger(input.hearts) && input.hearts >= 1 && input.hearts <= 3) next.hearts = input.hearts;
   if (TURN_SECONDS.includes(input.turnSeconds)) next.turnSeconds = input.turnSeconds;

@@ -126,9 +126,9 @@ export function choiceDialog(title, choices) {
     const done = value => { document.removeEventListener('keydown', onKey, true); closeOverlay(el); previousFocus?.isConnected && previousFocus.focus({ preventScroll: true }); resolve(value); };
     const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
     const el = overlay('choice', h('div', { class: 'overlay-title stroke' }, title),
-      h('div', { class: 'choice-list' }, choices.map(({ label, description, value }) => h('button', {
+      h('div', { class: 'choice-list' }, choices.map(({ label, description, value, group }, index) => [group && group !== choices[index-1]?.group ? h('h3',{class:'mode-group-title'},group) : null, h('button', {
         type: 'button', class: 'btn blue', onClick: () => done(value),
-      }, h('span', {}, label), description ? h('small', {}, description) : null))),
+      }, h('span', {}, label), description ? h('small', {}, description) : null)])),
       h('button', { type: 'button', class: 'btn grey small', onClick: () => done(null) }, 'Cancel'));
     document.addEventListener('keydown', onKey, true);
     el.querySelector('button').focus();

@@ -16,9 +16,12 @@ try{
  await p.eval(`window.__ftw.world.teleportLocal({x:${meteor.x},y:0,z:${meteor.z}})`);
  await delay(700);await p.shot('collect');
  await p.key('e','KeyE',69);
+ await p.wait('window.__ftw.world.debugSnapshot().roulette.pickup');
+ await p.shot('pickup-burst');
  await p.wait('!window.__ftw.world.debugSnapshot().roulette.meteor');
+ await delay(700);assert.equal(await p.eval('window.__ftw.world.debugSnapshot().roulette.pickup'),false);
  assert.equal(await p.eval('window.__ftw.profile.coins'),before+150);
  await p.send({t:'collectMeteor',id:meteor.id});await delay(400);
  assert.equal(await p.eval('window.__ftw.profile.coins'),before+150);
- assert.deepEqual(p.errors,[]);console.log('PASS: three-minute meteor, no cutscene, collect prompt, +150 coins exactly once.');
+ assert.deepEqual(p.errors,[]);console.log('PASS: three-minute meteor, no cutscene, collect prompt, pickup burst, +150 coins exactly once.');
 }finally{await b.close();}

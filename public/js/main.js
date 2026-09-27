@@ -1,3 +1,4 @@
+import { isRouletteMode, rouletteRules } from './shared/roulette.js';
 // Boot + glue: profile → world (menu mode) → menu → connect → wire net <-> world <-> UI.
 
 import { DEFAULT_SETTINGS, MAX_PLAYERS, PROTOCOL_VERSION, ROOM_CODE_REGEX, makeRoomCode, EMOTES, HINT_PRICE, OBBY } from './shared/constants.js';
@@ -116,7 +117,7 @@ const actions = {
   async enterRoulette(amount = 25) {
     if (state.betPending) return;
     if (!Number.isSafeInteger(amount) || amount < 25 || amount > profile.coins) return toast('Enter a whole number from 25 up to your coin balance.', 'bad');
-    if (!await confirmDialog({ title: 'Join the cursed table?', message: `${fmt(amount)} game coins go into the pool. Each doubling above the smallest entry removes 20% of base poison risk, capped at 40% off. Equal entries have equal odds. Every turn raises the prize ×1.05 and poison chance ×1.25. Last awake wins. Standing up before the match returns your entry; leaving during the match forfeits it.`, ok: 'Place entry', tone: 'purple' })) return;
+    if (!await confirmDialog({ title: 'Join the cursed table?', message: `${fmt(amount)} game coins go into the pool. Each doubling above the smallest entry removes 20% of base poison risk, capped at 40% off. Equal entries have equal odds. Every turn raises the prize ×${rouletteRules(state.settings.mode).prizeGrowth} and poison chance ×${rouletteRules(state.settings.mode).riskGrowth}. Last awake wins. Standing up before the match returns your entry; leaving during the match forfeits it.`, ok: 'Place entry', tone: 'purple' })) return;
     state.betPending = { requestId: crypto.randomUUID(), amount, balance: profile.coins };
     net.send({ t: 'bet', ...state.betPending }); refreshRoom();
   },
@@ -392,6 +393,7 @@ async function loadWorld() {
     w.setLeaderboardTitle('MOST WINS · ALL TIME');
     w.onLocalMove((move) => net.send({ t: 'move', ...move }));
     w.onInteract(onInteract);
+    w.onRouletteShock?.(id => { replay(gameUi,'roulette-shock'); if(id===state.you)replay(gameUi,'damage-hit'); });
     w.setPromptResolver(resolvePrompt);
     syncShop();
     w.start();
@@ -488,7 +490,7 @@ function syncStatuses(m) {
   if (MATCH_PHASES.has(m.phase) || m.phase === 'ended') {
     for (const p of m.participants) {
       const turn = (['typing', 'roulette'].includes(m.phase) && p.id === m.typerId) || (m.phase === 'choosing' && p.id === m.chooserId);
-      next.set(p.id, { turn, out: !p.alive, hearts: p.hearts, combo: p.combo || 0, roulette: m.mode === 'roulette' });
+      next.set(p.id, { turn, out: !p.alive, hearts: p.hearts, combo: p.combo || 0, roulette: isRouletteMode(m.mode) });
     }
   }
   for (const id of statusKeys.keys()) {
@@ -790,10 +792,10 @@ function refreshRoom() {
 }
 function refreshMode() {
   const m = state.match;
-  const active = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode === 'roulette' : state.settings.mode === 'roulette');
+  const active = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? isRouletteMode(m.mode) : isRouletteMode(state.settings.mode));
   rouletteHud.update(state, active);
   if (active) hud.hide(); else if (state.inRoom) hud.show();
-  world?.setRoulette?.(active, m, state.rouletteEntry);
+  world?.setRoulette?.(active, m, state.rouletteEntry, MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode);
   if (active && !state.rouletteShown) {
     panels.close(); cancelConfirmation();
     uiRoot.classList.add('roulette-cinematic');setTimeout(()=>uiRoot.classList.remove('roulette-cinematic'),7000);
@@ -1059,7 +1061,7 @@ net.on('betResult', result => {
   else if (result.error) toast(result.error, 'bad');
   refreshRoom();
 });
-net.on('meteor', ({meteor}) => world?.setMeteor(meteor));
+net.on('meteor', ({meteor,collected}) => world?.setMeteor(meteor,collected));
 net.on('meteorReward', ({coins,receipt}) => { if (grantCoins(coins,receipt)) { sfx.coin(); rewardPop(`+${fmt(coins)} 💵`,sidebar.coinsEl); toast('Meteor collected: +150 coins','good'); } });
 net.on('hazardDebit', ({ amount, receipt }) => { if (adjustCoins('add', -amount, receipt)) { world?.playEffect(state.you, 'flair', {text:'−25 COINS · FIRE',color:'#ff8a4b'}); replay(gameUi,'damage-hit'); sfx.thud(); } });
 net.on('stakeRefund', ({ coins, receipt }) => { if (grantCoins(coins, receipt) && coins) toast(`${fmt(coins)} entry coins returned.`, 'good'); });

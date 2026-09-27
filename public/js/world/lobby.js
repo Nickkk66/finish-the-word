@@ -2,6 +2,7 @@
 // two boards behind the table ("Most Wins" leaderboard + "How to Play").
 
 import * as THREE from 'three';
+import { rouletteRules } from '../shared/roulette.js';
 import { BLOCKS, CHAIRS, CARD_BOXES, RARITIES } from '../shared/catalog.js';
 import { buildChair, buildLuckyBlock, buildCardBox } from './cosmetics.js';
 import { BLOCK_BASE, BLOCK_SPOTS, BOARDS, PEDESTAL, SHOP_ROW } from './layout.js';
@@ -100,7 +101,7 @@ export function createLobby(scene) {
   let boardRows = [];
   // ---- Boards ----
   let winsCanvas = null;
-  let winsTexture = null, howCanvas, howTexture, roulette = false;
+  let winsTexture = null, howCanvas, howTexture, rouletteMode = null;
   for (const b of BOARDS) {
     const canvas = makeCanvas(1024, 720);
     if (b.kind === 'wins') drawLeaderboard(canvas, []);
@@ -119,7 +120,7 @@ export function createLobby(scene) {
     shopItems,
     blocks,
     cardBoxes,
-    setRoulette(on) { if (roulette === on) return; roulette=on; drawHowTo(howCanvas,on); howTexture.needsUpdate=true; },
+    setRoulette(on,mode) { const next=on?mode:null;if(rouletteMode===next)return;rouletteMode=next;drawHowTo(howCanvas,next);howTexture.needsUpdate=true; },
     setLeaderboardTitle(title) {
       boardTitle = String(title).slice(0, 40);
       drawLeaderboard(winsCanvas, boardRows, boardTitle); winsTexture.needsUpdate = true;
@@ -263,15 +264,16 @@ function drawLeaderboard(canvas, rows, title = 'MOST WINS · ALL TIME') {
   });
 }
 
-function drawHowTo(canvas, roulette = false) {
+function drawHowTo(canvas, rouletteMode = null) {
   const g = canvas.getContext('2d');
   const { width: w, height: h } = canvas;
+  const roulette=!!rouletteMode,rules=rouletteRules(rouletteMode);
   boardBackground(g,w,h,roulette?'#39264f':'#2a9a4a',roulette?'#140c20':'#18692f');
-  outlinedText(g, roulette ? 'THE LAST SIP' : 'HOW TO PLAY', w / 2, 82, 84, '#ffffff', 'center', 14);
+  outlinedText(g, roulette ? rules.name.toUpperCase() : 'HOW TO PLAY', w / 2, 82, 84, '#ffffff', 'center', 14);
   const lines = roulette ? [
     'Sit down. Place at least 25 coins.',
     'Drink or pass. You have 10 seconds.',
-    'Each turn: prize x1.05, risk x1.25',
+    `Each turn: prize x${rules.prizeGrowth}, risk x${rules.riskGrowth}`,
     'One pass each until a knockout.',
     'Last awake takes the whole prize.',
     'Fire takes 25 coins every 5 seconds!',

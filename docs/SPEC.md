@@ -417,3 +417,32 @@ An unseated nearby player presses E (or taps the prompt) to send `{t:'collectMet
 checks landing time and distance (3.5 units horizontally, 3 vertically), consumes the meteor once,
 and issues `meteorReward {coins:150,receipt}`. Receipts replay on reconnect and deduplicate client-side.
 Leaving Roulette or resetting an empty room cancels the timer and removes the collectible.
+
+## September 26 follow-up: Roulette presentation and variant
+
+The in-game mode picker groups Classic, Blitz, Long Words, Double Trouble, Sudden Death,
+Random Letter, Chaos and Custom under Finish the Word. The Last Sip and Death Wish are under
+Roulette. Both Roulette variants share the cursed table, paid individual entry, server-checked
+meteor reward and fire hazard. The Last Sip begins at 1/6 poison chance, grows base risk x1.25
+and prize x1.05 per completed turn. Death Wish begins at 50% poison chance, grows base risk
+x1.20 and prize x1.25. The existing 95% base-risk cap and 40% relative bet-protection cap
+apply to both. The server computes the effective risk for each drink, and clients show it as
+the main readout with a hanging badge for the percentage-point reduction.
+
+The entry field uses numeric text input, avoiding browser number spinners, and fills with the
+player's current balance until they edit it. Server-side validation still requires a whole
+number of at least 25 and no more than the declared balance. Mode selection and changing
+between Roulette variants do not alter any player's chosen stake.
+
+The night scene renders canopy-level fire, an angled, feathered lighthouse shaft, and a
+matching soft patch on the ocean surface. The water shader computes this patch from the same
+sweep angle as the lighthouse; it does not depend on a spotlight that the water shader cannot
+receive. Meteor flames use instanced billboards, and the cash pile uses three instanced draws
+instead of hundreds of meshes. The four crater point lights and pickup point light are removed
+to avoid changing the scene light count during impact. Intro meteors use a capped visual progress
+step to avoid large jumps after a slow frame. Pickup broadcasts include the collector and site;
+clients play a brief shrinking rock and spark burst before removing the collectible.
+
+A poisoned sip holds the close-up through the reveal, then triggers one brief camera jolt,
+sudden slump, muted-aware sound stinger and red vignette. The normal damage and heartbeat
+borders remain separate effects.

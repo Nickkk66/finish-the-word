@@ -104,6 +104,7 @@ const sounds = {
   omen() { tone(75,{dur:5,vol:.14,slide:30}); noise({type:'lowpass',freq:220,dur:5,vol:.22,attack:.5}); },
   impact() { noise({type:'lowpass',freq:450,slide:60,dur:1.8,vol:.5});tone(70,{dur:1.5,vol:.35,slide:22}); },
   soul() { tone(500,{type:'sine',dur:1.6,vol:.09,slide:1400}); },
+  sting() { noise({type:'highpass',freq:2800,dur:.24,vol:.17,attack:.005});tone(920,{type:'sawtooth',dur:.22,vol:.13,slide:110});tone(90,{at:.1,dur:.48,vol:.33,slide:35}); },
   click() {
     tone(760, { type: 'triangle', dur: 0.05, vol: 0.16 });
     tone(1520, { dur: 0.03, vol: 0.05 });

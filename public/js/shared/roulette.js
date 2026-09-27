@@ -20,3 +20,8 @@ export function rouletteOdds(baseRisk, stake, minimumStake = 25) {
 export const METEOR_INTERVAL_MS = 180000;
 export const METEOR_FLIGHT_MS = 2400;
 export const METEOR_SITES = [{x:0,z:22},{x:0,z:-18},{x:15,z:-10}];
+
+export const isRouletteMode = mode => mode === 'roulette' || mode === 'roulette_deadly';
+export const rouletteRules = mode => mode === 'roulette_deadly'
+  ? { startingRisk:.5, riskGrowth:1.2, prizeGrowth:1.25, name:'Death Wish' }
+  : { startingRisk:1/6, riskGrowth:1.25, prizeGrowth:1.05, name:'The Last Sip' };
