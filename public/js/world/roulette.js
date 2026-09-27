@@ -4,7 +4,7 @@ import { buildPet } from './cosmetics.js';
 import { DECK, BOARDS, seatX, seatZ } from './layout.js';
 import { LAYOUT } from '../shared/constants.js';
 import { ROULETTE_HAZARDS, ROULETTE_INTRO_MS, sipLift } from '../shared/roulette.js';
-import { createFire, surfaceTexture } from './ember.js';
+import { createFire, createMeteorTrail, surfaceTexture } from './ember.js';
 import { sfx } from '../audio.js';
 
 export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
@@ -53,7 +53,7 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
     branch.position.set(tree.x+Math.sin(a)*r/2,tree.y-.42,tree.z+Math.cos(a)*r/2);
     branch.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(Math.sin(a),0,Math.cos(a)));root.add(branch);
   }
-  const board=BOARDS.find(b=>b.kind==='wins');owlAt(board.x,14.15,board.z,board.ry,1.3);
+  const board=BOARDS.find(b=>b.kind==='wins');owlAt(board.x+6,7.4,board.z,board.ry,1.3);
   const owlLight=new THREE.PointLight('#c5c5ff',7,6,1.5);owlLight.position.set(board.x,16,board.z+2);root.add(owlLight);
   const rockMat=new THREE.MeshStandardMaterial({map:surfaceTexture('rock'),roughness:.95,bumpMap:surfaceTexture('rock'),bumpScale:.18});
 
@@ -65,7 +65,8 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
     const trail=createFire(1.05,5,8);trail.position.y=-.2;meteor.add(trail);
     const core=new THREE.Mesh(new THREE.IcosahedronGeometry(1.57,1),new THREE.MeshBasicMaterial({color:'#d03d1b',wireframe:true,transparent:true,opacity:.45}));meteor.add(core);
     const flames=createFire(2.2,3.2,12);crater.add(flames);
-    return{h,i,crater,meteor,trail,flames,impacted:false,visualFall:0};
+    const wake=createMeteorTrail(root);
+    return{h,i,crater,meteor,trail,wake,flames,impacted:false,visualFall:0};
   });
   const burningTrees=trees.filter((_,i)=>i%7===3).slice(0,5).flatMap(tree=>{
     const lower=createFire(tree.perchRadius*.7,4,7),upper=createFire(tree.perchRadius*.45,5,6);
@@ -75,6 +76,8 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
   });
   const treasure=new THREE.Group();root.add(treasure);treasure.visible=false;
   const treasureRock=new THREE.Mesh(new THREE.IcosahedronGeometry(.9,1),new THREE.MeshStandardMaterial({map:surfaceTexture('rock'),emissive:'#e79725',emissiveIntensity:.45,roughness:.8}));treasure.add(treasureRock);
+  const treasureWake=createMeteorTrail(root,16);
+  const descent=new THREE.Vector3(25,70,-32).normalize(),treasureDescent=new THREE.Vector3(28,65,-25).normalize();
   const treasureFire=createFire(.7,3,7);treasure.add(treasureFire);
   const treasureLabel=new Label(labels,'w-meteor-reward',{maxDist:100,scaleRef:26});treasureLabel.el.textContent='+150 COINS';treasureLabel.visible=false;
   const pickup=new THREE.Group();pickup.visible=false;root.add(pickup);
@@ -100,7 +103,7 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
     set(on,m,entities,entry=25){
       if(on&&!active){introStart=performance.now();sfx.omen();hazards.forEach(h=>{h.impacted=false;h.visualFall=0;});}
       active=on;root.visible=on;pot.visible=on;players=entities;match=m;
-      if(!on){previousEvent='';event=null;meteorDrop=null;meteorPrompt=null;treasure.visible=false;treasureLabel.visible=false;pickup.visible=false;pickupLabel.visible=false;for(const g of ghosts)g.label.destroy();ghosts.length=0;return;}
+      if(!on){previousEvent='';event=null;meteorDrop=null;meteorPrompt=null;treasure.visible=false;treasureWake.mesh.visible=false;treasureLabel.visible=false;pickup.visible=false;pickupLabel.visible=false;for(const g of ghosts)g.label.destroy();ghosts.length=0;return;}
       const total=m?.roulette?.pot || [...entities.values()].reduce((sum,e)=>sum+(e.data.rouletteBet || (e.data.isBot?entry:0)),0);
       pot.el.textContent=`${total.toLocaleString()} COINS${m?.roulette?' · ×'+m.roulette.multiplier.toFixed(2):''}`;
       cashCount=total?Math.min(144,18+Math.ceil(Math.log2(Math.max(1,total/25))*18)):0;
@@ -167,6 +170,7 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
         const fall=h.visualFall;
         h.meteor.visible=fall>0;h.crater.scale.setScalar(Math.max(.001,Math.min(1,(fall-.92)/.08)));
         h.meteor.position.set(h.h.x+(1-fall)*25,1.0+(1-fall)*70,h.h.z-(1-fall)*32);h.meteor.rotation.y=fall*2;h.trail.userData.update(t);h.trail.scale.y=1+(1-fall)*.7;
+        h.wake.update(h.meteor.position,descent,fall,t);
         if(fall>=1&&!h.impacted){h.impacted=true;sfx.impact();}
         h.flames.userData.update(t);
       }
@@ -174,9 +178,11 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
       if(meteorDrop){
         const remaining=Math.max(0,Math.min(1,(meteorLands-now)/2400));
         treasure.visible=true;treasure.position.set(meteorDrop.x+remaining*28,.8+remaining*65,meteorDrop.z-remaining*25);
+        treasureWake.update(treasure.position,treasureDescent,1-remaining,t);
         treasureRock.rotation.set(t*.4,t*.7,0);treasureFire.userData.update(t);treasureFire.scale.y=remaining>0?1.7:.6;
         treasureLabel.visible=remaining===0;treasureLabel.anchor.set(meteorDrop.x,4,meteorDrop.z);
       }
+      if(!meteorDrop)treasureWake.mesh.visible=false;
       if(pickup.visible){
         const age=(now-pickupStarted)/1000,k=Math.min(1,age/.8);
         pickup.position.y=1+k*3;pickupCore.scale.setScalar(1.15*(1-k)**2);pickupCore.rotation.y=t*8;
@@ -187,6 +193,6 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
       }
       for(let i=ghosts.length-1;i>=0;i--){const g=ghosts[i],age=(now-g.start)/1000;g.label.anchor.copy(g.base).add(new THREE.Vector3(Math.sin(age*3)*.7,age*3.5,0));g.label.el.style.opacity=String(Math.max(0,1-age/4));if(age>4){g.label.destroy();ghosts.splice(i,1);}}
     },
-    debug:()=>({active,meteor:meteorDrop,pickup:pickup.visible,burningTrees:burningTrees.length,cup:cup.position.toArray(),pot:pot.el.textContent,owls:owls.length,cashCount,rimError,ghosts:ghosts.length,craters:hazards.filter(h=>h.impacted).length,cinematic:active&&introAge()<ROULETTE_INTRO_MS}),
+    debug:()=>({active,trails:hazards.filter(h=>h.wake.mesh.visible).length+(treasureWake.mesh.visible?1:0),meteor:meteorDrop,pickup:pickup.visible,burningTrees:burningTrees.length,cup:cup.position.toArray(),pot:pot.el.textContent,owls:owls.length,cashCount,rimError,ghosts:ghosts.length,craters:hazards.filter(h=>h.impacted).length,cinematic:active&&introAge()<ROULETTE_INTRO_MS}),
   };
 }

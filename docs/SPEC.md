@@ -1,5 +1,31 @@
 # Finish The Word! (web) — v2 Build Spec & Contracts
 
+## September 27 world and travel update
+
+Portal travel is now authoritative. `celebrate {kind:'portal',to}` is a request; the server
+checks active participation, seating, source zone and entrance proximity. Acceptance broadcasts
+`celebrate {id,kind:'portal',to,door}` with a server-selected doorway (null for a distant return).
+After 900ms, the server commits position/zone and broadcasts `travel {id,to,pos}`. Rejection sends
+`travelRejected`. Movement and seating are locked during transit; cross-zone movement packets
+are rejected, except existing admin teleport authority outside active play. `welcome.zone` restores
+reconnecting visitors. Active participants cannot use travel or movement even with an unset seat.
+Existing disconnect/forfeit rules remain in force. No lighthouse game has been selected: its own
+match/participation lifecycle is still pending that choice and must use the same authoritative lock.
+
+The lighthouse room has supported, walkable stairs and a landing, nautical furniture, textured
+surfaces, and three real exterior-camera windows. At most one visible window renders every 200ms
+at 384px; offscreen windows and unoccupied interiors do not render. Render target, shadow update,
+XR state and sky position are restored afterward. The island entrance rock corridor is clear.
+
+Accepted server `cardUsed` starts a 1.2-second pocket/hand/table slide on all clients, with a brief
+island-only camera shot. No input lock, timer change, extra consumption or delayed effects occurs.
+Rejected and replayed uses cannot trigger a second animation. Lighthouse cameras remain independent.
+
+Both meteor types have a world-space particle wake (one additional draw per falling rock). The
+lighthouse cone tip is anchored to its lamp. Last Sip swaps the wins board for fallen, jagged sections
+and fire, collapses one nonessential outer fence bay, and gently lights card crates with emissive
+materials and a local halo. Ordinary scenery and crate materials are restored on mode exit.
+
 ## v2 implementation contract (September 25, 2026)
 
 This section supersedes conflicting v1 details below. The owner authorized the entire 28-item handoff.

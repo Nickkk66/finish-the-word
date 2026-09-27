@@ -173,8 +173,9 @@ test('Free Pass can protect your own next turn but harmful cards cannot target y
 test('portal and hatch celebrations relay to everyone with server-owned identity and limits', () => {
   const room = createRoom();
   const a = room.join('alice'); const b = room.join('bob');
+  room.send(a, {t:'move',x:0,y:.25,z:77.5,ry:0,anim:'idle'});
   room.send(a, { t: 'celebrate', kind: 'portal', to: 'obby', id: 'bob' });
-  assert.deepEqual(b.last('celebrate'), { t: 'celebrate', kind: 'portal', to: 'obby', id: 'alice' });
+  assert.deepEqual(b.last('celebrate'), { t: 'celebrate', kind: 'portal', to: 'obby', id: 'alice', door:{x:0,y:.25,z:77.5} });
   assert.deepEqual(a.last('celebrate'), b.last('celebrate'));
   room.send(a, { t: 'celebrate', kind: 'hatch' });
   assert.equal(b.all('celebrate').length, 1);
@@ -334,4 +335,28 @@ test('bots never fall back to the full dictionary and follow difficulty word len
   const room = createRoom();
   assert.ok(room.engine.botDicts.easy.countPrefix('') < room.engine.botDicts.normal.countPrefix(''));
   assert.ok(room.engine.botDicts.normal.countPrefix('') < room.engine.botDicts.hard.countPrefix(''));
+});
+
+
+test('travel commits on the server, locks moves and seats, and rejects forged zone exits',()=>{
+  const room=createRoom(),a=room.join('alice');
+  const p=room.engine.players.get('alice');
+  room.send(a,{t:'move',x:300,y:0,z:0,ry:0});assert.equal(p.pos,null);
+  room.send(a,{t:'celebrate',kind:'portal',to:'lighthouse'});assert.ok(a.last('travelRejected'));assert.equal(p.zone,'island');
+  room.send(a,{t:'move',x:-31.85,y:0,z:-30.14,ry:0});
+  room.send(a,{t:'celebrate',kind:'portal',to:'lighthouse'});assert.ok(p.travel);
+  const before={...p.pos};room.send(a,{t:'move',x:20,y:0,z:20,ry:0});assert.deepEqual(p.pos,before);
+  room.send(a,{t:'sit',seat:0});assert.equal(p.seat,-1);
+  room.clock.advance(900);assert.equal(p.zone,'lighthouse');assert.equal(p.pos.x,300);assert.equal(a.last('travel').to,'lighthouse');
+  room.send(a,{t:'move',x:0,y:0,z:0,ry:0});assert.equal(p.pos.x,300);
+  room.send(a,{t:'move',x:320,y:0,z:0,ry:0});assert.equal(p.pos.x,300);
+  room.send(a,{t:'sit',seat:0});assert.equal(p.seat,-1);
+  room.clock.advance(1000);room.send(a,{t:'celebrate',kind:'portal',to:'island'});room.clock.advance(900);assert.equal(p.zone,'island');
+});
+
+test('active participants cannot start travel or move even if their seat is cleared',()=>{
+  const room=game(),p=room.engine.players.get('alice'),a=room.conns.alice;
+  p.seat=-1;p.zone='lighthouse';p.pos={x:300,y:0,z:9};
+  room.send(a,{t:'celebrate',kind:'portal',to:'island'});assert.equal(p.travel,null);assert.ok(a.last('travelRejected'));
+  room.send(a,{t:'move',x:0,y:0,z:0,ry:0});assert.equal(p.pos.x,300);
 });

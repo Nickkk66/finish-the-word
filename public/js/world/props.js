@@ -3,6 +3,7 @@
 // placed with a seeded PRNG so every client builds (and collides with) the same island.
 
 import * as THREE from 'three';
+import { createFire } from './ember.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { barkTexture, leavesTexture, spawnDecalTexture, stoneTexture, woodTexture } from './textures.js';
 import { colorMaterial } from './materials.js';
@@ -55,12 +56,12 @@ export function createProps(scene) {
   scene.add(buildBushes(rnd, leafMat));
   scene.add(buildFlowers(rnd));
   scene.add(buildRocks(rnd, colliders));
-  scene.add(buildFences(colliders));
+  const fences=buildFences(colliders);scene.add(fences);
   const lighthouse=buildLighthouse(colliders, scene);scene.add(lighthouse);
   scene.add(buildSpawnPad());
   scene.add(buildPier());
 
-  return { colliders, trees, updateNight: (night,t) => lighthouse.userData.updateNight(night,t) };
+  return { colliders, trees, debug:()=>({damagedFence:fences.userData.damagedCount||0,beamTip:lighthouse.userData.beamOrigin}), updateNight: (night,t) => {lighthouse.userData.updateNight(night,t);fences.userData.updateNight(night,t);} };
 }
 
 // ---- Vegetation ------------------------------------------------------------------------------
@@ -183,6 +184,8 @@ function buildRocks(rnd, colliders) {
   }
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * TAU + rnd() * 0.3;
+    const facing = Math.atan2(-LIGHTHOUSE.z, -LIGHTHOUSE.x);
+    if (Math.cos(a - facing) > .65) continue; // keep the whole entrance corridor clear
     add(LIGHTHOUSE.x + Math.cos(a) * 5.9, LIGHTHOUSE.z + Math.sin(a) * 5.9, 0.9 + rnd() * 0.8);
   }
   const material = new THREE.MeshLambertMaterial({ flatShading: true });
@@ -253,7 +256,15 @@ function buildFences(colliders) {
   const railGeo = new THREE.BoxGeometry(1, 0.22, 0.14);
   const group = new THREE.Group();
   group.add(instanced(postGeo, colorMaterial('#a06d3c'), posts));
-  group.add(instanced(railGeo, colorMaterial('#b98552'), rails));
+  const railMesh=instanced(railGeo,colorMaterial('#b98552'),rails);group.add(railMesh);
+  // A nonessential outer fence bay collapses away from the shop and all doorways.
+  const ids=rails.map((r,i)=>({r,i})).filter(({r})=>r.x < -45 && r.z < -20).slice(0,4);
+  const saved=ids.map(({i})=>{const m=new THREE.Matrix4();railMesh.getMatrixAt(i,m);return m;});
+  const debris=new THREE.Group();debris.visible=false;group.add(debris);
+  for(const {r,i} of ids){const p=new THREE.Mesh(new THREE.BoxGeometry(r.sx*.7,.23,.2),colorMaterial('#3d2922'));p.position.set(r.x+(i%2)*.7,.22,r.z+.8);p.rotation.y=r.ry+.5*(i%2?1:-1);debris.add(p);}
+  const fire=createFire(.8,2.2,5);if(ids.length){fire.position.set(ids[0].r.x,.1,ids[0].r.z);debris.add(fire);}
+  let damaged=false;
+  group.userData.updateNight=(night,t)=>{const on=night>.5;group.userData.damagedCount=on?ids.length:0;if(on!==damaged){damaged=on;debris.visible=on;ids.forEach(({i},k)=>railMesh.setMatrixAt(i,on?new THREE.Matrix4().makeScale(0,0,0):saved[k]));railMesh.instanceMatrix.needsUpdate=true;}if(on)fire.userData.update(t);};
   return group;
 }
 
@@ -346,13 +357,16 @@ function buildLighthouse(colliders, scene) {
   group.add(lantern);
 
   const sweep=new THREE.Group();scene.add(sweep);sweep.position.set(LIGHTHOUSE.x,topY+1.6,LIGHTHOUSE.z);
-  const beam=new THREE.Mesh(new THREE.ConeGeometry(12,108,20,1,true),new THREE.ShaderMaterial({
+  const beamGeometry=new THREE.ConeGeometry(12,108,24,1,true);
+  beamGeometry.translate(0,-54,0); // cone tip is exactly the lamp origin
+  const beam=new THREE.Mesh(beamGeometry,new THREE.ShaderMaterial({
     transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
     uniforms:{strength:{value:0}},
     vertexShader:'varying float alongBeam;varying vec3 worldNormal;varying vec3 worldPosition;void main(){alongBeam=uv.y;worldNormal=normalize(mat3(modelMatrix)*normal);worldPosition=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(worldPosition,1.);}',
-    fragmentShader:'uniform float strength;varying float alongBeam;varying vec3 worldNormal;varying vec3 worldPosition;void main(){float lengthFade=smoothstep(0.,.2,alongBeam)*(1.-smoothstep(.82,1.,alongBeam));float edgeFade=smoothstep(.02,.48,abs(dot(normalize(worldNormal),normalize(cameraPosition-worldPosition))));gl_FragColor=vec4(.96,.89,.68,lengthFade*edgeFade*strength);}',
+    fragmentShader:'uniform float strength;varying float alongBeam;varying vec3 worldNormal;varying vec3 worldPosition;void main(){float lengthFade=smoothstep(0.,.24,alongBeam);float edgeFade=smoothstep(.02,.48,abs(dot(normalize(worldNormal),normalize(cameraPosition-worldPosition))));gl_FragColor=vec4(.96,.89,.68,lengthFade*edgeFade*strength);}',
   }));
-  beam.position.set(0,-12,52);beam.rotation.x=-Math.atan2(52,12);sweep.add(beam);
+  beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,-1,0),new THREE.Vector3(0,-(topY+2.4),100).normalize());sweep.add(beam);
+  group.userData.beamOrigin=sweep.position.toArray();
   const bulb=new THREE.PointLight('#ffe6a0',0,15,2);bulb.position.copy(sweep.position);scene.add(bulb);
   group.userData.updateNight=(night,t)=>{sweep.visible=night>.01;sweep.rotation.y=lighthouseSweepAngle(t);beam.material.uniforms.strength.value=.32*night;bulb.intensity=16*night;lantern.material.emissiveIntensity=.1+night*2.2;};
   colliders.push({ x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, r: 5.7 });

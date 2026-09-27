@@ -1,3 +1,4 @@
+import { createCardPlay } from './card-play.js';
 // createWorld(): the 3D island, players and effects behind the World API (docs/SPEC.md §5).
 
 import * as THREE from 'three';
@@ -125,6 +126,7 @@ export async function createWorld({ container, labelLayer }) {
 
   // ---- State ----
   const players = new Map();
+  const cardPlay=createCardPlay(scene,players);
   const cardTargets = new Map();
   const targetGeometry = new THREE.CylinderGeometry(2.2, 2.2, 6, 24, 1, true).translate(0, 3, 0);
   function clearCardTargets() {
@@ -151,6 +153,7 @@ export async function createWorld({ container, labelLayer }) {
   let zone = 'island';
   let outdoorCamera = null;
   let portalUntil = 0;
+  let travelLocked = false;
   let obbyStarted = 0;
   let obbyFinished = false;
   let checkpoint = { ...OBBY.spawn, index: 0 };
@@ -331,7 +334,7 @@ export async function createWorld({ container, labelLayer }) {
 
     const me = local();
     obby.update(time, dt);
-    if (me && !menuMode && !roulette.cinematic()) {
+    if (me && !menuMode && !travelLocked && !roulette.cinematic()) {
       if (me.seat >= 0) {
         if (input.consumeJumpPress()) emitInteract(STAND);
         input.consumeInteract();
@@ -368,6 +371,7 @@ export async function createWorld({ container, labelLayer }) {
     input.orbitX = input.orbitY = input.zoomDelta = 0;
 
     for (const e of players.values()) e.tick(dt, time, now);
+    cardPlay.update(now);
     for (const [id, target] of cardTargets) {
       const e = players.get(id);
       if (!e) continue;
@@ -387,6 +391,7 @@ export async function createWorld({ container, labelLayer }) {
     else focus.set(LAYOUT.spawn.x, 0, LAYOUT.spawn.z);
     rig.update(dt, time, focus, viewSeat());
     if (zone !== 'lighthouse') roulette.camera(camera);
+    cardPlay.camera(camera,zone);
     if (zone === 'lighthouse') {
       const dx = camera.position.x - LIGHTHOUSE_ROOM.center.x;
       const dz = camera.position.z - LIGHTHOUSE_ROOM.center.z;
@@ -395,7 +400,7 @@ export async function createWorld({ container, labelLayer }) {
         camera.position.x = LIGHTHOUSE_ROOM.center.x + dx * 10.6 / distance;
         camera.position.z = LIGHTHOUSE_ROOM.center.z + dz * 10.6 / distance;
       }
-      camera.position.y = Math.min(camera.position.y, 8.65);
+      camera.position.y = Math.min(camera.position.y, 13.1);
     }
     terrain.setSkyFocus(camera.position);
     effects.update(dt, camera);
@@ -413,6 +418,7 @@ export async function createWorld({ container, labelLayer }) {
     updatePrompt(me);
     labels.update(camera, viewW, viewH);
     emitMove(now, me);
+    lighthouse.updateWindows(renderer, terrain, camera, now);
     renderer.render(scene, camera);
     thumbnails.tick();
   }
@@ -583,14 +589,15 @@ export async function createWorld({ container, labelLayer }) {
       }
     },
     cancelCardTargeting: clearCardTargets,
+    playCard(actorId,targetId,cardId) {cardPlay.play(actorId,targetId,cardId);},
     playHatch(id) { world.playEffect(id, 'hatch'); },
-    playPortal(id) {
-      const e = players.get(id);
-      if (!e || e.seat >= 0) return;
-      e.avatar.portalT = 0;
-      effects.ring(e.render, 12, 1.2, '#81eaff');
-      effects.sparkRing(e.render, 50, ['#85f5ff', '#bf8fff', '#ffffff']);
+    setTravelLocked(on) { travelLocked=!!on; if(on){motor.vel.set(0,0,0);input.consumeJumpPress();input.consumeInteract();} },
+    playPortal(id,door) {
+      const e=players.get(id);if(!e||e.seat>=0)return;
+      e.portal={from:e.render.clone(),to:door?new THREE.Vector3(door.x,door.y,door.z):e.render.clone(),start:performance.now()};
+      effects.ring(e.render,5,1.2,'#81eaff');
     },
+    finishPortal(id,pos) { const e=players.get(id);if(!e)return;e.portal=null;e.place(pos.x,pos.y,pos.z,pos.ry??Math.PI); },
     playEmote(id, name) { players.get(id)?.avatar.playEmote(name); },
     setFirstPerson(on) {
       firstPerson = !!on; rig.firstPitch = 0; rig.seatedYaw = 0; rig.blend = 1;
@@ -627,7 +634,7 @@ export async function createWorld({ container, labelLayer }) {
       obby.setVisible(zone === 'obby');
       lighthouse.room.visible = zone === 'lighthouse';
       motor.platforms = zone === 'obby' ? obby.platforms : zone === 'lighthouse'
-        ? [{ x: LIGHTHOUSE_ROOM.center.x, y: -.2, z: LIGHTHOUSE_ROOM.center.z, w: 23, h: .4, d: 23, dx: 0, dz: 0 }]
+        ? lighthouse.platforms
         : null;
       motor.bounds = zone === 'lighthouse' ? { x: LIGHTHOUSE_ROOM.center.x, z: LIGHTHOUSE_ROOM.center.z, r: LIGHTHOUSE_ROOM.radius } : null;
       if (zone === 'obby') {
@@ -636,10 +643,10 @@ export async function createWorld({ container, labelLayer }) {
     },
     debugSnapshot() {
       return { zone, firstPerson, localPosition: local()?.pos.toArray() ?? null, checkpoint: { ...checkpoint },
-        roulette: roulette.debug(), night: terrain.nightAmount(),
+        scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), night: terrain.nightAmount(),
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
-        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), portalAnimations: [...players.values()].filter(e => e.avatar.portalT >= 0).map(e => e.id),
+        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,render:e.render.toArray()})),
         grounded: motor.grounded, platformKind: motor.standingOn?.kind ?? null };
     },
 

@@ -173,6 +173,9 @@ try {
   console.log('ok private hint, card replay protection and global leaderboard write');
 
   const runner = await connect('RunnerIntegration', 'OBBYT');
+  runner.send({t:'move',x:0,y:.25,z:77.5,ry:0});
+  runner.send({t:'celebrate',kind:'portal',to:'obby'});
+  await runner.next(m=>m.t==='travel'&&m.to==='obby');
   runner.send({ t: 'obby', event: 'start' });
   runner.send({ t: 'obby', event: 'finish', ms: 30000 });
   await wait(100);

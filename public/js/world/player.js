@@ -261,6 +261,12 @@ export class PlayerEntity {
       r.copy(this.pos);
       this.renderYaw = this.yaw;
     }
+    if(this.portal){
+      const k=Math.min(1,(now-this.portal.start)/850),ease=k*k*(3-2*k);
+      r.lerpVectors(this.portal.from,this.portal.to,ease);
+      const dx=this.portal.to.x-this.portal.from.x,dz=this.portal.to.z-this.portal.from.z;
+      if(Math.hypot(dx,dz)>.05){this.renderYaw=Math.atan2(dx,dz);this.anim=k<1?'walk':'idle';this.speed=k<1?4:0;}
+    }
     const root = this.avatar.root;
     root.position.copy(r);
     root.rotation.y = this.renderYaw;

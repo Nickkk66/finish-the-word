@@ -2,6 +2,7 @@
 // two boards behind the table ("Most Wins" leaderboard + "How to Play").
 
 import * as THREE from 'three';
+import { createFire } from './ember.js';
 import { rouletteRules } from '../shared/roulette.js';
 import { BLOCKS, CHAIRS, CARD_BOXES, RARITIES } from '../shared/catalog.js';
 import { buildChair, buildLuckyBlock, buildCardBox } from './cosmetics.js';
@@ -90,9 +91,13 @@ export function createLobby(scene) {
     return { blockId: spot.blockId, x: spot.x, z: spot.z, labelY: top + BLOCK_BASE.height + 2.2, promptY: 2.4 };
   });
 
+  const crateGlows=[];
   const cardBoxes = CARD_BOXES.map(def => {
     const model = buildCardBox(def.id);
     model.position.set(def.x, 0, def.z); scene.add(model); enableShadows(model);
+    const glow=new THREE.Mesh(new THREE.CylinderGeometry(2.15,2.55,3.4,24,1,true),new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,uniforms:{strength:{value:0},tint:{value:new THREE.Color(def.color)}},vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'uniform float strength;uniform vec3 tint;varying vec2 vUv;void main(){gl_FragColor=vec4(tint,pow(1.-vUv.y,3.)*strength);}' }));glow.position.set(def.x,1.7,def.z);scene.add(glow);crateGlows.push(glow);
+    model.traverse(o=>{if(o.material?.emissive){o.material=o.material.clone();o.userData.originalEmissive=o.material.emissive.clone();o.userData.originalIntensity=o.material.emissiveIntensity;}});
+    crateGlows.push(model);
     if (model.userData.update) animated.push(model);
     colliders.push({ x: def.x, z: def.z, r: 2.2 });
     return { boxId: def.id, x: def.x, z: def.z, labelY: modelTop(model, 4) + 1.2, promptY: 2.4 };
@@ -102,6 +107,7 @@ export function createLobby(scene) {
   // ---- Boards ----
   let winsCanvas = null;
   let winsTexture = null, howCanvas, howTexture, rouletteMode = null;
+  let winsBoard;
   for (const b of BOARDS) {
     const canvas = makeCanvas(1024, 720);
     if (b.kind === 'wins') drawLeaderboard(canvas, []);
@@ -112,7 +118,7 @@ export function createLobby(scene) {
       winsTexture = texture;
     }
     if (b.kind !== 'wins') { howCanvas=canvas; howTexture=texture; }
-    scene.add(buildBoard(b, texture, colliders));
+    const board=buildBoard(b, texture, colliders);scene.add(board);if(b.kind==='wins')winsBoard=board;
   }
 
   return {
@@ -120,7 +126,8 @@ export function createLobby(scene) {
     shopItems,
     blocks,
     cardBoxes,
-    setRoulette(on,mode) { const next=on?mode:null;if(rouletteMode===next)return;rouletteMode=next;drawHowTo(howCanvas,next);howTexture.needsUpdate=true; },
+    debug:()=>({broken:!!rouletteMode,crateGlow:crateGlows.filter(o=>o.material?.uniforms).map(o=>o.material.uniforms.strength.value)}),
+    setRoulette(on,mode) { const next=on?mode:null;if(rouletteMode===next)return;rouletteMode=next;winsBoard.userData.setBroken(on);for(const glow of crateGlows){if(glow.material?.uniforms)glow.material.uniforms.strength.value=on?.23:0;else glow.traverse(o=>{if(o.userData.originalEmissive){o.material.emissive.copy(on?new THREE.Color('#7250b0'):o.userData.originalEmissive);o.material.emissiveIntensity=on?.22:o.userData.originalIntensity;}});}drawHowTo(howCanvas,next);howTexture.needsUpdate=true; },
     setLeaderboardTitle(title) {
       boardTitle = String(title).slice(0, 40);
       drawLeaderboard(winsCanvas, boardRows, boardTitle); winsTexture.needsUpdate = true;
@@ -131,6 +138,7 @@ export function createLobby(scene) {
       winsTexture.needsUpdate = true;
     },
     update(t, dt) {
+      winsBoard.userData.update(t);
       for (const model of animated) model.userData.update(t, dt);
     },
   };
@@ -163,6 +171,25 @@ function buildBoard(b, texture, colliders) {
     const lx = sx * (W / 2 + 0.1);
     colliders.push({ x: b.x + Math.cos(b.ry) * lx, z: b.z - Math.sin(b.ry) * lx, r: 0.7 });
   }
+  const intact=[...group.children],broken=new THREE.Group();broken.visible=false;group.add(broken);
+  const char=new THREE.MeshLambertMaterial({color:'#352823',map:woodTexture('#4c3426')});
+  const fragment=(w,h,d,x,y,z,rx,rz)=>{const piece=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),char);piece.position.set(x,y,z);piece.rotation.set(rx,.13,rz);enableShadows(piece);broken.add(piece);return piece;};
+  fragment(.85,4,.85,-6.3,2,-.1,0,-.08);fragment(.85,6,.85,6.3,3,-.1,0,.12);
+  // Jagged panel sections retain their own part of the real leaderboard texture.
+  for(let i=0;i<3;i++){
+    const section=new THREE.Group();broken.add(section);
+    const shape=new THREE.Shape();const w=W/3;
+    shape.moveTo(-w/2,-H/2);shape.lineTo(w/2,-H/2);shape.lineTo(w/2,H/2);shape.lineTo(-w/2+.35,H/2);shape.lineTo(-w/2-.15,2);shape.lineTo(-w/2+.3,.5);shape.lineTo(-w/2-.2,-1.5);shape.closePath();
+    const geo=new THREE.ShapeGeometry(shape),uv=geo.attributes.uv,pos=geo.attributes.position;
+    for(let j=0;j<uv.count;j++)uv.setXY(j,(pos.getX(j)+w/2+i*w)/W,(pos.getY(j)+H/2)/H);
+    const face=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide,color:'#b7a18a'}));face.position.z=.28;section.add(face);
+    const backing=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.5,bevelEnabled:false}),char);backing.position.z=-.25;section.add(backing);
+    section.position.set((i-1)*4.5,i===2?4.6:.6,i===2?0:3+i*.6);section.rotation.set(i===2?.22:-Math.PI/2,0,i===2?-.3:(i-.5)*.15);
+  }
+  for(let i=0;i<6;i++)fragment(2+i%3,.25,.45,(i-2.5)*1.65,.25,2+Math.sin(i)*2,0,i*.7);
+  const fire=createFire(2,3.5,9);fire.position.set(-3,.4,2.7);broken.add(fire);
+  group.userData.setBroken=on=>{intact.forEach(o=>o.visible=!on);broken.visible=on;};
+  group.userData.update=t=>{if(broken.visible)fire.userData.update(t);};
   return group;
 }
 

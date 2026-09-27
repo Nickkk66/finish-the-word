@@ -569,18 +569,9 @@ async function onInteract(i) {
     if (teleporting || isAliveParticipant()) return;
     teleporting = true;
     net.send({ t: 'celebrate', kind: 'portal', to: i.to });
-    const overlay = h('div', { class: 'teleport-overlay' }, h('div', { class: 'teleport-spinner' }), h('div', { class: 'stroke' }, i.to === 'obby' ? 'Traveling to the obby…' : i.to === 'lighthouse' ? 'The lightkeeper calls…' : 'Returning to the island…'));
-    const roomCode = state.code;
-    setTimeout(() => { if (state.inRoom && state.code === roomCode) uiRoot.append(overlay); }, 500);
-    setTimeout(() => {
-      if (!state.inRoom || state.code !== roomCode) return;
-      state.zone = i.to;
-      world.setZone(i.to);
-      world.teleportLocal(i.to === 'obby' ? OBBY.spawn : i.to === 'lighthouse' ? LIGHTHOUSE_ROOM.spawn : i.type === 'lighthouseDoor' ? { x: -30.8, y: 0, z: -29.2 } : { x: 0, y: .25, z: 72 });
-      if (i.to === 'obby') net.send({ t: 'obby', event: 'start' });
-      hud.update(state);
-    }, 900);
-    setTimeout(() => { overlay.remove(); teleporting = false; }, 1400);
+    world.setTravelLocked(true);
+    // A rejected or lost request must never teleport the client on its own.
+    setTimeout(()=>{if(teleporting){teleporting=false;world.setTravelLocked(false);}},3500);
   } else if (i.type === 'obbyFinish') {
     recordObby(i.ms); net.send({ t: 'obby', event: 'finish', ms: i.ms });
     toast(`Obby finished in ${formatDuration(i.ms)}!`, 'good');
@@ -731,6 +722,7 @@ function exitRoom() {
   world.setRoulette?.(false, null);
   rouletteHud.update(state, false);
   world.setZone('island');
+  teleporting=false;world.setTravelLocked(false);travelOverlay?.remove();
   panels.close();
   hud.hide();
   chat.clear();
@@ -838,6 +830,9 @@ net.on('welcome', (msg) => {
   for (const id of [...state.players.keys()]) if (!incoming.has(id)) removePlayer(id);
   for (const p of msg.players) upsertPlayer(p);
   world.setLocalPlayer(state.you);
+  state.zone=msg.zone || 'island';world.setZone(state.zone);
+  const own=msg.players.find(p=>p.id===msg.you);if(own?.pos&&own.seat<0)world.teleportLocal(own.pos);
+  teleporting=false;world.setTravelLocked(false);
   clearBubbles();
   state.lastFail = null;
   state.roundStartCount = null;
@@ -1032,12 +1027,29 @@ net.on('cardResult', (msg) => {
 });
 net.on('cardUsed', ({ actorId, targetId, cardId }) => {
   const card = CARDS_BY_ID[cardId];
+  world.playCard(actorId,targetId,cardId);
   world.playEffect(targetId, 'flair', { text: card?.name || 'CARD!', color: card?.color || '#fff' });
   chat.add({ system: true, text: `${nameOf(actorId)} used ${card?.name || 'a card'} on ${nameOf(targetId)}.` });
 });
 net.on('emote', ({ id, name }) => world.playEmote(id, name));
-net.on('celebrate', ({ id, kind, to }) => {
-  if (kind === 'portal') world.playPortal(id, to);
+let travelOverlay=null;
+net.on('travelRejected',()=>{teleporting=false;world.setTravelLocked(false);travelOverlay?.remove();travelOverlay=null;});
+net.on('travel',({id,to,pos})=>{
+  if(id!==state.you){world.finishPortal(id,pos);return;}
+  state.zone=to;world.setZone(to);world.teleportLocal(pos);world.finishPortal(id,pos);
+  if(to==='obby')net.send({t:'obby',event:'start'});
+  hud.update(state);
+  setTimeout(()=>{travelOverlay?.remove();travelOverlay=null;teleporting=false;world.setTravelLocked(false);},250);
+});
+net.on('celebrate', ({ id, kind, to, door }) => {
+  if (kind === 'portal') {
+    world.playPortal(id,door);
+    if(id===state.you){
+      teleporting=true;world.setTravelLocked(true);
+      const code=state.code;
+      setTimeout(()=>{if(!teleporting||!state.inRoom||state.code!==code)return;travelOverlay?.remove();travelOverlay=h('div',{class:'teleport-overlay'},h('div',{class:'stroke'},to==='lighthouse'?'The lightkeeper calls…':to==='obby'?'Traveling to the obby…':'Returning to the island…'));uiRoot.append(travelOverlay);},650);
+    }
+  }
   else if (kind === 'hatch') world.playHatch(id);
 });
 net.on('unlock', ({ ok, token }) => {

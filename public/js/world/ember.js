@@ -20,7 +20,7 @@ function flameMap(){
   flameTexture=new THREE.CanvasTexture(c);flameTexture.colorSpace=THREE.SRGBColorSpace;return flameTexture;
 }
 export function createFire(radius=1,height=3,count=10){
-  const group=new THREE.Group(),sprites=[];
+  const group=new THREE.Group();
   // Billboard flames in one instanced draw instead of a draw for every sprite.
   const material=new THREE.ShaderMaterial({uniforms:{map:{value:flameMap()},time:{value:0},height:{value:height}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
     vertexShader:`uniform float time;uniform float height;varying vec2 vUv;varying float fade;void main(){vUv=uv;float phase=instanceMatrix[3].x*3.+instanceMatrix[3].z*7.;float wave=.85+.15*sin(time*6.+phase);vec4 center=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);vec2 scale=vec2(length(modelViewMatrix[0].xyz),length(modelViewMatrix[1].xyz));center.xy+=position.xy*vec2(height*.65*wave,height*(.85+.15*sin(time*5.+phase)))*scale;fade=.7+.15*sin(time*8.+phase);gl_Position=projectionMatrix*center;}`,
@@ -31,4 +31,28 @@ export function createFire(radius=1,height=3,count=10){
   const positions=new Float32Array(24*3);sparks.geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));group.add(sparks);
   group.userData.update=(t)=>{material.uniforms.time.value=t;for(let i=0;i<24;i++){const age=(t*.45+i/24)%1,a=i*2.4;positions[i*3]=Math.cos(a+age)*radius*(1-age*.4);positions[i*3+1]=age*height*1.7;positions[i*3+2]=Math.sin(a+age)*radius;}sparks.geometry.attributes.position.needsUpdate=true;};
   return group;
+}
+
+// A persistent wake in world space: one additive draw, independent of the rock's rotation.
+export function createMeteorTrail(scene, length = 19) {
+  const count = 30, positions = new Float32Array(count * 3), sizes = new Float32Array(count);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('age', new THREE.BufferAttribute(sizes, 1));
+  const material = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `attribute float age; varying float fade; void main(){fade=1.-age;vec4 p=modelViewMatrix*vec4(position,1.);gl_PointSize=min(100.,(160.+160.*fade)/max(1.,-p.z));gl_Position=projectionMatrix*p;}`,
+    fragmentShader: `varying float fade; void main(){float r=length(gl_PointCoord-.5)*2.;float a=pow(max(0.,1.-r),1.5)*fade*.85;gl_FragColor=vec4(1.,.25+.65*fade,.06+.3*fade,a);}` });
+  const mesh = new THREE.Points(geometry, material); mesh.frustumCulled = false; mesh.visible = false; scene.add(mesh);
+  return { mesh, update(head, direction, progress, t) {
+    mesh.visible = progress > 0 && progress < 1;
+    const extent = Math.min(length, progress * 85);
+    for (let i=0;i<count;i++) {
+      const age=i/(count-1), distance=age*extent;
+      positions[i*3]=head.x+direction.x*distance+Math.sin(i*3+t*4)*age*.45;
+      positions[i*3+1]=head.y+direction.y*distance;
+      positions[i*3+2]=head.z+direction.z*distance+Math.cos(i*2+t*3)*age*.45;
+      sizes[i]=age;
+    }
+    geometry.attributes.position.needsUpdate=true; geometry.attributes.age.needsUpdate=true;
+  }};
 }

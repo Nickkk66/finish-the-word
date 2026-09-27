@@ -1,3 +1,4 @@
+import { portalRoute, zoneAt } from '../public/js/shared/travel.js';
 import { isRouletteMode, rouletteRules } from '../public/js/shared/roulette.js';
 // Server-authoritative game logic for one room (docs/SPEC.md §3 and §4).
 // Pure and transport-agnostic: no Cloudflare or Node APIs. Time, timers and randomness
@@ -222,7 +223,7 @@ export class GameEngine {
     this.syncFire(player);
     this.send(player, {
       t: 'welcome',
-      you: id,
+      you: id, zone: player.zone,
       code: this.code,
       hostId: this.hostId,
       settings: { ...this.settings },
@@ -257,7 +258,7 @@ export class GameEngine {
       id, name, isBot, look, chair, pet,
       back, capeColor, level, petTier, rouletteBet: null, isAdmin: false, adminTag: false, ipHash: conn?.ipHash,
       cards: {}, requests: new Map(), obbyStartAt: null,
-      seat: -1, wins: 0, pos: null,
+      seat: -1, wins: 0, pos: null, zone: 'island', travel: null,
       conn, connected: true, graceTimer: null,
       moved: false, // has a position not yet sent in `moves`
       buckets: {}, // rate limiter state
@@ -353,9 +354,15 @@ export class GameEngine {
   }
 
   onMove(player, msg) {
-    if (player.seat >= 0 || !this.allow(player, 'move')) return;
+    if (player.seat >= 0 || player.travel || this.isPlaying(player.id) || !this.allow(player, 'move')) return;
     const pos = sanitizeMove(msg);
     if (!pos) return;
+    const zone=zoneAt(pos);
+    if (zone!==player.zone) {
+      if (!player.isAdmin) return;
+      player.zone=zone;
+    }
+    if(zone==='lighthouse' && (Math.hypot(pos.x-300,pos.z)>10.2 || pos.y < -.1 || pos.y > 12)) return;
     player.pos = pos;
     this.syncFire(player);
     player.moved = true;
@@ -378,7 +385,7 @@ export class GameEngine {
 
   onSit(player, seat) {
     if (!Number.isInteger(seat) || seat < 0 || seat >= SEAT_COUNT || seat === player.seat) return;
-    if (this.isPlaying(player.id) || !this.allow(player, 'seat')) return;
+    if (this.isPlaying(player.id) || player.travel || player.zone!=='island' || !this.allow(player, 'seat')) return;
     if (this.seatOwner(seat)) return this.send(player, { t: 'error', code: 'seat_taken', message: 'That seat is taken.' });
     player.seat = seat;
     this.syncFire(player);
@@ -517,9 +524,24 @@ export class GameEngine {
 
   // Cosmetic events are approved and relayed by the room; clients cannot impersonate another player.
   onCelebrate(player, msg) {
-    if (!['portal', 'hatch'].includes(msg.kind) || this.isPlaying(player.id) || !this.allow(player, 'emote')) return;
-    if (msg.kind === 'portal' && (player.seat >= 0 || !['island', 'obby', 'lighthouse'].includes(msg.to))) return;
-    this.broadcast({ t: 'celebrate', id: player.id, kind: msg.kind, ...(msg.kind === 'portal' ? { to: msg.to } : {}) });
+    if (msg.kind !== 'portal') {
+      if(msg.kind==='hatch' && !this.isPlaying(player.id) && this.allow(player,'emote')) this.broadcast({t:'celebrate',id:player.id,kind:'hatch'});
+      return;
+    }
+    const route=portalRoute(player.zone,msg.to,player.pos);
+    if(this.isPlaying(player.id)||player.seat>=0||player.travel||!route||!this.allow(player,'emote')) {
+      this.send(player,{t:'travelRejected'});return;
+    }
+    const travel={to:msg.to,...route};player.travel=travel;
+    this.broadcast({t:'celebrate',id:player.id,kind:'portal',to:msg.to,door:route.door});
+    this.schedule(()=>{
+      if(this.players.get(player.id)!==player||player.travel!==travel)return;
+      player.travel=null;
+      if(this.isPlaying(player.id)){this.send(player,{t:'travelRejected'});return;}
+      player.zone=travel.to;player.pos={...travel.arrival,anim:'idle'};
+      this.broadcast({t:'travel',id:player.id,to:travel.to,pos:player.pos});
+      this.broadcastPlayer(player);
+    },900);
   }
 
   async onUnlock(player, code) {
