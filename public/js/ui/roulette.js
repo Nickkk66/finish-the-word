@@ -19,6 +19,7 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
   const controls = h('div', { class: 'roulette-actions' }, clock, drink, pass, wagerField, enter, start);
   const el = h('div', { class: 'roulette-hud', hidden: true }, h('div', { class: 'roulette-heading' }, title, pot), h('div', { class: 'roulette-bottom' }, note, odds, controls));
   const heartbeat=h('div',{class:'roulette-heartbeat','aria-hidden':'true'});el.append(heartbeat);
+  const feelsHeartbeat=st=>st?.match?.phase==='roulette'&&st.match.typerId===st.you || st?.match?.phase==='rouletteReveal'&&st.match.roulette?.event?.action==='drink';
   let state, nextBeat = 0, betEdited=false, betRoom=null;
   wager.addEventListener('input',()=>{betEdited=true;wager.value=wager.value.replace(/[^0-9]/g,'');});
   const timer = setInterval(() => {
@@ -26,14 +27,15 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
       const left = Math.max(0,(state.deadline-performance.now())/1000);
       clock.textContent = `${left.toFixed(1)}s`;
       el.classList.toggle('danger', state.match?.roulette?.risk >= .5);
-      if (['roulette','rouletteReveal'].includes(state.match?.phase) && performance.now()>nextBeat) { sfx.heartbeat(); if(state.match.typerId===state.you && state.match.phase==='roulette'){heartbeat.getAnimations().forEach(a=>a.cancel());heartbeat.animate([{opacity:0},{opacity:.9,offset:.12},{opacity:.2,offset:.28},{opacity:.65,offset:.4},{opacity:0}],{duration:650});} nextBeat=performance.now()+(state.match.phase==='rouletteReveal'?650:Math.max(450,1100+Math.min(0,left-5)*110)); }
+      if (['roulette','rouletteReveal'].includes(state.match?.phase) && performance.now()>nextBeat) { sfx.heartbeat(); if(feelsHeartbeat(state)){heartbeat.getAnimations().forEach(a=>a.cancel());heartbeat.animate([{opacity:0},{opacity:.9,offset:.12},{opacity:.2,offset:.28},{opacity:.65,offset:.4},{opacity:0}],{duration:650});} nextBeat=performance.now()+(state.match.phase==='rouletteReveal'?650:Math.max(450,1100+Math.min(0,left-5)*110)); }
     }
   }, 100);
   function update(st, active) {
     if(betRoom!==st.code){betRoom=st.code;betEdited=false;}
     if(!betEdited)wager.value=String(profile.coins);
     state = st; el.hidden = !active;
-    heartbeat.hidden = !active || st.match?.typerId!==st.you || st.match?.phase!=='roulette';
+    heartbeat.hidden = !active || !feelsHeartbeat(st);
+    if(heartbeat.hidden)heartbeat.getAnimations().forEach(a=>a.cancel());
     if (!active) return;
     const m = st.match, r = m?.roulette;
     const lobby = ['lobby', 'countdown'].includes(m?.phase);

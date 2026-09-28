@@ -472,3 +472,20 @@ export function spawnDecalTexture() {
     return canvasTexture(c);
   });
 }
+
+/** Temporary Last Sip expressions; shared textures never modify the equipped face. */
+export function reactionFaceTexture(kind) {
+  return cached(`reaction:${kind}`,()=>{
+    const c=makeCanvas(256),g=c.getContext('2d');
+    g.strokeStyle='#151827';g.fillStyle='#151827';g.lineWidth=9;g.lineCap='round';
+    if(kind==='surprised'){
+      for(const x of [79,177]){g.fillStyle='#fff';g.beginPath();g.ellipse(x,103,27,34,0,0,Math.PI*2);g.fill();g.stroke();g.fillStyle='#151827';disc(g,x,104,10);}
+      g.beginPath();g.ellipse(128,180,22,29,0,0,Math.PI*2);g.fill();
+    }else{
+      for(const x of [79,177]){g.beginPath();for(let i=0;i<=90;i++){const a=i/90*Math.PI*4,r=3+i/90*25;const px=x+Math.cos(a)*r,py=102+Math.sin(a)*r;i?g.lineTo(px,py):g.moveTo(px,py);}g.stroke();}
+      g.beginPath();g.ellipse(128,180,16,23,0,0,Math.PI*2);g.fill();
+      g.strokeStyle='#d5edff';g.lineWidth=6;g.beginPath();g.moveTo(109,198);g.quadraticCurveTo(128,223,145,198);g.stroke();
+    }
+    return canvasTexture(c);
+  });
+}

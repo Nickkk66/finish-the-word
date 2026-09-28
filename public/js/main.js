@@ -934,6 +934,7 @@ net.on('fail', (msg) => {
   const { id, cause, hearts, shielded } = msg;
   const mine = id === state.you;
   state.lastFail = msg;
+  if(mine){cancelCardTarget();if(panels.isOpen('cards'))panels.close();}
   if (lastWord?.id !== id && bubbles.has(id)) setBubble(id, null);
   if (shielded) {
     sfx.pick();
@@ -1030,6 +1031,7 @@ net.on('cardResult', (msg) => {
 net.on('cardUsed', ({ actorId, targetId, cardId, effect, shielded }) => {
   const card = CARDS_BY_ID[cardId];
   if(effect==='skipped'){
+    world.playEffect(targetId,'skipped');
     chat.add({system:true,text:`${nameOf(targetId)} used their Free Pass: turn skipped, no heart lost.`});return;
   }
   if(!card)return;
@@ -1120,6 +1122,7 @@ function applyMatch(m, resync = false) {
   const prev = state.match;
   state.match = m;
   if(m.phase==='lobby'||m.startedAt!==prev?.startedAt)world.clearCards();
+  if(prev?.phase==='typing'&&prev.typerId===state.you&&(m.phase!=='typing'||m.typerId!==state.you||m.turnId!==prev.turnId)&&panels.isOpen('cards'))panels.close();
   if (prev?.turnId !== m.turnId || m.phase !== 'typing') {
     cancelCardTarget();
     if (turnConfirmation != null) { cancelConfirmation(); turnConfirmation = null; }

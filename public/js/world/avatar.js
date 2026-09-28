@@ -11,7 +11,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { HAIR_STYLES, sanitizeLook } from '../shared/catalog.js';
 import { colorMaterial, greyHex } from './materials.js';
-import { faceTexture } from './textures.js';
+import { faceTexture, reactionFaceTexture } from './textures.js';
 import { TAU, clamp, damp, easeInOutCubic, lerp } from './math.js';
 
 export const WALK_SPEED = 16;
@@ -212,7 +212,7 @@ function faceMaterial(index) {
   let m = faceMaterials.get(index);
   if (!m) {
     m = new THREE.MeshLambertMaterial({
-      map: faceTexture(index),
+      map: typeof index==='string'?reactionFaceTexture(index):faceTexture(index),
       transparent: true,
       alphaTest: 0.02,
       polygonOffset: true,
@@ -312,7 +312,7 @@ export class Avatar {
   }
 
   applyColors() {
-    const c = this.out ? greyHex : (h) => h;
+    const c = this.out || this.skipT>0 ? greyHex : (h) => h;
     const skin = colorMaterial(c(this.look.skin));
     this.headMesh.material = skin;
     this.lArmMesh.material = skin;
@@ -356,6 +356,7 @@ export class Avatar {
   shakeHead() {
     this.shakeT = 0.6;
   }
+  skip() { this.skipT=3;this.applyColors(); }
   sip() { this.sipStarted = performance.now(); }
   flinch() {
     this.flinchT = 0.55;
@@ -374,6 +375,11 @@ export class Avatar {
   }
 
   update(dt, t) {
+    if(this.skipT>0){this.skipT=Math.max(0,this.skipT-dt);if(!this.skipT)this.applyColors();}
+    this.sleepAge=this.rouletteSleeping?(this.sleepAge||0)+dt:0;
+    const expression=this.sleepAge?(this.sleepAge<.38?'surprised':'ghost'):this.look.face;
+    this.face.material=faceMaterial(expression);
+    this.faceExpression=this.sleepAge?expression:'normal';
     const w = this.weights;
     const target = this.seated ? SIT : this.loco;
     for (let s = 0; s < STATES; s++) {
@@ -395,7 +401,7 @@ export class Avatar {
     this.applyModifiers(dt, t, o);
     const lift = this.sipStarted == null ? 0 : sipLift((performance.now()-this.sipStarted)/1000);
     if (lift > 0) { o[RAX]=lerp(o[RAX],-1.9,lift); o[RAZ]=lerp(o[RAZ],-.5,lift); o[HX]-=lift*.12; }
-    this.sleepWeight = damp(this.sleepWeight || 0, this.rouletteSleeping && this.seated ? 1 : 0, 24, dt);
+    this.sleepWeight = damp(this.sleepWeight || 0, this.rouletteSleeping && this.seated && this.sleepAge>.28 ? 1 : 0, 24, dt);
     if (this.sleepWeight > .001) {
       const k=this.sleepWeight;
       o[BX]=lerp(o[BX],1.1,k);o[BZ]*=1-k;

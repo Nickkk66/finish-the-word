@@ -556,6 +556,7 @@ export async function createWorld({ container, labelLayer }) {
       if (kind === 'correct') a.nod();
       else if (kind === 'wrong') a.shakeHead();
       else if (kind === 'heart') a.flinch();
+      else if (kind === 'skipped') {a.skip();e.stack.flair('SKIPPED · FREE PASS','#bec8d8');}
       else if (kind === 'eliminated') { a.launch(); e.stack.flair('KO!', '#ff546b'); }
       else if (kind === 'win') a.playEmote('dance');
       else if (kind === 'hatch') a.cheer(1.2);
@@ -653,7 +654,7 @@ export async function createWorld({ container, labelLayer }) {
         scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), night: terrain.nightAmount(),
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
-        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,seat:e.seat,render:e.render.toArray(),yaw:e.renderYaw,sleeping:!!e.avatar.rouletteSleeping,sleepWeight:e.avatar.sleepWeight||0,headBottom:e.avatar.rouletteSleeping?new THREE.Box3().setFromObject(e.avatar.headMesh).min.y:null})),
+        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,seat:e.seat,render:e.render.toArray(),yaw:e.renderYaw,sleeping:!!e.avatar.rouletteSleeping,faceExpression:e.avatar.faceExpression,skipRemaining:e.avatar.skipT||0,sleepWeight:e.avatar.sleepWeight||0,headBottom:e.avatar.rouletteSleeping?new THREE.Box3().setFromObject(e.avatar.headMesh).min.y:null})),
         grounded: motor.grounded, platformKind: motor.standingOn?.kind ?? null };
     },
 
