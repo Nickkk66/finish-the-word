@@ -574,7 +574,7 @@ export async function createWorld({ container, labelLayer }) {
 
     setLeaderboardTitle(title) { lobby.setLeaderboardTitle(title); },
     setTable(id) { table.setTable(id); },
-    setRoulette(on, match, entry, mode) { terrain.setNight(on); lobby.setRoulette(on,mode); roulette.set(on, match, players, entry); },
+    setRoulette(on, match, entry, mode) { cardPlay.setVisible(!on); terrain.setNight(on); lobby.setRoulette(on,mode); roulette.set(on, match, players, entry); },
     setMeteor(drop,collected) { roulette.setMeteor(drop,collected); },
     knockOutRoulette(id) { roulette.knockout(id); },
     renderThumbnail: thumbnails.render,
@@ -596,7 +596,8 @@ export async function createWorld({ container, labelLayer }) {
       }
     },
     cancelCardTargeting: clearCardTargets,
-    playCard(actorId,targetId,cardId,message) {cardPlay.play(actorId,targetId,cardId,message);},
+    playCard(actorId,targetId,cardId,message,event) {cardPlay.play(actorId,targetId,cardId,message,event);},
+    restoreCards(history) {cardPlay.restore(history);},
     clearCards() {cardPlay.clear();},
     playHatch(id) { world.playEffect(id, 'hatch'); },
     setTravelLocked(on) { travelLocked=!!on; if(on){motor.vel.set(0,0,0);input.consumeJumpPress();input.consumeInteract();} },

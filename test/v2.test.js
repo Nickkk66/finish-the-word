@@ -123,48 +123,48 @@ test('hints are valid, private, charged once, and reject stale/poor/no-answer re
   assert.equal(current.last('hint').reason, 'no_answer');
 });
 
-test('card skip, time and mistakes effects are consumed once on eligible target turns', () => {
+function queue(room, actor, cardId, targetId, requestId = 'plan') {
+  const request = { t: 'queueCard', matchId: room.engine.match.matchId, requestId, cardId, targetId, style: 'deck' };
+  room.send(room.conns[actor], request);
+  return request;
+}
+
+test('queued skip, time and mistakes consume once at turn lock, and direct use is rejected', () => {
   for (const cardId of ['skip', 'time_tax', 'pressure']) {
-    const room = game();
-    const m = room.engine.match;
-    const actor = m.typerId;
-    const targetId = room.engine.nextAlive(actor);
-    const conn = room.conns[actor];
-    const request = { t: 'useCard', turnId: m.turnId, requestId: 'use1', cardId, targetId };
+    const room = game(), m = room.engine.match;
+    const actor = room.engine.nextAlive(m.typerId), targetId = room.engine.nextAlive(actor), conn = room.conns[actor];
+    const request = queue(room, actor, cardId, targetId);
+    assert.equal(conn.last('cardQueueResult').ok, true);
+    assert.equal(room.engine.players.get(actor).cards[cardId], 2);
     room.send(conn, request);
+    play(room);
+    assert.equal(m.phase, 'cardReveal');
     assert.equal(conn.last('cardResult').ok, true);
-    room.send(conn, request);
     assert.equal(room.engine.players.get(actor).cards[cardId], 1);
-    room.send(conn, { ...request, requestId: 'use2' });
-    assert.equal(conn.last('cardResult').reason, 'one_per_turn');
+    room.send(conn, request);
+    room.send(conn, { t: 'useCard', requestId: 'late-use', turnId: m.turnId, cardId, targetId });
+    assert.equal(conn.last('cardResult').ok, false);
+    assert.equal(conn.all('cardUsed').length, 1);
+    room.clock.advance(4499); assert.equal(m.phase, 'cardReveal');
+    room.clock.advance(1); assert.equal(m.phase, 'typing');
     play(room);
     if (cardId === 'skip') assert.notEqual(m.typerId, targetId);
-    else {
-      assert.equal(m.typerId, targetId);
-      assert.equal(cardId === 'time_tax' ? m.duration : m.maxMistakes, cardId === 'time_tax' ? 13000 : 3);
-    }
+    else assert.equal(cardId === 'time_tax' ? m.duration : m.maxMistakes, cardId === 'time_tax' ? 13000 : 3);
     assert.deepEqual(room.engine.participant(targetId).pending, { skip: false, time: 0, mistakes: 0 });
+    assert.deepEqual(room.errors, []);
   }
 });
 
-test('Free Pass can protect your own next turn but harmful cards cannot target yourself', () => {
-  const room = game();
-  const m = room.engine.match;
-  const actor = m.typerId;
-  const conn = room.conns[actor];
+test('Free Pass queued for yourself skips the upcoming turn without losing a heart', () => {
+  const room = game(), m = room.engine.match, actor = room.engine.nextAlive(m.typerId), conn = room.conns[actor];
   for (const cardId of ['time_tax', 'pressure', 'heart']) {
-    room.clock.advance(1000);
-    room.send(conn, { t: 'useCard', turnId: m.turnId, requestId: cardId, cardId, targetId: actor });
-    assert.equal(conn.last('cardResult').reason, 'invalid_target');
-    assert.equal(room.engine.players.get(actor).cards[cardId], 2);
+    room.clock.advance(1000); queue(room, actor, cardId, actor, cardId);
+    assert.equal(conn.last('cardQueueResult').reason, 'invalid_target');
   }
-  room.clock.advance(1000);
-  room.send(conn, { t: 'useCard', turnId: m.turnId, requestId: 'self-skip', cardId: 'skip', targetId: actor });
-  assert.equal(conn.last('cardResult').ok, true);
-  assert.equal(room.engine.participant(actor).pending.skip, true);
-  assert.equal(m.typerId, actor, 'the current typing turn still needs an answer');
+  room.clock.advance(1000); queue(room, actor, 'skip', actor, 'self-skip');
   const hearts = room.engine.participant(actor).hearts;
-  play(room); play(room); play(room);
+  play(room); assert.equal(m.phase, 'cardReveal');
+  room.clock.advance(4500);
   assert.notEqual(m.typerId, actor);
   assert.equal(room.engine.participant(actor).pending.skip, false);
   assert.equal(room.engine.participant(actor).hearts, hearts);
@@ -190,31 +190,19 @@ test('portal and hatch celebrations relay to everyone with server-owned identity
   assert.equal(active.conns.bob.all('celebrate').length, 0);
 });
 
-test('heart cards honor shields, eliminate and end a match; invalid cards never consume inventory', () => {
-  const room = game();
-  const m = room.engine.match;
-  const actor = m.typerId;
-  const targetId = room.engine.nextAlive(actor);
-  const conn = room.conns[actor];
-  const target = room.engine.participant(targetId);
-  const request = { t: 'useCard', turnId: m.turnId, requestId: 'heart1', cardId: 'heart', targetId };
-  room.send(conn, { ...request, requestId: 'self', targetId: actor });
-  assert.equal(conn.last('cardResult').ok, false);
+test('queued heart cards honor shields and can end a match during reveal', () => {
+  const room = game(), m = room.engine.match, actor = room.engine.nextAlive(m.typerId), targetId = room.engine.nextAlive(actor), target = room.engine.participant(targetId);
   target.shield = true;
-  room.send(conn, request);
-  assert.equal(target.hearts, 2);
-  assert.equal(target.shield, false);
-  assert.equal(conn.last('cardUsed').shielded, true);
-  assert.equal(room.engine.players.get(actor).cards.heart, 1);
-  room.clock.advance(1000);
+  queue(room, actor, 'heart', targetId, 'heart1'); play(room);
+  assert.equal(target.hearts, 2); assert.equal(target.shield, false);
+  assert.equal(room.conns[actor].last('cardUsed').shielded, true);
+  room.clock.advance(4500); play(room);
+  queue(room, actor, 'heart', targetId, 'heart2');
+  target.hearts = 1; room.engine.participant(room.engine.nextAlive(targetId)).alive = false;
   room.engine.startTurn(actor);
-  target.hearts = 1;
-  room.engine.participant(room.engine.nextAlive(targetId)).alive = false;
-  room.send(conn, { ...request, turnId: m.turnId, requestId: 'heart2' });
-  assert.equal(m.phase, 'ended');
-  assert.equal(m.winnerId, actor);
-  assert.equal(target.alive, false);
-  assert.equal(conn.last('cardUsed').shielded, false);
+  assert.equal(m.phase, 'ended'); assert.equal(m.winnerId, actor); assert.equal(target.alive, false);
+  room.clock.advance(4500); assert.notEqual(m.phase, 'typing');
+  assert.deepEqual(room.errors, []);
 });
 
 test('in-match inventory updates and reconnects cannot refill spent cards', () => {
@@ -361,4 +349,72 @@ test('active participants cannot start travel or move even if their seat is clea
   p.seat=-1;p.zone='lighthouse';p.pos={x:300,y:0,z:9};
   room.send(a,{t:'celebrate',kind:'portal',to:'island'});assert.equal(p.travel,null);assert.ok(a.last('travelRejected'));
   room.send(a,{t:'move',x:0,y:0,z:0,ry:0});assert.equal(p.pos.x,300);
+});
+
+test('card plans are private, replaceable, cancellable and locked at reveal', () => {
+  const room = game(), m = room.engine.match, actor = room.engine.nextAlive(m.typerId), target = room.engine.nextAlive(actor), conn = room.conns[actor];
+  queue(room, actor, 'time_tax', target, 'first');
+  queue(room, actor, 'pressure', target, 'replacement');
+  assert.equal(room.engine.players.get(actor).cardQueue.cardId, 'pressure');
+  assert.equal(room.conns[target].all('cardQueue').length, 0);
+  assert.equal(JSON.stringify(room.engine.matchView()).includes('replacement'), false);
+  queue(room, actor, null, null, 'cancel');
+  assert.equal(room.engine.players.get(actor).cardQueue, null);
+  room.clock.advance(1000); queue(room, actor, 'time_tax', target, 'final'); play(room);
+  const endsAt=m.endsAt;
+  queue(room, actor, null, null, 'too-late');
+  assert.equal(conn.last('cardQueueResult').reason, 'locked');
+  room.send(conn, {t:'submit',word:'apple'});
+  room.send(conn, {t:'celebrate',kind:'portal',to:'lighthouse'});
+  room.send(conn, {t:'loadout',cards:{time_tax:99}});
+  assert.equal(m.phase, 'cardReveal'); assert.equal(m.endsAt, endsAt);
+  assert.equal(room.engine.players.get(actor).travel, null);
+  assert.equal(room.engine.players.get(actor).cards.time_tax, 1);
+  assert.deepEqual(room.errors, []);
+});
+
+test('disconnect cancels private plans and reconnect cannot refill spent cards or lose history', () => {
+  const room = game(), m = room.engine.match, actor = room.engine.nextAlive(m.typerId), target = room.engine.nextAlive(actor);
+  queue(room, actor, 'time_tax', target);
+  const takeover=room.join(actor,{cards:{time_tax:99}});
+  assert.equal(takeover.last('welcome').cardQueue.cardId,'time_tax');
+  room.engine.disconnect(takeover);
+  assert.equal(room.engine.players.get(actor).cardQueue,null);
+  room.join(actor,{cards:{time_tax:99}});
+  assert.equal(room.conns[actor].last('welcome').cardQueue,null);
+  room.clock.advance(1000); queue(room,actor,'time_tax',target,'spent'); play(room);
+  room.engine.disconnect(room.conns[actor]);room.join(actor,{cards:{time_tax:99}});
+  assert.equal(room.engine.players.get(actor).cards.time_tax,1);
+  assert.equal(room.conns[actor].last('welcome').match.cardHistory.length,1);
+  assert.equal(room.conns[actor].last('welcome').cards.time_tax,1);
+  assert.equal(room.conns[actor].last('welcome').cardReceipts.length,1);
+  assert.deepEqual(room.errors,[]);
+});
+
+test('departed targets, forfeits and a new match clear card plans without consumption', () => {
+  const room=game(), m=room.engine.match, actor=room.engine.nextAlive(m.typerId), target=room.engine.nextAlive(actor);
+  queue(room,actor,'heart',target);
+  room.engine.disconnect(room.conns[target]);
+  assert.equal(room.engine.players.get(actor).cardQueue,null);
+  assert.equal(room.engine.players.get(actor).cards.heart,2);
+  room.join(target);room.clock.advance(1000);queue(room,actor,'pressure',target,'next');
+  room.engine.fail(actor,'forfeit');
+  assert.equal(room.engine.players.get(actor).cardQueue,null);
+  room.engine.endMatch(null);room.engine.enterLobby();room.engine.startMatch();
+  room.send(room.conns[actor],{t:'queueCard',matchId:m.matchId,requestId:'stale',cardId:'heart',targetId:target});
+  assert.equal(room.conns[actor].last('cardQueueResult').ok,false);
+  assert.equal(room.engine.match.cardHistory.length,0);
+  assert.deepEqual(room.errors,[]);
+});
+
+test('old queue requests cannot be replayed after the ordinary receipt cache rolls over', () => {
+  const room=game(), m=room.engine.match, actor=room.engine.nextAlive(m.typerId), target=room.engine.nextAlive(actor);
+  const request=queue(room,actor,'time_tax',target,'old-plan');
+  queue(room,actor,null,null,'cancel-plan');
+  const player=room.engine.players.get(actor);
+  for(let i=0;i<140;i++)room.engine.remember(player,`hint:noise${i}`,{t:'hint',ok:false});
+  room.send(room.conns[actor],request);
+  assert.equal(player.cardQueue,null);
+  assert.equal(player.cards.time_tax,2);
+  assert.deepEqual(room.errors,[]);
 });

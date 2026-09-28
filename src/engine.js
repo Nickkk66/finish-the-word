@@ -29,7 +29,7 @@ const MAX_MESSAGE_LENGTH = 2048;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const CLOSE_REPLACED = 4000; // the same player id connected from another socket
 const CLOSE_REJECTED = 1008; // after error room_full / bad_hello
-const ACTIVE_PHASES = new Set(['choosing', 'typing', 'roundEnd', 'roulette', 'rouletteReveal']);
+const ACTIVE_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', 'roulette', 'rouletteReveal']);
 
 // Token buckets per player and message kind: [tokens refilled per second, burst].
 const RATE_LIMITS = {
@@ -76,7 +76,7 @@ function newMatch() {
     used: new Set(),
     lastFailedId: null, // decides the next chooser
     turnId: 0, mode: 'classic', minLength: 3, prefixIndex: null, twist: null, startedAt: null,
-    turnStartAt: null, firstKeyAt: null, paid: false, humans: 0,
+    cardHistory: [], cardRequests: new Map(), turnStartAt: null, firstKeyAt: null, paid: false, humans: 0,
   };
 }
 
@@ -156,6 +156,8 @@ export class GameEngine {
       if (player?.conn !== conn) return; // never joined, rejected, or replaced by a newer socket
       player.conn = null;
       player.connected = false;
+      this.clearCardQueue(player, 'disconnected');
+      for (const p of this.players.values()) if (p.cardQueue?.targetId === player.id) this.clearCardQueue(p, 'target_left');
       this.cancel(player.fireTimer); player.fireTimer = null;
       player.graceTimer = this.schedule(() => this.removePlayer(player.id), RECONNECT_GRACE_MS);
       this.broadcastPlayer(player);
@@ -208,7 +210,7 @@ export class GameEngine {
       if (player.conn) this.closeConn(player.conn, CLOSE_REPLACED, 'replaced');
       this.cancel(player.graceTimer);
       Object.assign(player, loadout, { conn, connected: true, graceTimer: null, isAdmin: verified, ipHash: conn.ipHash });
-      if (!ACTIVE_PHASES.has(this.match.phase)) player.cards = sanitizeCards(msg.cards);
+      if (!ACTIVE_PHASES.has(this.match.phase) && this.match.phase !== 'ended') player.cards = sanitizeCards(msg.cards);
     } else {
       if (this.players.size >= MAX_PLAYERS && !this.evictBot()) return this.reject(conn, 'room_full', 'This room is full.');
       player = this.addPlayer({ id, isBot: false, conn, ...loadout });
@@ -233,6 +235,7 @@ export class GameEngine {
       match: this.matchView(),
       rouletteEntry: this.rouletteEntry,
       meteor: this.meteorView(),
+      cardQueue: player.cardQueue || null, cards: { ...player.cards }, cardReceipts: this.match.cardHistory.filter(e => e.actorId === player.id).map(e => ({ cardId: e.cardId, requestId: e.requestId })),
     });
     this.broadcast({ t: 'player', p: this.view(player) }, id);
     for (const receipt of player.requests.values()) if (['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward'].includes(receipt.t)) this.send(player, receipt);
@@ -258,7 +261,7 @@ export class GameEngine {
     const player = {
       id, name, isBot, look, chair, pet,
       back, capeColor, level, petTier, rouletteBet: null, isAdmin: false, adminTag: false, ipHash: conn?.ipHash,
-      cards: {}, requests: new Map(), obbyStartAt: null,
+      cards: {}, cardQueue: null, requests: new Map(), obbyStartAt: null,
       seat: -1, wins: 0, pos: null, zone: 'island', travel: null,
       conn, connected: true, graceTimer: null,
       moved: false, // has a position not yet sent in `moves`
@@ -329,6 +332,7 @@ export class GameEngine {
       case 'host': return this.onHost(player, msg);
       case 'ping': return this.onPing(player, msg.c);
       case 'hint': return this.onHint(player, msg);
+      case 'queueCard': return this.onQueueCard(player, msg);
       case 'useCard': return this.onCard(player, msg);
       case 'emote': return this.onEmote(player, msg.name);
       case 'celebrate': return this.onCelebrate(player, msg);
@@ -469,13 +473,20 @@ export class GameEngine {
   }
 
   // Requests are scoped by type + id; successful consumption can never replay twice.
-  request(player, kind, msg, run) {
+  request(player, kind, msg, run, internal = false) {
     if (typeof msg.requestId !== 'string' || !ID_RE.test(msg.requestId)) return;
     const key = `${kind}:${msg.requestId}`;
+    const plans = kind === 'queueCard' && msg.matchId === this.match.matchId ? this.match.cardRequests : null;
+    const planKey = `${player.id}:${key}`;
+    if (plans?.has(planKey)) return this.send(player, plans.get(planKey));
     if (player.requests.has(key)) return this.send(player, player.requests.get(key));
-    if (!this.allow(player, kind === 'hint' ? 'hint' : kind === 'bet' ? 'bet' : 'card')) return;
+    if (!internal && !this.allow(player, kind === 'hint' ? 'hint' : kind === 'bet' ? 'bet' : 'card')) {
+      if (kind === 'queueCard') this.send(player, { t: 'cardQueueResult', requestId: msg.requestId, ok: false, reason: 'rate_limited' });
+      return;
+    }
     const result = run();
     this.remember(player, key, result);
+    if (plans) plans.set(planKey, result);
     this.send(player, result);
   }
 
@@ -499,15 +510,39 @@ export class GameEngine {
     });
   }
 
-  onCard(player, msg) {
+  clearCardQueue(player, reason = null) {
+    if (!player?.cardQueue) return;
+    player.cardQueue = null;
+    this.send(player, { t: 'cardQueue', queue: null, reason });
+  }
+
+  onQueueCard(player, msg) {
+    this.request(player, 'queueCard', msg, () => {
+      const m = this.match;
+      const answer = { t: 'cardQueueResult', requestId: msg.requestId, ok: false };
+      if (msg.matchId !== m.matchId || !['choosing', 'typing', 'cardReveal', 'roundEnd'].includes(m.phase) ||
+          !this.participant(player.id)?.alive || !player.connected || player.travel ||
+          (['typing', 'cardReveal'].includes(m.phase) && m.typerId === player.id)) return { ...answer, reason: 'locked' };
+      if (msg.cardId === null) { this.clearCardQueue(player); return { ...answer, ok: true }; }
+      const card = Object.hasOwn(CARDS_BY_ID, msg.cardId) ? CARDS_BY_ID[msg.cardId] : null;
+      const target = this.participant(msg.targetId);
+      if (!card || !target?.alive || !this.players.get(target.id)?.connected || (target.id === player.id && card.effect !== 'skip')) return { ...answer, reason: 'invalid_target' };
+      if (!(player.cards[card.id] > 0)) return { ...answer, reason: 'not_owned' };
+      player.cardQueue = { cardId: card.id, targetId: target.id, requestId: msg.requestId, matchId: m.matchId, style: msg.style === 'deck' ? 'deck' : 'pocket' };
+      this.send(player, { t: 'cardQueue', queue: player.cardQueue });
+      return { ...answer, ok: true };
+    });
+  }
+
+  onCard(player, msg, queued = false) {
     this.request(player, 'card', msg, () => {
       const answer = { t: 'cardResult', ok: false, turnId: msg.turnId, requestId: msg.requestId, cardId: msg.cardId, targetId: msg.targetId };
       const m = this.match;
-      if (m.phase !== 'typing' || m.typerId !== player.id || msg.turnId !== m.turnId || this.now() >= m.endsAt) return { ...answer, reason: 'not_your_turn' };
+      if (!queued || m.phase !== 'cardReveal' || m.typerId !== player.id || msg.turnId !== m.turnId || this.now() >= m.endsAt) return { ...answer, reason: 'not_your_turn' };
       const actor = this.participant(player.id);
       const target = this.participant(msg.targetId);
       const card = Object.hasOwn(CARDS_BY_ID, msg.cardId) ? CARDS_BY_ID[msg.cardId] : null;
-      if (!card || !target?.alive || (target.id === player.id && card.effect !== 'skip')) return { ...answer, reason: 'invalid_target' };
+      if (!card || !target?.alive || !this.players.get(target.id)?.connected || (target.id === player.id && card.effect !== 'skip')) return { ...answer, reason: 'invalid_target' };
       if (actor.cardTurn === m.turnId) return { ...answer, reason: 'one_per_turn' };
       if (!(player.cards[card.id] > 0)) return { ...answer, reason: 'not_owned' };
       actor.cardTurn = m.turnId;
@@ -515,11 +550,14 @@ export class GameEngine {
       if (card.effect === 'skip') target.pending.skip = true;
       if (card.effect === 'time') target.pending.time += card.value;
       if (card.effect === 'mistakes') target.pending.mistakes += card.value;
-      this.broadcast({ t: 'cardUsed', actorId: player.id, targetId: target.id, cardId: card.id, effect: card.effect, shielded: card.effect === 'heart' && !!target.shield });
+      const event = { t: 'cardUsed', eventId: `${m.matchId}:${m.turnId}`, requestId: msg.requestId, actorId: player.id, targetId: target.id, actorSeat: player.seat, targetSeat: this.players.get(target.id).seat, cardId: card.id, effect: card.effect, style: msg.style, shielded: card.effect === 'heart' && !!target.shield };
+      m.cardHistory.push(event);
+      const { requestId, ...publicEvent } = event;
+      this.broadcast(publicEvent);
       if (card.effect === 'heart') this.fail(target.id, 'card');
       else this.broadcastMatch();
       return { ...answer, ok: true };
-    });
+    }, queued);
   }
 
   onEmote(player, name) {
@@ -735,6 +773,7 @@ export class GameEngine {
       }
       this.reportListing();
     }
+    for (const p of this.players.values()) this.clearCardQueue(p);
     this.match = newMatch();
     if (this.readyPlayers().length >= 2) this.setPhase('countdown', COUNTDOWN_MS, () => this.startMatch());
     else this.setPhase('lobby');
@@ -754,6 +793,7 @@ export class GameEngine {
     const seated = this.readyPlayers();
     if (seated.length < 2) return;
     const settings = { ...this.settings };
+    for (const p of this.players.values()) this.clearCardQueue(p);
     this.match = newMatch();
     this.match.settings = settings;
     this.match.mode = settings.mode;
@@ -816,13 +856,24 @@ export class GameEngine {
     this.startTurn(typerId, 0);
   }
 
-  startTurn(typerId, sabotageMs = 0, dragon = false) {
+  startTurn(typerId, sabotageMs = 0, dragon = false, revealed = false) {
     const m = this.match;
+    if (!revealed && this.players.get(typerId)?.cardQueue) {
+      m.typerId = typerId;
+      m.turnId = ++this.turnSerial;
+      // Locked, bounded presentation window; browsing never controls the clock.
+      this.setPhase('cardReveal', 4500, () => this.startTurn(typerId, sabotageMs, dragon, true));
+      const player = this.players.get(typerId), queue = player?.cardQueue;
+      this.clearCardQueue(player);
+      this.broadcastMatch();
+      if (queue && player.connected) this.onCard(player, { ...queue, turnId: m.turnId }, true);
+      return;
+    }
     // A skip grants relief without losing a heart. Consume queued skips only once.
     for (let i = 0; i < m.participants.length && this.participant(typerId)?.pending.skip; i++) {
       this.participant(typerId).pending.skip = false;
       this.broadcast({ t: 'cardUsed', actorId: null, targetId: typerId, cardId: 'skip', effect: 'skipped' });
-      typerId = this.nextAlive(typerId);
+      return this.startTurn(this.nextAlive(typerId), sabotageMs, dragon);
     }
     const participant = this.participant(typerId);
     if (!participant) return;
@@ -833,7 +884,7 @@ export class GameEngine {
     let turnMs = Math.max(modeRules.floor, shrunk + bonus('time') * 1000 - sabotageMs - participant.pending.time * 1000);
     if (dragon) turnMs = Math.min(turnMs, 3000);
     m.typerId = typerId;
-    m.turnId = ++this.turnSerial;
+    if (!revealed) m.turnId = ++this.turnSerial;
     m.turnStartAt = this.now();
     m.firstKeyAt = null;
     m.minLength = modeRules.minLength(m.wordCount);
@@ -946,10 +997,12 @@ export class GameEngine {
     } else {
       participant.hearts--;
     }
+    this.clearCardQueue(this.players.get(id), 'heart_lost');
     if (!shielded) participant.lostHeart = true;
     this.broadcast({ t: 'fail', id, cause, hearts: participant.hearts, shielded });
     if (participant.hearts === 0) {
       participant.alive = false;
+      for (const p of this.players.values()) if (p.cardQueue?.targetId === id) this.clearCardQueue(p, 'target_left');
       participant.pending = { skip: false, time: 0, mistakes: 0 };
       this.broadcast({ t: 'elim', id });
     }
@@ -969,6 +1022,7 @@ export class GameEngine {
     if (m.paid || !ACTIVE_PHASES.has(m.phase)) return;
     if (isRouletteMode(m.mode)) return this.endRoulette(winnerId);
     m.paid = true;
+    for (const p of this.players.values()) this.clearCardQueue(p);
     const durationMs = Math.max(0, this.now() - m.startedAt);
     const contributors = m.participants.filter(p => !p.isBot && p.words > 0).length;
     const eligibleMs = contributors >= 2 ? Math.min(durationMs, m.wordCount * 30000) : 0;
@@ -1264,6 +1318,7 @@ export class GameEngine {
   matchView() {
     const m = this.match;
     return {
+      matchId: m.matchId, cardHistory: m.cardHistory.map(({ requestId, ...event }) => event),
       phase: m.phase,
       phaseEndsIn: m.endsAt === null ? null : Math.max(0, m.endsAt - this.now()),
       phaseDuration: m.duration,

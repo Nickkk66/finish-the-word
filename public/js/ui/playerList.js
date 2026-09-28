@@ -4,7 +4,7 @@ import { h } from './dom.js';
 import { icons } from './icons.js';
 import { MAX_PLAYERS } from '../shared/constants.js';
 
-const LIVE_PHASES = new Set(['choosing', 'typing', 'roundEnd', 'roulette', 'rouletteReveal', 'ended']);
+const LIVE_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', 'roulette', 'rouletteReveal', 'ended']);
 
 export function createPlayerList() {
   const count = h('span', { class: 'plist-count' });

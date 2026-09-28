@@ -73,7 +73,7 @@ function normalize(raw) {
     receipts: Array.isArray(p.receipts) ? p.receipts.filter((v) => typeof v === 'string').slice(-512) : [],
     settings: {
       sound: settings.sound !== false,
-      prefillPrefix: settings.prefillPrefix !== false,
+      prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket',
       view: settings.view === 'first' ? 'first' : 'third',
       quality: settings.quality === 'low' || settings.quality === 'high' ? settings.quality : (coarse ? 'low' : 'high'),
     },
@@ -274,6 +274,11 @@ export function grantPetTier(id, tier, receipt) {
 export function addCard(id) {
   if (!CARDS.some((v) => v.id === id)) return false;
   profile.cards[id] = (profile.cards[id] || 0) + 1; commit(); return true;
+}
+export function reconcileCards(cards, receipts = []) {
+  for (const card of CARDS) profile.cards[card.id] = count(cards?.[card.id]);
+  for (const receipt of receipts) claimReceipt(`card:${receipt.requestId}`);
+  commit();
 }
 export function consumeCard(id, receipt) {
   if (!profile.cards[id] || (receipt && !claimReceipt(receipt))) return false;

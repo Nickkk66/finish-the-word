@@ -16,9 +16,9 @@ export function cardsPanel({ state, actions }) {
       body.append(boxHeading, boxes, h('h3', { class: 'section-title stroke' }, 'Your Cards'), note, inventory);
       function update() {
         const m = state.match;
-        const active = ['choosing', 'typing', 'roundEnd'].includes(m?.phase);
+        const active = ['choosing', 'typing', 'cardReveal', 'roundEnd'].includes(m?.phase);
         const turn = m?.phase === 'typing' && m.typerId === state.you;
-        note.textContent = turn ? 'Pick a card, then click a glowing player. Press C to close cards; Esc closes any panel.' : 'Collect cards from boxes, then use them on your typing turn. Press C to close.';
+        note.textContent = turn ? 'Pick a card, then click a glowing player. Press C to close cards; Esc closes any panel.' : 'Collect cards from boxes. During a match, plan a card before your next turn. Press C to close.';
         boxHeading.hidden = boxes.hidden = turn;
         inventory.classList.toggle('card-turn-tray', turn);
         boxes.replaceChildren(...CARD_BOXES.map((box) => {
@@ -38,7 +38,7 @@ export function cardsPanel({ state, actions }) {
               await noticeDialog(`${card.name} is locked`, `You don't own ${card.name} yet. Open a Card Crate or Royal Card Crate between matches to collect one.`);
               return;
             }
-            if (!turn) { await noticeDialog('Wait for your turn', 'You can use a card on your typing turn.'); return; }
+            if (!turn) { await noticeDialog('Plan during a match', 'Open My cards during a match and choose a card and target before your next turn begins.'); return; }
             if (used) { await noticeDialog('One card per turn', 'You already used a card this turn.'); return; }
             actions.beginCardTarget(card.id);
           };

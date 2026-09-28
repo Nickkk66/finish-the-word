@@ -50,7 +50,7 @@ export function cloudProfile(value, fixedId) {
     cards: Object.fromEntries(CARDS.map(card => [card.id, count(value.cards?.[card.id])])),
     longestWord: /^[a-z]{1,30}$/.test(value.longestWord || '') ? value.longestWord : '',
     receipts: Array.isArray(value.receipts) ? value.receipts.filter(v => typeof v === 'string' && v.length <= 160).slice(-512) : [],
-    settings: { sound: settings.sound !== false, prefillPrefix: settings.prefillPrefix !== false, view: settings.view === 'first' ? 'first' : 'third', quality: settings.quality === 'low' ? 'low' : 'high' },
+    settings: { sound: settings.sound !== false, prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket', view: settings.view === 'first' ? 'first' : 'third', quality: settings.quality === 'low' ? 'low' : 'high' },
   };
   for (const key of ['coins', 'wins', 'gamesPlayed', 'wordsTyped', 'xp', 'bestWpm', 'bestCombo', 'bestObbyMs', 'lastFreeClaim']) {
     result[key] = key === 'lastFreeClaim' ? (Number.isSafeInteger(value[key]) && value[key] >= 0 ? value[key] : 0) : count(value[key]);

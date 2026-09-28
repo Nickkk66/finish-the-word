@@ -212,3 +212,17 @@
 @media(max-width:600px){.roulette-actions{flex-wrap:wrap;justify-content:center}.roulette-wager{width:90px}.roulette-odds{font-size:14px}}
 
 .w-meteor-reward {padding:5px 12px;border:2px solid #f5d780;border-radius:14px;background:#30203bdd;color:#ffe99d;font:700 22px Fredoka,sans-serif;white-space:nowrap;filter:drop-shadow(0 0 9px #ffc04c)}
+
+.quick-card-tray { position:fixed; z-index:65; bottom:105px; right:18px; width:min(420px,calc(100vw - 28px)); max-height:65dvh; overflow:auto; pointer-events:auto; padding:16px; border:2px solid #aa91ed; border-radius:18px; background:#171a2bf5; color:white; box-shadow:0 10px 40px #0008; }
+.quick-card-tray[hidden] { display:none; }
+.quick-card-heading { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+.quick-card-tray p { font-size:14px; line-height:1.4; margin:10px 0; }
+.quick-card-options { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.quick-card { display:flex; flex-direction:column; align-items:center; border:2px solid #6f668c; border-radius:10px; background:#29263f; color:white; padding:5px; cursor:pointer; }
+.quick-card svg { width:100%; height:80px; }
+.quick-card strong { font-size:12px; }
+.quick-card.selected { border-color:#ebc177; background:#453958; }
+.quick-card:disabled { opacity:.45; cursor:default; }
+.quick-card-targets { display:flex; flex-wrap:wrap; gap:6px; }
+.quick-card-targets p { width:100%; }
+.quick-card-queue { color:#eac889; }

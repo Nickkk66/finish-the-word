@@ -161,15 +161,18 @@ try {
   const hint = await actor.next(m => m.t === 'hint');
   assert.ok(hint.ok && hint.word.startsWith(typing.prefix));
   assert.ok(!target.inbox.some(m => m.t === 'hint'));
-  const card = { t: 'useCard', turnId: typing.turnId, requestId: 'cardintegration', cardId: 'heart', targetId: target.id };
-  actor.send(card); actor.send(card);
-  const result = await actor.next(m => m.t === 'cardResult');
+  const card = { t: 'queueCard', matchId: typing.matchId, requestId: 'cardintegration', cardId: 'heart', targetId: actor.id, style: 'deck' };
+  target.send(card); target.send(card);
+  assert.equal((await target.next(m => m.t === 'cardQueueResult')).ok, true);
+  assert.ok(!actor.inbox.some(m => m.t === 'cardQueue'));
+  actor.send({ t: 'submit', word: hint.word });
+  const result = await target.next(m => m.t === 'cardResult');
   assert.equal(result.ok, true);
   await host.next(m => m.t === 'win');
-  assert.equal(actor.inbox.filter(m => m.t === 'reward').length, 1);
-  assert.equal(target.inbox.filter(m => m.t === 'cardUsed').length, 1);
+  assert.equal(target.inbox.filter(m => m.t === 'reward').length, 1);
+  assert.equal(actor.inbox.filter(m => m.t === 'cardUsed').length, 1);
   const board = await api('/api/leaderboard');
-  assert.ok(board.top.some(r => r.name === actor.id && r.wins === 1));
+  assert.ok(board.top.some(r => r.name === target.id && r.wins === 1));
   console.log('ok private hint, card replay protection and global leaderboard write');
 
   const runner = await connect('RunnerIntegration', 'OBBYT');
@@ -193,14 +196,14 @@ try {
   await stop();
   await start();
   // A new cache origin forces this read through the persisted SQLite object.
-  assert.ok((await api('/api/leaderboard', true)).top.some(r => r.name === actor.id && r.wins === 1));
+  assert.ok((await api('/api/leaderboard', true)).top.some(r => r.name === target.id && r.wins === 1));
   const resumed = await connect(host.id, 'TOKNT', { adminToken: unlocked.token });
   assert.equal(resumed.welcome.isAdmin, true);
-  resumed.send({ t: 'admin', action: 'removeLeaderboard', id: actor.id });
+  resumed.send({ t: 'admin', action: 'removeLeaderboard', id: target.id });
   await wait(300);
   resumed.ws.close();
   await stop(); await start();
-  assert.ok(!(await api('/api/leaderboard')).top.some(r => r.name === actor.id));
+  assert.ok(!(await api('/api/leaderboard')).top.some(r => r.name === target.id));
   console.log('ok SQLite persistence, token reconnect and admin leaderboard removal');
   console.log(`Integration passed; disposable storage: ${storage}`);
 } finally {

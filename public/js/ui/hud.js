@@ -15,7 +15,7 @@ const TIMER_R = 42;
 const TIMER_C = 2 * Math.PI * TIMER_R;
 const URGENT_MS = 5000;
 const CHAIN_SHOWN = 4;
-const ACTIVE_PHASES = new Set(['choosing', 'typing', 'roundEnd']);
+const ACTIVE_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd']);
 
 const FAIL_TEXT = {
   timeout: (n) => ['⏰ ', n, ' ran out of time!'],
@@ -92,6 +92,7 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onRetur
       if (m.chooserId === me) return { parts: ['Choose a letter for ', { name: nameOf(nextTyper(m)) }, '!'] };
       return { parts: [{ name: nameOf(m.chooserId) }, ' is choosing a letter...'] };
     }
+    if (phase === 'cardReveal') return { parts: ['Card reveal · get ready'], small: true };
     if (phase === 'typing') {
       const tiles = m.prefix.toUpperCase();
       if (m.typerId === me) return { parts: ['Type a word starting with...'], tiles };
@@ -275,7 +276,8 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onRetur
     const comboText = `${multiplier}× COMBO · ${comboCount} fast words`;
     if (combo.textContent !== comboText) { combo.textContent = comboText; combo.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 220 }); }
     const myTyping = phase === 'typing' && m.typerId === st.you && part?.alive;
-    tools.hidden = !myTyping;
+    tools.hidden = !part?.alive || !ACTIVE_PHASES.has(phase);
+    hintButton.hidden = !myTyping;
     hintButton.disabled = !!st.hintPending || st.hintTurn === m?.turnId || profile.coins < HINT_PRICE;
     hintButton.textContent = st.hintPending ? 'Finding hint…' : st.hintTurn === m?.turnId ? 'Hint purchased' : `Hint · ${HINT_PRICE}`;
     cardsButton.disabled = !!st.cardPending;

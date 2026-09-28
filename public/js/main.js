@@ -7,7 +7,7 @@ import { BLOCKS, CHAIRS, PETS_BY_ID, BACK_BLING, CARDS_BY_ID, CARD_BOXES, rollBl
 import {
   profile, onProfileChange, setName, setLook, buyOrEquipChair, payForBlock, addPet, equipPet,
   recordWord, recordMatch, setSetting, claimFree, FREE_COINS,
-  buyOrEquip, mergePet, deletePet, addCard, consumeCard, spendCoins, grantCoins, recordObby, level,
+  buyOrEquip, mergePet, deletePet, addCard, consumeCard, reconcileCards, spendCoins, grantCoins, recordObby, level,
   adjustCoins, sellChair, grantPetTier, setCapeColor,
 } from './profile.js';
 import { createAccount } from './account.js';
@@ -27,6 +27,7 @@ import { chairsPanel } from './ui/panels/chairs.js';
 import { petsPanel } from './ui/panels/pets.js';
 import { freePanel } from './ui/panels/free.js';
 import { settingsPanel, gameSettingsPanel } from './ui/panels/settings.js';
+import { createCardTray } from './ui/card-tray.js';
 import { cardsPanel } from './ui/panels/cards.js';
 import { profilePanel } from './ui/panels/profile.js';
 import { initFx, toast, banner, confetti, countdownPop, rewardPop } from './ui/fx.js';
@@ -36,7 +37,7 @@ import { cardArt } from './ui/art.js';
 
 const RECONNECT_OVERLAY_DELAY_MS = 700;
 const LOADOUT_DEBOUNCE_MS = 250;
-const MATCH_PHASES = new Set(['choosing', 'typing', 'roundEnd', 'roulette', 'rouletteReveal']);
+const MATCH_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', 'roulette', 'rouletteReveal']);
 const TITLE = document.title;
 
 const REASONS = {
@@ -233,37 +234,15 @@ const actions = {
     }, () => state.match?.phase === 'typing' && state.match.typerId === state.you && state.match.turnId === turnId);
     turnConfirmation = null;
   },
-  beginCardTarget(cardId) {
-    const m = state.match;
-    const card = CARDS_BY_ID[cardId];
-    if (!card || !profile.cards[cardId]) { toast('Get this card from a card box between matches.', 'info'); return; }
-    if (m?.phase !== 'typing' || m.typerId !== state.you) { toast('Use a card on your typing turn.', 'info'); return; }
-    if (state.cardPending || state.cardUsedTurn === m.turnId) { toast('One card per turn.', 'info'); return; }
-    const ids = m.participants.filter(p => p.alive && (p.id !== state.you || card.effect === 'skip')).map(p => p.id);
-    cancelCardTarget();
-    panels.close();
-    const el = h('div', { class: 'card-target-notice' },
-      h('strong', {}, `${card.name}: tap a glowing player`),
-      card.effect === 'skip' ? h('button', { class: 'btn green', onClick: () => select(state.you) }, 'Use on me') : null,
-      h('button', { class: 'btn grey', onClick: cancelCardTarget }, 'Cancel'));
-    const select = (id) => { cancelCardTarget(); actions.useCard(cardId, id); };
-    targeting = { turnId: m.turnId, el };
-    uiRoot.append(el);
-    world.beginCardTargeting(ids, select);
+  beginCardTarget() { openCards(); },
+  useCard(cardId, targetId) {
+    if (state.cardPending) return;
+    state.cardPending = { requestId: crypto.randomUUID(), matchId: state.match?.matchId, cardId, targetId, style: profile.settings.cardStyle };
+    if (!net.send({ t: 'queueCard', ...state.cardPending })) state.cardPending = null;
+    cardTray.update();
   },
-  async useCard(cardId, targetId) {
-    const m = state.match;
-    if (m?.phase !== 'typing' || m.typerId !== state.you || state.cardPending || state.cardUsedTurn === m.turnId || !profile.cards[cardId]) return;
-    const turnId = m.turnId;
-    turnConfirmation = turnId;
-    const card = CARDS_BY_ID[cardId];
-    const yes = await confirmDialog({ title: `Use ${card.name}?`, message: `Target: ${nameOf(targetId)}. ${card.description} This consumes one card.`, ok: 'Use card', tone: 'purple' });
-    turnConfirmation = null;
-    if (!yes || state.match?.turnId !== turnId || state.match?.phase !== 'typing') return;
-    state.cardPending = { requestId: crypto.randomUUID(), turnId, cardId };
-    if (!net.send({ t: 'useCard', ...state.cardPending, targetId })) state.cardPending = null;
-    panels.refresh();
-  },
+  cancelQueuedCard() { actions.useCard(null, null); },
+  setCardStyle(style) { setSetting('cardStyle', style); if (state.cardQueue) actions.useCard(state.cardQueue.cardId, state.cardQueue.targetId); },
   thumbnail: (kind, id, size) => world ? world.renderThumbnail(kind, id, size) : Promise.reject(new Error('World not ready')),
   preference: setSetting,
   setView(view) { world?.setFirstPerson(view === 'first'); setSetting('view', view); },
@@ -329,12 +308,17 @@ const PANELS = {
   account: accountPanel(panelCtx),
 };
 
-const hud = createHud({ onSubmit: submitWord, onTyping: sendTyping, onPick: (letter) => net.send({ t: 'pick', letter }), onHint: actions.hint, onCards: () => panels.open(PANELS.cards), onReturn: actions.returnToIsland });
+const hud = createHud({ onSubmit: submitWord, onTyping: sendTyping, onPick: (letter) => net.send({ t: 'pick', letter }), onHint: actions.hint, onCards: openCards, onReturn: actions.returnToIsland });
+const cardTray = createCardTray(uiRoot, state, actions);
+function openCards() {
+  if (MATCH_PHASES.has(state.match?.phase)) { panels.close(); cardTray.toggle(); }
+  else panels.open(PANELS.cards);
+}
 const rouletteHud = createRouletteHud({ onAction: actions.roulette, onEnter: actions.enterRoulette, onStart: () => actions.host('start') });
 const playerList = createPlayerList();
 const chat = createChat({ onSend: sendChat, onEmote: playEmote });
 const panels = createPanelHost(uiRoot);
-const sidebar = createSidebar({ onInvite: invite, openPanel: (id) => panels.open(PANELS[id]), onView: toggleView });
+const sidebar = createSidebar({ onInvite: invite, openPanel: (id) => id === 'cards' ? openCards() : panels.open(PANELS[id]), onView: toggleView });
 const gameUi = h('div', { class: 'game-ui', hidden: true }, hud.el, rouletteHud.el, playerList.el, chat.el, sidebar.el);
 
 const invited = cleanCode(new URLSearchParams(location.search).get('room'));
@@ -356,9 +340,9 @@ function syncWorldInput() {
 document.addEventListener('focusin', syncWorldInput);
 document.addEventListener('focusout', () => setTimeout(syncWorldInput, 0));
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') cancelCardTarget();
+  if (e.key === 'Escape') { cancelCardTarget(); cardTray.close(); }
   if (e.key.toLowerCase() === 'c' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && state.inRoom && !isTextField(document.activeElement) && !document.querySelector('.overlay:not(.leaving)')) {
-    e.preventDefault(); panels.open(PANELS.cards); return;
+    e.preventDefault(); openCards(); return;
   }
   if (e.key.toLowerCase() !== 'p' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || !state.inRoom || isTextField(document.activeElement) || isMyTurn(state.match || {}) || state.match?.phase === 'choosing' || document.querySelector('.overlay')) return;
   e.preventDefault(); toggleView();
@@ -705,6 +689,7 @@ async function joinRoom(code, isPublic = false) {
 /** Tears the room down locally and returns to the menu (the socket must already be closed). */
 function exitRoom() {
   cancelCardTarget();
+  cardTray.close(); world?.clearCards(); state.cardQueue = null;
   cancelConfirmation(); state.hintPending = null; state.cardPending = null;
   state.bannedPlayers.clear();
   for (const id of [...state.players.keys()]) removePlayer(id);
@@ -798,6 +783,7 @@ function refreshRoom() {
   hud.update(state);
   refreshMode();
   playerList.update(state);
+  cardTray.update();
   panels.refresh();
   syncLeaderboard();
   sidebar.setRole(state.hostId === state.you || state.isAdmin);
@@ -818,6 +804,8 @@ function refreshMode() {
 }
 
 net.on('welcome', (msg) => {
+  if (msg.cards) reconcileCards(msg.cards, msg.cardReceipts);
+  state.cardQueue = msg.cardQueue; state.cardPending = null;
   state.you = msg.you;
   state.code = msg.code;
   state.hostId = msg.hostId;
@@ -934,7 +922,7 @@ net.on('fail', (msg) => {
   const { id, cause, hearts, shielded } = msg;
   const mine = id === state.you;
   state.lastFail = msg;
-  if(mine){cancelCardTarget();if(panels.isOpen('cards'))panels.close();}
+  if(mine){cardTray.close();cancelCardTarget();if(panels.isOpen('cards'))panels.close();}
   if (lastWord?.id !== id && bubbles.has(id)) setBubble(id, null);
   if (shielded) {
     sfx.pick();
@@ -1018,17 +1006,27 @@ net.on('hint', (msg) => {
   } else if (!msg.ok && current) toast(msg.reason === 'already_bought' ? 'You already bought this turn’s hint.' : 'No hint available. You were not charged.', 'info');
   hud.update(state);
 });
-net.on('cardResult', (msg) => {
-  const pending = state.cardPending;
-  if (!pending || pending.requestId !== msg.requestId) return;
+net.on('cardQueue', ({ queue, reason }) => {
+  state.cardQueue = queue; cardTray.update();
+  if (reason) toast('Card plan cancelled. Your card remains in inventory.', 'info');
+});
+net.on('cardQueueResult', msg => {
+  if (state.cardPending?.requestId !== msg.requestId) return;
   state.cardPending = null;
+  if (!msg.ok) toast('The turn locked or that target is unavailable. Card not queued.', 'info');
+  cardTray.update(); hud.update(state);
+});
+net.on('cardResult', msg => {
   if (msg.ok) {
     consumeCard(msg.cardId, `card:${msg.requestId}`); state.cardUsedTurn = msg.turnId;
-    // Do not send counts back mid-match; the server consumed its registered copy.
-  } else toast('That card could not be used. It remains in your inventory.', 'info');
-  panels.refresh(); hud.update(state);
+    // A winning Heartbreaker receipt follows endMatch: replace any debounced stale counts.
+    if (!MATCH_PHASES.has(state.match?.phase)) syncLoadout();
+  }
+  else if (msg.turnId === state.match?.turnId) toast('That card could not be used. It remains in your inventory.', 'info');
+  cardTray.update(); hud.update(state);
 });
-net.on('cardUsed', ({ actorId, targetId, cardId, effect, shielded }) => {
+net.on('cardUsed', (event) => {
+  const { actorId, targetId, cardId, effect, shielded } = event;
   const card = CARDS_BY_ID[cardId];
   if(effect==='skipped'){
     world.playEffect(targetId,'skipped');
@@ -1040,7 +1038,7 @@ net.on('cardUsed', ({ actorId, targetId, cardId, effect, shielded }) => {
     card.effect==='mistakes'?'2 fewer mistakes next turn · minimum 1':
     shielded?'pet shield blocked Heartbreaker':'lost 1 heart';
   const message=`${nameOf(targetId)}: ${result}`;
-  world.playCard(actorId,targetId,cardId,message);
+  world.playCard(actorId,targetId,cardId,message,event);
   world.playEffect(targetId, 'flair', { text: result, color: card.color });
   toast(`${nameOf(actorId)} played ${card.name}. ${message}`, 'info', 5500);
   chat.add({ system: true, text: `${nameOf(actorId)} played ${card.name} on ${nameOf(targetId)} — ${result}.` });
@@ -1121,7 +1119,11 @@ net.on('rouletteOut', ({ id }) => { world?.knockOutRoulette?.(id); if(id===state
 function applyMatch(m, resync = false) {
   const prev = state.match;
   state.match = m;
+  if (MATCH_PHASES.has(m.phase) && panels.isOpen('cards')) panels.close();
   if(m.phase==='lobby'||m.startedAt!==prev?.startedAt)world.clearCards();
+  if (resync) world.restoreCards(m.cardHistory || []);
+  if ((m.typerId === state.you && m.phase === 'cardReveal') || (prev?.typerId === state.you && (m.typerId !== state.you || prev.turnId !== m.turnId))) cardTray.close();
+  cardTray.update();
   if(prev?.phase==='typing'&&prev.typerId===state.you&&(m.phase!=='typing'||m.typerId!==state.you||m.turnId!==prev.turnId)&&panels.isOpen('cards'))panels.close();
   if (prev?.turnId !== m.turnId || m.phase !== 'typing') {
     cancelCardTarget();
@@ -1153,6 +1155,7 @@ function applyMatch(m, resync = false) {
   if (!isMyTurn(m)) document.title = TITLE;
   hud.update(state);
   playerList.update(state);
+  cardTray.update();
   panels.refresh();
   refreshMode();
 }

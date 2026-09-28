@@ -28,9 +28,40 @@ The island entrance rock corridor remains clear.
 
 Game choice is narrowed to 1-4-24, Sevens or Rummy; none has been selected or implemented yet.
 
-Accepted server `cardUsed` starts a 1.2-second pocket/hand/table slide on all clients, with a brief
-island-only camera shot. No input lock, timer change, extra consumption or delayed effects occurs.
-Rejected and replayed uses cannot trigger a second animation. Lighthouse cameras remain independent.
+Card planning is private and server validated. During a word match, My cards, the sidebar and C open
+one compact tray with owned counts, art, descriptions and living connected targets. Pick before your
+own typing turn; a queued card/target can be replaced or cancelled until the turn locks. Opening the
+tray never stops a timer. The tray closes on local failure, own turn completion, match end and exit.
+Boxes remain available between matches. Personal `settings.cardStyle` selects A (pocket to table) or
+B (rise, reach for a permanent seat-side deck, read in close-up, glance, throw). The queued style is
+broadcast on play so viewers see the same sequence. No avatar seat/root or travel authority changes.
+
+C→S `queueCard {matchId,requestId,cardId,targetId,style:'pocket'|'deck'}` returns private
+`cardQueueResult {requestId,ok,reason?}`; `cardId:null` cancels. Private `cardQueue {queue,reason?}`
+updates the owner only. The server checks match identity, phase, alive actor, connected target,
+registered ownership, harmful self-targets, and travel/turn locks. A plan reserves no inventory.
+At the actor's next turn it locks and revalidates, consumes once, sends private `cardResult`, and
+broadcasts `cardUsed {eventId,actorId,targetId,actorSeat,targetSeat,cardId,effect,shielded,style}`.
+Direct client `useCard` is rejected. Accepted queue request IDs remain recorded for the whole match,
+including after the general receipt cache rolls over. Actor disconnect, target disconnect/elimination,
+actor failure, forfeit, end/reset/new match clear applicable plans without consumption. Socket takeover
+preserves a plan; an actual disconnect cancels it. Welcome includes only that player's queue, current
+registered counts and accepted card receipts, so reconnect reconciles inventory without double debit.
+
+An accepted plan starts `cardReveal` for a fixed 4500ms before typing. The typing timer and WPM clock
+start after reveal. A self-targeted Free Pass skips that upcoming turn. Browsing cannot extend reveal.
+The fixed reveal does give a bounded thinking interval; players can infer the prefix from the last
+word. `cardReveal` is an active phase for movement, travel, inventory, forfeit and match-end handling.
+A heart card can end the match and cancel the pending typing callback. No-card turns start normally.
+This is the provisional timing choice from the active handoff; no owner response selected the alternative.
+
+Played cards, actual logos and target arrows persist as a spread on the table through the match,
+including multiple cards aimed at the same player and cards whose target later leaves. Public
+`match.cardHistory` restores them after reconnect; a new match clears them. The tray's Played cards
+list keeps effect explanations readable after floating labels fade. Landed bodies/art/arrows are
+instanced by card type (at most 12 draws), and the spread scales with history size instead of dropping
+older cards. At very large counts individual cards become small; the history list remains readable.
+Lighthouse cameras remain independent.
 
 Both meteor types have a world-space particle wake (one additional draw per falling rock). The
 lighthouse cone tip is anchored to its lamp. Last Sip swaps the wins board for fallen, jagged sections
@@ -80,12 +111,11 @@ server-enforced turn/target/count limits, and optional accounts synchronize that
   `hint {ok,turnId,requestId,word?,cost?,reason?}`. Validate phase, current typer, balance>=250, unused answer,
   current mode min length and once per turn. Repeated request ID returns same result. No charge for failure;
   UI reserves the purchase while pending and debits once on an accepted, current-turn response.
-- C→S `useCard {turnId,requestId,cardId,targetId}` → private
-  `cardResult {ok,turnId,requestId,cardId,targetId,reason?}`, and on success broadcast
-  `cardUsed {actorId,targetId,cardId,effect}`. One card per actor turn; alive targets only. Free Pass may target yourself; harmful cards require another player.
-  `skip` queues skipping the target's next typing turn; `time_tax` removes 2 seconds (normal floor applies);
-  `pressure` removes 2 allowed mistakes (floor 1); `heart` removes 1 heart immediately through shield/elim logic.
-  Repeated IDs cannot spend twice. Invalid uses do not consume cards. Clear pending effects on match end.
+- Card planning uses `queueCard` and the fixed `cardReveal` contract above. One card per actor turn;
+  Free Pass may target yourself; harmful cards require another living connected player. `skip` skips
+  the upcoming typing turn, `time_tax` removes 2 seconds, `pressure` removes 2 allowed mistakes (floor 1),
+  and `heart` removes 1 heart through normal shield/elimination/end rules. Card inventories remain the
+  casual registered-count economy described above, not an authenticated wallet.
 - C→S `celebrate {kind:'portal'|'hatch',to?:'obby'|'island'}` → everyone, including sender, with server-owned `id`. Limited to once/second and players outside active matches. Portal triggers a tumbling/shrinking fall; hatch triggers a cheer and particles on every client.
 - C→S `emote {name}` → S→C `emote {id,name}` to others; sender animates locally. At most once/second.
 - C→S `unlock {code}` → private `unlock {ok,token?}`. Code lives only in env.ADMIN_CODE; disabled if absent.
