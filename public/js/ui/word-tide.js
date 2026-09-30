@@ -1,4 +1,4 @@
-import { h, setText } from './dom.js';
+import { h, s, setText } from './dom.js';
 import { TIDE } from '../shared/word-tide.js';
 import { sfx } from '../audio.js';
 export function createTideHud({ send, start }) {
@@ -6,18 +6,20 @@ export function createTideHud({ send, start }) {
  const title = h('h1', {}, 'WORD TIDE');
  const prompt = h('div', { class: 'tide-question', role: 'status' });
  const meta = h('div', { class: 'tide-meta' });
- const clock = h('span', { class: 'tide-clock' });
+ const clock = h('div', { class: 'timer-num tide-clock' });
+ const circumference = 2 * Math.PI * 42;
+ const ring = s('circle', {class:'timer-ring',cx:50,cy:50,r:42,'stroke-dasharray':circumference});
+ const timer = h('div',{class:'timer tide-timer'},s('svg',{viewBox:'0 0 100 100','aria-hidden':'true'},s('circle',{class:'timer-face',cx:50,cy:50,r:47}),s('circle',{class:'timer-track',cx:50,cy:50,r:42}),ring),clock);
  const progress = h('div', { class: 'tide-progress' }, h('i'));
- const top = h('div', { class: 'tide-top' }, eyebrow, title, prompt, meta, clock, progress);
+ const top = h('div', { class: 'tide-top' }, eyebrow, title, prompt, meta);
  const hearts = h('div', { class: 'tide-hearts', 'aria-label': 'Hearts' });
- const input = h('input', { class: 'tide-input', placeholder: 'Think of a long answer…', 'aria-label': 'Your category answer', maxlength: 70, autocomplete: 'off', autocapitalize: 'off', spellcheck: false });
- const submit = h('button', { class: 'tide-submit', type: 'submit' }, 'Lock answer ↑');
+ const input = h('input', { class: 'tide-input word-field', placeholder: 'Your answer…', 'aria-label': 'Your category answer', maxlength: 70, autocomplete: 'off', autocapitalize: 'off', spellcheck: false });
+ const submit = h('button', { class: 'tide-submit btn green word-send', type: 'submit', 'aria-label':'Submit answer' }, '➜');
  const saved = h('div', { class: 'tide-saved', role: 'status', 'aria-live': 'polite' });
- const form = h('form', { class: 'tide-form' }, input, submit);
+ const form = h('form', { class: 'tide-form word-form' }, input, submit);
  const note = h('div', { class: 'tide-note' });
  const startButton = h('button', { class: 'btn green', type: 'button', onClick: start }, 'Summon the tide');
- const rules = h('details', { class: 'tide-rules' }, h('summary', {}, 'How to survive'), h('p', {}, 'Answer together. Lock a valid answer before 20 seconds run out; you can replace it. At the reveal, each letter builds one block. Spaces add no height. The next wave rises after every tower finishes.'), h('p', {}, 'Five hearts. Submerged? Lose one heart, then a rescue lift gives you another chance. Last survivor wins. After 12 rounds: most hearts, then most earned letters. Exact ties share the win. Pets and cards have no effects here.'));
- const bottom = h('div', { class: 'tide-bottom' }, hearts, form, saved, note, startButton, rules);
+ const bottom = h('div', { class: 'tide-bottom' }, h('div',{class:'turn-row'},timer,hearts), saved, form, note, startButton);
  const caption = h('div', { class: 'tide-caption' });
  const spray = h('div', { class: 'tide-screen-spray', 'aria-hidden': true });
  const el = h('div', { class: 'tide-hud', hidden: true }, top, bottom, caption, spray);
@@ -25,7 +27,9 @@ export function createTideHud({ send, start }) {
  function frame() {
   raf = 0; if (el.hidden || !st) return;
   const m = st.match, remaining = Math.max(0, st.deadline - performance.now());
-  setText(clock, m?.phase === 'tideAnswer' ? `${Math.ceil(remaining/1000)}s` : m?.phase === 'countdown' ? `${Math.ceil(remaining/1000)}s` : '');
+  setText(clock, m?.phase === 'tideAnswer' ? (remaining/1000).toFixed(1) : m?.phase === 'countdown' ? (remaining/1000).toFixed(1) : '');
+  ring.style.strokeDashoffset = String(circumference * (1-Math.min(1,remaining/TIDE.answer)));
+  timer.classList.toggle('urgent',remaining < 5000);
   progress.firstChild.style.transform = `scaleX(${Math.min(1, remaining / TIDE.answer)})`;
   clock.classList.toggle('urgent', remaining < 5000);
   if (m?.phase === 'tideAnswer') {
@@ -35,8 +39,8 @@ export function createTideHud({ send, start }) {
   }
   if (m?.phase === 'tideIntro') {
    const t = (TIDE.intro - remaining)/1000;
-   setText(caption, t<3?'The ocean has gone quiet.':t<6?'Something is rising.':t<9?'BRACE YOURSELF':t<12?'Paradise, washed away.':t<15?'Find your higher ground.':'Longer answers. Higher towers. Survive.');
-   spray.style.opacity = t > 7.3 && t < 10 ? String(Math.max(0, 1 - Math.abs(t - 8.2)/1.5)) : '0';
+   setText(caption, t<4?'The ocean is pulling back…':t<8?'Here comes the tide!':t<15?'HOLD ON TO YOUR CHAIR!':t<19?'Your answer builds your escape.':'More letters → more height.');
+   spray.style.opacity = t > 10 && t < 13 ? String(.55 * Math.max(0, 1 - Math.abs(t - 11.5)/1.5)) : '0';
   } else spray.style.opacity = '0';
   raf = requestAnimationFrame(frame);
  }
@@ -52,7 +56,7 @@ export function createTideHud({ send, start }) {
   pending = null; locked = msg.locked || locked;
   submit.disabled = input.disabled;
   saved.classList.toggle('invalid', !msg.ok);
-  setText(saved, msg.ok ? locked ? `✓ ${locked.word.toUpperCase()} · ${locked.length} blocks saved. You can replace it.` : 'Your answer stays secret until the reveal.' : `${msg.error}${locked ? ` Saved: ${locked.word.toUpperCase()}.` : ''}`);
+  setText(saved, msg.ok ? locked ? `✓ ${locked.word.toUpperCase()} · ${locked.length} blocks saved` : 'Your answer stays secret until the reveal.' : `${msg.error}${locked ? ` Saved: ${locked.word.toUpperCase()}.` : ''}`);
   if (msg.requestId) (msg.ok ? sfx.pick : sfx.wrong)();
  }
  function update(state, on) {
@@ -68,22 +72,21 @@ export function createTideHud({ send, start }) {
    if (phase === 'tideResolve' && part && m.tide.towers[st.you]?.rescued) sfx.heart();
    if (phase === 'ended') sfx.win();
   }
-  const intro = phase === 'tideIntro'; el.classList.toggle('cinematic', intro);
+  const intro = phase === 'tideIntro'; el.classList.toggle('cinematic', intro);el.classList.toggle('ending',phase==='ended');
   caption.hidden = !intro; bottom.hidden = intro;
-  eyebrow.textContent = active ? `TROPICAL SURVIVAL · ROUND ${m.round || 1} / ${TIDE.rounds}` : 'TROPICAL SURVIVAL';
+  eyebrow.textContent = active && !intro ? `WORD TIDE   ·   ROUND ${m.round || 1} / ${TIDE.rounds}` : 'THE OCEAN IS RISING';
   title.hidden = active && !intro && phase !== 'ended';
   const winners = m?.tide?.winners || [];
-  prompt.textContent = phase === 'tideAnswer' ? m.tide.category.prompt : phase === 'tideReveal' ? 'BUILD YOUR WAY UP!' : phase === 'tideFlood' ? 'INCOMING WAVE' : phase === 'tideResolve' ? part && !part.alive ? 'Swept away — watch the survivors' : m.tide.towers[st.you]?.rescued ? 'Heart lost. Rescued for another round!' : 'Above water. Still in the game.' : phase === 'ended' ? winners.length ? `${winners.map(id=>st.players.get(id)?.name||'Player').join(' & ')} ${winners.length>1?'share the win!':'survives!'}` : 'The ocean wins this time.' : intro ? '' : 'Longer answers. Higher towers. Survive.';
-  meta.textContent = active && !intro ? `↑ Next wave: ${m.tide.rise} blocks · ${m.participants.filter(p=>p.alive).length} survivors${m.practice?' · Practice':''}` : intro ? '' : 'Five hearts · One letter, one block · A rising tropical ocean';
-  progress.hidden = phase !== 'tideAnswer';
+  prompt.textContent = phase === 'tideAnswer' ? m.tide.category.prompt : phase === 'tideReveal' ? 'BUILD YOUR WAY UP!' : phase === 'tideFlood' ? 'INCOMING WAVE' : phase === 'tideResolve' ? part && !part.alive ? 'Swept away — watch the survivors' : m.tide.towers[st.you]?.rescued ? 'Heart lost. Rescued for another round!' : 'Above water. Still in the game.' : phase === 'ended' ? winners.length ? `${winners.map(id=>st.players.get(id)?.name||'Player').join(' & ')} ${winners.length>1?'share the win!':'survives!'}` : 'The ocean wins this time.' : 'Type a long answer to climb above the waves.';
+  meta.textContent = active && !intro ? `↑ Next wave: ${m.tide.rise} blocks · ${m.participants.filter(p=>p.alive).length} survivors${m.practice?' · Practice':''}` : 'Every letter builds your tower. Stay above the water to survive.';
+  timer.hidden = phase !== 'tideAnswer';
   const typing = phase === 'tideAnswer' && part?.alive;
   form.hidden = saved.hidden = !typing; input.disabled = submit.disabled = !typing;
   hearts.hidden = !part || !active;
   hearts.textContent = part ? '♥'.repeat(part.hearts) + '♡'.repeat(Math.max(0,TIDE.hearts-part.hearts)) : '';
   hearts.setAttribute('aria-label', `${part?.hearts || 0} of five hearts`);
-  note.textContent = !active ? (st.players.get(st.you)?.seat >= 0 ? 'Waiting for two seated players. The storm begins when the match starts.' : 'Sit at the table to claim your platform.') : phase === 'tideAnswer' && !part?.alive ? 'Spectating · Join the next match by sitting at the table.' : phase === 'tideReveal' ? 'Every letter becomes a block. The water waits for the reveal.' : phase === 'ended' ? m.practice ? 'Practice complete · No coins or wins awarded.' : 'The storm is passing. A new island awaits.' : '';
+  note.textContent = !active ? 'Everyone in the room joins the next wave.' : phase === 'tideAnswer' && !part?.alive ? 'Watching the survivors · You join the next game.' : phase === 'tideReveal' ? 'More letters → more height!' : phase === 'ended' ? 'The tide is taking its final bow…' : '';
   startButton.hidden = active || !(st.hostId === st.you || st.isAdmin);
-  rules.hidden = active && phase !== 'ended';
   if (!raf) raf = requestAnimationFrame(frame);
  }
  return { el, update, receipt };

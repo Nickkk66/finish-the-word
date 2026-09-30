@@ -52,6 +52,7 @@ export async function createWorld({ container, labelLayer }) {
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.shadowMap.enabled = true;
+  renderer.localClippingEnabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   setTextureAnisotropy(renderer.capabilities.getMaxAnisotropy());
   const canvas = renderer.domElement;
@@ -381,6 +382,8 @@ export async function createWorld({ container, labelLayer }) {
         }
       }
     }
+    input.orbitOnly = tide.active();
+    tide.orbit(input.orbitX,input.orbitY,input.zoomDelta);
     rig.orbit(input.orbitX, input.orbitY);
     rig.zoom(input.zoomDelta);
     input.orbitX = input.orbitY = input.zoomDelta = 0;
@@ -671,7 +674,7 @@ export async function createWorld({ container, labelLayer }) {
         scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), tide: tide.debug(), night: terrain.nightAmount(),
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
-        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,seat:e.seat,render:e.render.toArray(),yaw:e.renderYaw,sleeping:!!e.avatar.rouletteSleeping,faceExpression:e.avatar.faceExpression,skipRemaining:e.avatar.skipT||0,sleepWeight:e.avatar.sleepWeight||0,headBottom:e.avatar.rouletteSleeping?new THREE.Box3().setFromObject(e.avatar.headMesh).min.y:null})),
+        cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,seat:e.seat,backScale:e.back?.scale.toArray(),tideSeated:!!e.tidePose&&e.avatar.seated,render:e.render.toArray(),yaw:e.renderYaw,sleeping:!!e.avatar.rouletteSleeping,faceExpression:e.avatar.faceExpression,skipRemaining:e.avatar.skipT||0,sleepWeight:e.avatar.sleepWeight||0,headBottom:e.avatar.rouletteSleeping?new THREE.Box3().setFromObject(e.avatar.headMesh).min.y:null})),
         grounded: motor.grounded, platformKind: motor.standingOn?.kind ?? null };
     },
 

@@ -835,12 +835,12 @@ function refreshMode() {
   const m = state.match;
   const active = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? isRouletteMode(m.mode) : isRouletteMode(state.settings.mode));
   rouletteHud.update(state, active && state.zone!=='lighthouse');
-  const tideMode = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode) === 'word_tide' && state.zone !== 'lighthouse';
+  const tideMode = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode) === 'word_tide';
   tideHud.update(state, tideMode);
   world?.setTide?.(tideMode && m?.tide ? m : null);
   document.body.classList.toggle('tide-scene', !!(tideMode && m?.tide));
   document.body.classList.toggle('tide-cinema', !!(tideMode && m?.phase === 'tideIntro'));
-  if ((active || tideMode) && state.zone!=='lighthouse') hud.hide(); else if (state.inRoom) hud.show();
+  if (tideMode || active && state.zone!=='lighthouse') hud.hide(); else if (state.inRoom) hud.show();
   world?.setRoulette?.(active, m, state.rouletteEntry, MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode);
   if (active && m?.startedAt && m.matchId !== state.rouletteIntroMatchId && Date.now() - m.startedAt < 7000 && state.zone!=='lighthouse') {
     state.rouletteIntroMatchId = m.matchId;

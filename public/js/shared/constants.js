@@ -1,7 +1,7 @@
 // Shared constants used by BOTH the server (src/) and the browser client (public/js/).
 // Keep this file dependency-free (plain ES module, no DOM / no Node APIs).
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 // ---- Rooms -------------------------------------------------------------------
 export const MAX_PLAYERS = 40;           // players in the shared lobby

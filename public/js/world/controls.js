@@ -141,7 +141,7 @@ export class Input {
       this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
     } else {
       const rect = this.canvas.getBoundingClientRect();
-      if (!this.joy && this.enabled && e.clientX - rect.left < rect.width * 0.45) {
+      if (!this.orbitOnly && !this.joy && this.enabled && e.clientX - rect.left < rect.width * 0.45) {
         this.joy = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
         this.joyEl.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
         this.knobEl.style.transform = '';

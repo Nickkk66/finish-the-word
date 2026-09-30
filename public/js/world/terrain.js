@@ -46,7 +46,8 @@ export function createTerrain(scene) {
   const lightRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), SUN_DIR).normalize();
   const lightUp = new THREE.Vector3().crossVectors(SUN_DIR, lightRight).normalize();
   const snapped = new THREE.Vector3();
-  let extent = 0, tide = false;
+  let extent = 0, tide = false, tideStorm=1;
+  const tidePlane=new THREE.Plane(new THREE.Vector3(0,0,1),230);
   let night = 0, nightTarget = 0, nightFrom = 0, nightStart = 0;
   const dayTop = new THREE.Color(SKY_TOP), dayHorizon = new THREE.Color(SKY_HORIZON);
   const darkTop = new THREE.Color('#010108'), darkHorizon = new THREE.Color('#060912');
@@ -54,7 +55,7 @@ export function createTerrain(scene) {
 
   return {
     sun,
-    setTide(on, destroyed) { tide = on; ground.visible = !destroyed; water.visible = !on; },
+    setTide(on, destroyed, front=-230, storm=1) { tide = on; tideStorm=storm; ground.visible = !destroyed; water.visible = !on; tidePlane.constant=-front; ground.material.clippingPlanes=on?[tidePlane]:null; },
     setNight(on) { const next = on ? 1 : 0; if (next !== nightTarget) { nightFrom = night; nightTarget = next; nightStart = performance.now(); } },
     nightAmount() { return night; },
     setSkyFocus(position) { sky.position.copy(position); },
@@ -92,7 +93,7 @@ export function createTerrain(scene) {
       water.material.uniforms.uTime.value = t;
       clouds.rotation.y = t * 0.004;
       if (tide) {
-        sky.material.uniforms.uTop.value.set('#173a55'); sky.material.uniforms.uHorizon.value.set('#87c4be');
+        sky.material.uniforms.uTop.value.copy(dayTop).lerp(new THREE.Color('#173a55'),tideStorm); sky.material.uniforms.uHorizon.value.copy(dayHorizon).lerp(new THREE.Color('#87c4be'),tideStorm);
         sun.color.set('#ffe3ba'); sun.intensity = 1.5; hemi.intensity = 1.1;
         scene.fog.color.set('#87c4be'); clouds.visible = false;
       }

@@ -7,9 +7,9 @@ export const wordTideMethods = {
   const deck = [...TIDE_BANK];
   for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(this.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
   m.tide = { seed: Math.floor(this.random() * 1000000), water: 0, fromWater: 0, rise: 0, category: null, towers: {}, winners: [], deck, answers: new Map(), requests: new Map() };
-  for (const p of m.participants) {
+  for (const [seat, p] of m.participants.entries()) {
    p.hearts = p.maxHearts = TIDE.hearts; p.shield = false; p.ability = null;
-   m.tide.towers[p.id] = { id: p.id, seat: this.players.get(p.id).seat, height: 2, earned: 0, segments: [], answer: '', added: 0, rescued: false, before: 2 };
+   m.tide.towers[p.id] = { id: p.id, seat, height: 2, earned: 0, segments: [], answer: '', added: 0, rescued: false, before: 2 };
   }
   this.setPhase('tideIntro', TIDE.intro, () => this.nextTideRound());
   this.syncHazards(); this.broadcastMatch();
@@ -89,7 +89,7 @@ export const wordTideMethods = {
   }
   this.setPhase('tideResolve', TIDE.resolve, () => {
    const alive = m.participants.filter(p => p.alive);
-   if (alive.length <= 1 || m.round >= TIDE.rounds) {
+   if (alive.length === 0 || (m.participants.length > 1 && alive.length === 1) || m.round >= TIDE.rounds) {
     const candidates = alive.length ? alive : m.participants.filter(p => p.tidePreviousHearts > 0 && !p.tideForfeit);
     const hearts = Math.max(...candidates.map(p => alive.length ? p.hearts : p.tidePreviousHearts));
     const best = candidates.filter(p => (alive.length ? p.hearts : p.tidePreviousHearts) === hearts);
@@ -110,7 +110,7 @@ export const wordTideMethods = {
   const m = this.match; if (m.paid) return;
   m.paid = true; m.tide.winners = winners; m.winnerId = winners[0] || null;
   this.broadcast({ t: 'win', id: m.winnerId, ids: winners, mode: 'word_tide', practice: m.practice });
-  this.setPhase('ended', 8000, () => { this.enterLobby(); this.broadcastMatch(); });
+  this.setPhase('ended', TIDE.outro, () => { this.enterLobby(); this.broadcastMatch(); });
   for (const p of m.participants) {
    const player = this.players.get(p.id); if (!player || p.isBot) continue;
    const won = !m.practice && winners.includes(p.id);

@@ -452,7 +452,7 @@ export class GameEngine {
   }
 
   onStand(player) {
-    if (player.seat < 0 || !this.allow(player, 'seat')) return;
+    if ((player.seat < 0 && !(this.match.mode === 'word_tide' && this.isPlaying(player.id))) || !this.allow(player, 'seat')) return;
     this.fail(player.id, 'forfeit'); // standing up mid-match knocks you out
     const inside=lighthouseSeatPosition(player.seat,true);
     if(inside)player.pos=inside;
@@ -934,7 +934,7 @@ export class GameEngine {
 
   hostStart() {
     const { phase } = this.match;
-    if ((phase === 'lobby' || phase === 'countdown') && this.readyPlayers().length >= 2) this.startMatch();
+    if ((phase === 'lobby' || phase === 'countdown') && this.readyPlayers().length >= (this.settings.mode === 'word_tide' ? 1 : 2)) this.startMatch();
   }
 
   addBot(host) {
@@ -956,8 +956,9 @@ export class GameEngine {
     if (bot) this.removePlayer(bot.id);
   }
 
-  // Settings apply from the next match.
+  // Ordinary settings apply next match. Selecting Word Tide starts its room-wide event.
   changeSettings(input, actor) {
+    if (input?.mode === 'word_tide' && this.match.mode !== 'word_tide' && ACTIVE_PHASES.has(this.match.phase)) this.cancelMatch();
     const next = sanitizeSettings(input, this.settings);
     next.public = this.code === PUBLIC_ROOM_CODE;
     if (next.mode !== this.settings.mode && actor?.rouletteBet) {
@@ -972,6 +973,7 @@ export class GameEngine {
     if (Object.keys(next).every((k) => next[k] === this.settings[k])) {
       this.syncCountdown();
       if (preset) this.broadcastRoom();
+      if (input?.mode === 'word_tide' && ['lobby','countdown'].includes(this.match.phase)) this.startMatch();
       return;
     }
     const botLevelChanged = next.botLevel !== this.settings.botLevel;
@@ -981,6 +983,7 @@ export class GameEngine {
     this.syncCountdown();
     this.broadcastRoom();
     this.reportListing();
+    if (input?.mode === 'word_tide' && ['lobby', 'countdown'].includes(this.match.phase)) this.startMatch();
   }
 
   // ---- Match flow ---------------------------------------------------------------------
@@ -1029,7 +1032,7 @@ export class GameEngine {
   startMatch(trophyCheck = undefined) {
     if (this.trophyCheckPending && trophyCheck === undefined) return;
     const seated = this.readyPlayers();
-    if (seated.length < 2) return;
+    if (seated.length < (this.settings.mode === 'word_tide' ? 1 : 2)) return;
     const settings = { ...this.settings };
     const paidCandidate = isRouletteMode(settings.mode) && seated.every(p => !p.isBot && p.accountCreatedAt != null && this.now() - p.accountCreatedAt >= TRADE_ACCOUNT_AGE_MS);
     if (paidCandidate && trophyCheck === undefined) {
@@ -1578,6 +1581,7 @@ export class GameEngine {
     return [...this.players.values()].filter((p) => p.seat >= 0 && p.seat < SEAT_COUNT).sort((a, b) => a.seat - b.seat);
   }
   readyPlayers() {
+    if (this.settings.mode === 'word_tide') return [...this.players.values()].filter(p => p.connected || p.isBot);
     return this.seated().filter(p => !isRouletteMode(this.settings.mode) || p.isBot || p.rouletteBet?.amount >= 25);
   }
 

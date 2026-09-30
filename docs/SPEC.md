@@ -532,15 +532,15 @@ borders remain separate effects.
 
 ## Word Tide — September 30, 2026
 
-Protocol 6 adds Word Tide and requires older clients to refresh.
-`mode: word_tide` is tropical, simultaneous category-answer survival. Five hearts, up to eight
-seated participants, 12-round limit, fixed 20-second answers, no pet/card abilities or stakes.
+Protocol 7 includes the Word Tide presentation and room-entry revision and requires older clients to refresh.
+`mode: word_tide` is tropical, simultaneous category-answer survival. Five hearts, up to forty
+room participants, 12-round limit, fixed 20-second answers, no pet/card abilities or stakes.
 Bots make the match practice under the existing rules. The original server-only bank contains
-60 categories and 1,394 accepted forms. Category membership uses explicit normalized forms;
+60 categories and 2,370 accepted forms. Category membership uses explicit normalized forms;
 aliases earn their actual letters, with no spaces/punctuation or adjective padding.
 
-Phases: `tideIntro` (18s), `tideAnswer` (20s), `tideReveal` (3s), `tideFlood` (3s including 1s warning),
-`tideResolve` (2.2s), `ended` (8s). The intro flattens the island behind tsunami spray; all participants
+Phases: `tideIntro` (24s), `tideAnswer` (20s), `tideReveal` (4s), `tideFlood` (3s including 1s warning),
+`tideResolve` (2.2s), `ended` (16s). The intro flattens the island behind tsunami spray; all participants
 have separate platforms. Answers lock privately and build only at the round deadline. Each letter
 pops into a colored block. Water damage resolves once after construction and flood animation.
 Submerged platforms lose one heart; survivors receive a rescue lift to two units above water.
@@ -562,3 +562,21 @@ spray, palms, wreckage, rain, lightning, and synthesized audio form its presenta
 preferences remove shake/flashes and block overshoot. Leaving/canceling restores original scenery,
 seated poses, input and camera. The browser check is `node scripts/word-tide-check.mjs` against a
 local Worker; engine tests are in `test/word-tide.test.js`.
+
+### Word Tide presentation revision
+
+Selecting Word Tide starts its storm immediately for all connected room players, with no table
+seating requirement. Solo games are practice. Selecting it during another active game cancels
+that game with its ordinary refunds first. Late arrivals watch until the next match. Each tower
+has the participant's equipped chair; platforms expand to fit the full room. The regular timer
+ring and answer-field styling replace the smaller separate HUD. Brief intro and phase cues teach
+the mode without a rules panel. Dragging or touching the world orbits the camera; wheel/pinch zooms.
+
+A longer curling wave clips scenery along the moving front. Soft cloud sprites, moving foam,
+spray and recognizable chair, lighthouse and sign wreckage accompany the transition. Tower and
+chair hop by one block per letter; letter blocks stop below the platform underside. Winner jumps
+and a face close-up lead into a receding wave, draining water, sinking debris and restored island.
+Back accessories retain their normal scale. Spacing/hyphen variants and common abbreviations
+(e.g. T-rex) are accepted without expanding their scores; vail is an explicit veil spelling alias.
+Velvet is accepted as a requested game color label. The bank remains curated, not an arbitrary
+semantic classifier; unlisted answers can still be rejected.

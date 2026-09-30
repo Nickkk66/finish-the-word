@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRoom} from './helpers.js';
 import {TIDE_BANK,validateTideAnswer} from '../src/tide-bank.js';
 import {TIDE} from '../public/js/shared/word-tide.js';
-function setup(){const r=createRoom();const a=r.join('alice'),b=r.join('bob');r.send(a,{t:'host',action:'settings',settings:{mode:'word_tide'}});r.send(a,{t:'sit',seat:0});r.send(b,{t:'sit',seat:1});r.send(a,{t:'host',action:'start'});return {r,a,b};}
+function setup(){const r=createRoom();const a=r.join('alice'),b=r.join('bob');r.send(a,{t:'host',action:'settings',settings:{mode:'word_tide'}});return {r,a,b};}
 function answer(r,c,word,id='one'){r.send(c,{t:'tideAnswer',matchId:r.engine.match.matchId,round:r.engine.match.round,requestId:id,answer:word});}
 test('bank has 60 original categories and normalized forms cannot inflate points',()=>{
  assert.equal(TIDE_BANK.length,60);assert.equal(new Set(TIDE_BANK.map(c=>c.id)).size,60);
@@ -49,12 +49,12 @@ test('round cap, fair ties, no paid tools, and cancellation restore lobby safely
  r.send(a,{t:'queueCard',requestId:'card',matchId:m.matchId,cardId:'heartbreaker',targetId:'bob'});assert.equal(a.last('cardQueueResult').ok,false);
  m.round=12;for(const tower of Object.values(m.tide.towers)){tower.height=300;tower.earned=100;}
  r.clock.advance(TIDE.answer+TIDE.reveal+TIDE.flood+TIDE.resolve);assert.equal(m.phase,'ended');assert.equal(m.tide.winners.length,2);
- r.clock.advance(8000);assert.ok(['countdown','lobby'].includes(r.engine.match.phase));
+ r.clock.advance(TIDE.outro);assert.ok(['countdown','lobby'].includes(r.engine.match.phase));
  r.send(a,{t:'host',action:'start'});r.send(a,{t:'host',action:'endMatch'});assert.ok(['countdown','lobby'].includes(r.engine.match.phase));assert.deepEqual(r.errors,[]);
 });
 test('forfeit during intro settles once, mode changes wait, disconnect retains answer until grace',()=>{
  const {r,a,b}=setup();r.send(a,{t:'host',action:'settings',settings:{mode:'classic'}});assert.equal(r.engine.match.mode,'word_tide');
- r.send(b,{t:'stand'});assert.equal(r.engine.match.phase,'ended');assert.deepEqual(r.engine.match.tide.winners,['alice']);r.clock.advance(8000);assert.equal(r.engine.settings.mode,'classic');assert.deepEqual(r.errors,[]);
+ r.send(b,{t:'stand'});assert.equal(r.engine.match.phase,'ended');assert.deepEqual(r.engine.match.tide.winners,['alice']);r.clock.advance(TIDE.outro);assert.equal(r.engine.settings.mode,'classic');assert.deepEqual(r.errors,[]);
  const x=setup();x.r.clock.advance(TIDE.intro);answer(x.r,x.a,x.r.engine.match.tide.category.answers[0]);x.r.engine.disconnect(x.a);x.r.clock.advance(1000);assert.ok(x.r.engine.match.tide.answers.get('alice'));x.r.join('alice');x.r.clock.advance(20000);assert.ok(x.r.engine.players.has('alice'));assert.deepEqual(x.r.errors,[]);
 });
 test('twelve answered rounds cap rewards, exclude spectators and accept at most one answer per round',()=>{
@@ -69,4 +69,37 @@ test('twelve answered rounds cap rewards, exclude spectators and accept at most 
  assert.equal(r.engine.match.phase,'ended');assert.equal(a.last('tideReward').words,12);
  assert.equal(a.last('tideReward').coins,150);assert.equal(b.last('tideReward').coins,150);
  assert.equal(viewer.all('tideReward').length,0);assert.deepEqual(r.errors,[]);
+});
+
+test('selecting Word Tide starts immediately with everyone in the room and independent platforms',()=>{
+ const r=createRoom(); const owner=r.join('owner');
+ for(let i=0;i<12;i++)r.join(`guest${i}`);
+ r.send(owner,{t:'host',action:'settings',settings:{mode:'word_tide'}});
+ const m=r.engine.match;assert.equal(m.phase,'tideIntro');assert.equal(m.participants.length,13);
+ assert.equal(new Set(Object.values(m.tide.towers).map(t=>t.seat)).size,13);
+ assert.equal(r.engine.players.get('owner').seat,-1);
+ assert.deepEqual(r.errors,[]);
+});
+test('solo Word Tide begins as practice and lasts beyond the first successful round',()=>{
+ const r=createRoom(),a=r.join('alice');r.send(a,{t:'host',action:'settings',settings:{mode:'word_tide'}});
+ assert.equal(r.engine.match.phase,'tideIntro');assert.equal(r.engine.match.practice,true);
+ r.clock.advance(TIDE.intro);answer(r,a,r.engine.match.tide.category.answers.at(-1));
+ r.clock.advance(TIDE.answer+TIDE.reveal+TIDE.flood+TIDE.resolve);
+ assert.equal(r.engine.match.round,2);assert.equal(r.engine.match.phase,'tideAnswer');
+});
+test('common abbreviations, spelling variants and newly requested answers are recognized fairly',()=>{
+ for(const [cat,words] of Object.entries({dinosaur:['t rex','t-rex','trex','T. Rex'],clothing:['rain coat','weather jacket'],headwear:['head dress','vail','veil'],technology:['phone','cell tower','iphone'],color:['velvet','burgundy','cerulean']}))
+  for(const word of words)assert.ok(validateTideAnswer(cat,word),`${cat}: ${word}`);
+ assert.equal(validateTideAnswer('dinosaur','t-rex').length,4);
+ assert.equal(validateTideAnswer('headwear','vail').length,4);
+ assert.equal(validateTideAnswer('color','very very dark blue'),null);
+});
+
+test('switching an active word game into Word Tide refunds it and starts the room event',()=>{
+ const r=createRoom(),a=r.join('alice'),b=r.join('bob');
+ r.send(a,{t:'sit',seat:0});r.send(b,{t:'sit',seat:1});r.send(a,{t:'host',action:'start'});
+ const old=r.engine.match.matchId;r.send(a,{t:'host',action:'settings',settings:{mode:'word_tide'}});
+ assert.equal(r.engine.match.phase,'tideIntro');assert.notEqual(r.engine.match.matchId,old);
+ assert.equal(a.last('matchRefund').matchId,old);assert.equal(b.last('matchRefund').matchId,old);
+ assert.deepEqual(r.errors,[]);
 });
