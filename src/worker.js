@@ -24,7 +24,12 @@ export default {
       const result = await env.ANNOUNCEMENTS.get(env.ANNOUNCEMENTS.idFromName('global')).fetch(`https://internal/latest?since=${Math.max(0, Math.floor(since))}`);
       return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' } });
     }
-    const endpoint = { '/api/leaderboard': ['LEADERBOARD', '/top?n=10', 30], '/api/public': ['MATCHMAKER', '/public', 5], '/api/quickplay': ['MATCHMAKER', '/quickplay', 0] }[pathname];
+    if (pathname === '/api/wins' && request.method === 'GET') {
+      const id = new URL(request.url).searchParams.get('id') || '';
+      const result = await env.LEADERBOARD.get(env.LEADERBOARD.idFromName('global')).fetch(`https://internal/sync?id=${encodeURIComponent(id)}`);
+      return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' } });
+    }
+    const endpoint = { '/api/leaderboard': ['LEADERBOARD', '/top?n=10', 0], '/api/public': ['MATCHMAKER', '/public', 5], '/api/quickplay': ['MATCHMAKER', '/quickplay', 0] }[pathname];
     if (endpoint && request.method === 'GET') {
       const [binding, path, ttl] = endpoint;
       const key = new Request(new URL(pathname, request.url));
@@ -46,7 +51,13 @@ export default {
       return env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(request);
     }
 
-    return env.ASSETS.fetch(request);
+    const asset = await env.ASSETS.fetch(request);
+    if (/\.(?:html|js|css)$/.test(pathname) || pathname === '/') {
+      const headers = new Headers(asset.headers);
+      headers.set('Cache-Control', 'no-cache, must-revalidate');
+      return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
+    }
+    return asset;
   },
 };
 

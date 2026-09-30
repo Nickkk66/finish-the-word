@@ -1,6 +1,7 @@
 // Optional cloud saves. Gameplay economy remains the existing client-trusted model.
 // Passwords and session tokens are never stored in plaintext or returned in profiles.
 import { sanitizeLook, CHAIRS, BACK_BLING, PETS, CARDS } from '../public/js/shared/catalog.js';
+import { tradeOffer } from '../public/js/shared/trade.js';
 
 const ITERATIONS = 100000; // Workers Web Crypto PBKDF2 iteration ceiling.
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -50,9 +51,10 @@ export function cloudProfile(value, fixedId) {
     cards: Object.fromEntries(CARDS.map(card => [card.id, count(value.cards?.[card.id])])),
     longestWord: /^[a-z]{1,30}$/.test(value.longestWord || '') ? value.longestWord : '',
     receipts: Array.isArray(value.receipts) ? value.receipts.filter(v => typeof v === 'string' && v.length <= 160).slice(-512) : [],
+    tradeHistory: Array.isArray(value.tradeHistory) ? value.tradeHistory.filter(v => v && Number.isSafeInteger(v.at) && typeof v.partner === 'string').slice(-20).map(v => ({ at: v.at, partner: v.partner.slice(0, 16), outgoing: tradeOffer(v.outgoing), incoming: tradeOffer(v.incoming) })) : [],
     settings: { sound: settings.sound !== false, prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket', view: settings.view === 'first' ? 'first' : 'third', quality: settings.quality === 'low' ? 'low' : 'high' },
   };
-  for (const key of ['coins', 'wins', 'gamesPlayed', 'wordsTyped', 'xp', 'bestWpm', 'bestCombo', 'bestObbyMs', 'lastFreeClaim']) {
+  for (const key of ['coins', 'wins', 'winsRevision', 'gamesPlayed', 'wordsTyped', 'xp', 'bestWpm', 'bestCombo', 'bestObbyMs', 'lastFreeClaim']) {
     result[key] = key === 'lastFreeClaim' ? (Number.isSafeInteger(value[key]) && value[key] >= 0 ? value[key] : 0) : count(value[key]);
   }
   return result;
@@ -152,10 +154,14 @@ export class Accounts {
       this.sql.exec('DELETE FROM sessions WHERE expires_at <= ?', Date.now());
       this.sql.exec('DELETE FROM sessions WHERE username=? AND token_hash NOT IN (SELECT token_hash FROM sessions WHERE username=? ORDER BY expires_at DESC LIMIT 9)', username, username);
       this.sql.exec('INSERT INTO sessions (token_hash,username,expires_at) VALUES (?,?,?)', tokenHash, username, Date.now() + SESSION_MS);
-      return json({ username, token, revision: account.revision, profile: JSON.parse(account.profile), ...(recoveryCode ? { recoveryCode } : {}) });
+      return json({ username, token, revision: account.revision, createdAt: account.created_at, profile: JSON.parse(account.profile), ...(recoveryCode ? { recoveryCode } : {}) });
     }
     const session = await this.session(request);
     if (!session) return failure('Please log in again. Your local progress is still safe.', 401);
+    if (path === '/verify' && request.method === 'GET') {
+      const account = this.one('SELECT profile,created_at FROM accounts WHERE username=?', session.username);
+      return json({ id: JSON.parse(account.profile).id, createdAt: account.created_at });
+    }
     if (path === '/logout' && request.method === 'POST') {
       this.sql.exec('DELETE FROM sessions WHERE token_hash=?', session.tokenHash);
       return json({ ok: true });
@@ -167,8 +173,8 @@ export class Accounts {
       return json({ recoveryCode });
     }
     if (path === '/me' && request.method === 'GET') {
-      const account = this.one('SELECT profile,revision FROM accounts WHERE username=?', session.username);
-      return json({ username: session.username, profile: JSON.parse(account.profile), revision: account.revision });
+      const account = this.one('SELECT profile,revision,created_at FROM accounts WHERE username=?', session.username);
+      return json({ username: session.username, profile: JSON.parse(account.profile), revision: account.revision, createdAt: account.created_at });
     }
     if (path === '/profile' && request.method === 'PUT') {
       if (!this.rate(`save:${session.username}`, 120, 60000)) return failure('Saving too quickly. Please wait a minute.', 429);

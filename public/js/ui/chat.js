@@ -103,10 +103,10 @@ export function createChat({ onSend, onEmote }) {
   return {
     el,
     /** { name, text } for players, { system: true, text } for notices. */
-    add({ name, text, system = false }) {
+    add({ name, text, system = false, tone = '' }) {
       const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
       log.append(system
-        ? h('div', { class: 'chat-msg system' }, text)
+        ? h('div', { class: `chat-msg system${tone === 'alert' ? ' alert' : ''}` }, text)
         : h('div', { class: 'chat-msg' },
           h('span', { class: 'chat-name', style: { color: nameColor(name) } }, `${name}:`), ' ',
           h('span', { class: 'chat-text' }, text)));

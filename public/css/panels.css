@@ -175,6 +175,7 @@
 .stat-emoji { grid-row: span 2; font-size: 21px; text-align: center; }
 .stat-label { font: 600 12px / 1.2 var(--font); color: #6b7684; }
 .stat-value { overflow: hidden; font: 700 18px / 1.2 var(--font); white-space: nowrap; text-overflow: ellipsis; }
+.stat:has(.stat-label) .stat-value[title] { min-width: 0; }
 
 /* ---------------------------------------------------------------- small screens */
 @media (max-width: 720px), (max-height: 520px) {

@@ -8,9 +8,10 @@ const NOUNS = ['Panda', 'Pizza', 'Cat', 'Bunny', 'Cloud', 'Mango', 'Star', 'Fox'
 const REFERENCE_TURN_MS = DEFAULT_SETTINGS.turnSeconds * 1000; // think times are tuned for this turn length
 
 const pick = (list, random) => list[Math.floor(random() * list.length)];
+export const botPet = (random, level) => level === 'easy' ? null : pick(level === 'hard' ? PETS : PETS.filter(p => p.id !== 'dragon' && p.id !== 'robot'), random).id;
 
 /** Name, look, chair and pet for a new bot; avoids names already in the room. */
-export function botProfile(random, takenNames) {
+export function botProfile(random, takenNames, level = 'normal') {
   let name;
   for (let i = 0; i < 20; i++) {
     const noun = pick(NOUNS, random);
@@ -26,7 +27,7 @@ export function botProfile(random, takenNames) {
     name,
     look: randomLook(random),
     chair: pick(CHAIRS, random).id,
-    pet: pick(PETS, random).id,
+    pet: botPet(random, level),
   };
 }
 

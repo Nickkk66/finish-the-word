@@ -18,6 +18,13 @@ export function createThumbnails(renderer) {
   function tick() {
     const req = queue.shift();
     if (!req) return;
+    if (req.kind === 'back' && !req.model) {
+      req.model = builders.back(req.id);
+      if (req.model.userData.modelLoaded === false) {
+        req.model.userData.ready.finally(() => queue.push(req));
+        return;
+      }
+    }
     let model, target;
     const oldTarget = renderer.getRenderTarget();
     const oldColor = renderer.getClearColor(new THREE.Color());
@@ -28,7 +35,7 @@ export function createThumbnails(renderer) {
     try {
       const build = builders[req.kind];
       if (!build) throw new Error('Unknown thumbnail kind');
-      model = build(req.id);
+      model = req.model || build(req.id);
       if (req.kind === 'back') model.rotation.y = Math.PI;
       const studio = new THREE.Scene();
       studio.add(new THREE.HemisphereLight(0xffffff, 0x8093b8, 2.7));

@@ -24,6 +24,7 @@ const CSS = `
   text-shadow: ${OUTLINE(2)}, 0 3px 4px rgba(0,0,0,.35); }
 .w-name.w-dim { opacity: .5; }
 .w-level { color: #ffe387; font-size: 12px; padding: 3px 6px; background: #273044; border-radius: 6px; }
+.w-level.admin { color: #fff7d6; font-size: 13px; letter-spacing: .08em; border: 1px solid #fff0a3; background: linear-gradient(130deg,#7d45c7,#d78a24 60%,#7d45c7); box-shadow: 0 0 12px #ffc95aaa, inset 0 1px #fff7; text-shadow: 0 1px 2px #39204a; }
 .w-combo { color: #ffd43b; font-size: 17px; text-shadow: ${OUTLINE(1.5)}; }
 .w-flair { color: #ffd43b; font-size: 29px; font-weight: 700; text-align: center; text-shadow: ${OUTLINE(2.5)};
  animation: w-flair 2.1s ease-out forwards; }

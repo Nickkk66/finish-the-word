@@ -1,11 +1,280 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRoom, dict, FakeConn } from './helpers.js';
-import { MODES, OBBY, PROTOCOL_VERSION } from '../public/js/shared/constants.js';
+import { MODES, OBBY, PROTOCOL_VERSION, ROULETTE_COUNTDOWN_MS } from '../public/js/shared/constants.js';
 import { filterText, isBlockedWord } from '../src/blocklist.js';
 import { adminToken } from '../src/auth.js';
 import { planTurn } from '../src/bots.js';
+import { botProfile } from '../src/bots.js';
 import { createDictionary } from '../src/dictionary.js';
+import { tradeInventory } from '../public/js/shared/trade.js';
+
+test('a bot makes a match practice with no win or coin payout', () => {
+  const wins = [];
+  const room = createRoom({ onWin: value => wins.push(value) });
+  const human = room.join('alice');
+  room.send(human, { t: 'sit', seat: 0 });
+  room.send(human, { t: 'host', action: 'addBot' });
+  room.send(human, { t: 'host', action: 'start' });
+  assert.equal(room.engine.match.practice, true);
+  room.engine.endMatch('alice');
+  assert.equal(human.last('win').practice, true);
+  assert.equal(human.last('reward').coins, 0);
+  assert.equal(human.last('reward').won, false);
+  assert.equal(room.engine.players.get('alice').wins, 0);
+  assert.deepEqual(wins, []);
+});
+
+test('a Last Sip practice match returns the human entry without a win', () => {
+  const wins = [];
+  const room = createRoom({ onWin: value => wins.push(value) });
+  const human = room.join('alice');
+  room.send(human, { t: 'host', action: 'settings', settings: { mode: 'roulette' } });
+  room.send(human, { t: 'sit', seat: 0 });
+  room.send(human, { t: 'host', action: 'addBot' });
+  room.send(human, { t: 'bet', requestId: 'practice-entry', amount: 75, balance: 1000 });
+  room.send(human, { t: 'host', action: 'start' });
+  assert.equal(room.engine.match.practice, true);
+  room.engine.endRoulette('alice');
+  assert.equal(human.last('rouletteReward').coins, 75);
+  assert.equal(human.last('rouletteReward').won, false);
+  assert.equal(human.last('rouletteReward').practice, true);
+  assert.equal(room.engine.players.get('alice').wins, 0);
+  assert.deepEqual(wins, []);
+});
+
+test('Last Sip requires two signed-in humans and explains guest practice', () => {
+  const room = createRoom();
+  const a = room.join('alice'), b = room.join('bob');
+  room.send(a, { t: 'host', action: 'settings', settings: { mode: 'roulette' } });
+  room.send(a, { t: 'sit', seat: 0 }); room.send(b, { t: 'sit', seat: 1 });
+  for (const [conn, id] of [[a, 'a'], [b, 'b']]) room.send(conn, { t: 'bet', requestId: id, amount: 25, balance: 1000 });
+  room.send(a, { t: 'host', action: 'start' });
+  assert.equal(room.engine.match.practice, true);
+  assert.match(room.engine.matchView().practiceReason, /signed-in/);
+  room.engine.endRoulette('alice');
+  assert.equal(a.last('rouletteReward').coins, 25);
+  room.clock.advance(15000);
+  room.engine.players.get('alice').accountCreatedAt = -100_000_000;
+  room.engine.players.get('bob').accountCreatedAt = -100_000_000;
+  for (const [conn, id] of [[a, 'c'], [b, 'd']]) room.send(conn, { t: 'bet', requestId: id, amount: 25, balance: 1000 });
+  room.send(a, { t: 'host', action: 'start' });
+  assert.equal(room.engine.match.practice, false);
+});
+
+test('a missing trophy makes Last Sip practice without spending wins', () => {
+  const checks = [];
+  const room = createRoom({ onCheckTrophies: ids => { checks.push(ids); return { ok: false, error: 'Each player needs at least one recorded win for paid Last Sip.' }; } });
+  const a = room.join('alice'), b = room.join('bob');
+  for (const id of ['alice', 'bob']) { room.engine.players.get(id).accountCreatedAt = -100_000_000; room.engine.players.get(id).wins = 1; }
+  room.send(a, { t: 'host', action: 'settings', settings: { mode: 'roulette' } });
+  room.send(a, { t: 'sit', seat: 0 }); room.send(b, { t: 'sit', seat: 1 });
+  room.send(a, { t: 'bet', requestId: 'aa', amount: 25, balance: 1000 });
+  room.send(b, { t: 'bet', requestId: 'bb', amount: 25, balance: 1000 });
+  room.send(a, { t: 'host', action: 'start' });
+  assert.deepEqual(checks, [['alice', 'bob']]);
+  assert.equal(room.engine.match.practice, true);
+  assert.match(room.engine.matchView().practiceReason, /one recorded win/);
+  assert.equal(room.engine.players.get('alice').wins, 1);
+  room.engine.endRoulette('alice');
+  assert.equal(a.last('rouletteReward').coins, 25);
+});
+
+test('Last Sip waits 15 seconds after two entries and explains a young account', () => {
+  const room = createRoom();
+  const a = room.join('alice'), b = room.join('bob');
+  room.engine.players.get('alice').accountCreatedAt = room.clock.now() - 86400001;
+  room.engine.players.get('bob').accountCreatedAt = room.clock.now() - 1000;
+  room.send(a, { t: 'host', action: 'settings', settings: { mode: 'roulette' } });
+  room.send(a, { t: 'sit', seat: 0 }); room.send(b, { t: 'sit', seat: 1 });
+  room.send(a, { t: 'bet', requestId: 'a', amount: 25, balance: 1000 });
+  assert.equal(room.engine.match.phase, 'lobby');
+  room.send(b, { t: 'bet', requestId: 'b', amount: 25, balance: 1000 });
+  assert.equal(room.engine.match.phase, 'countdown');
+  assert.equal(room.engine.match.duration, ROULETTE_COUNTDOWN_MS);
+  room.clock.advance(ROULETTE_COUNTDOWN_MS - 1);
+  assert.equal(room.engine.match.phase, 'countdown');
+  room.clock.advance(1);
+  assert.equal(room.engine.match.practice, true);
+  assert.match(room.engine.match.practiceReason, /less than 24 hours/);
+  room.engine.endRoulette('alice');
+  assert.match(a.last('win').practiceReason, /less than 24 hours/);
+  assert.equal(a.last('rouletteReward').coins, 25);
+});
+
+test('a bot never counts as the second entry for Last Sip auto start', () => {
+  const room = createRoom(), a = room.join('alice');
+  room.send(a, { t: 'host', action: 'settings', settings: { mode: 'roulette' } });
+  room.send(a, { t: 'sit', seat: 0 });
+  room.send(a, { t: 'host', action: 'addBot' });
+  room.send(a, { t: 'bet', requestId: 'entry', amount: 25, balance: 1000 });
+  assert.equal(room.engine.match.phase, 'lobby');
+  room.send(a, { t: 'host', action: 'start' });
+  assert.equal(room.engine.match.practice, true);
+});
+
+test('word prompts avoid hard and repeated suffixes and fall back when common answers run out', () => {
+  const room = game(), m = room.engine.match;
+  m.mode = 'double';
+  for (const suffix of ['ol', 'py', 'up', 'ty']) assert.equal(room.engine.nextPrefix(`a${suffix}`), suffix[1]);
+  assert.equal(room.engine.nextPrefix('open'), 'en');
+  assert.equal(room.engine.nextPrefix('open'), 'n');
+  const common = room.engine.botDicts.normal;
+  for (;;) {
+    const answer = common.randomWithPrefix('ed', m.used, () => 0);
+    if (!answer) break;
+    m.used.add(answer);
+  }
+  assert.equal(room.engine.nextPrefix('red'), 'd');
+});
+
+test('owner swearing option allows ordinary profanity while retaining slur filtering', () => {
+  const room = createRoom(), a = room.join('alice'), b = room.join('bob');
+  room.send(a, { t: 'host', action: 'settings', settings: { allowSwearing: true } });
+  assert.equal(room.engine.settings.allowSwearing, true);
+  room.send(a, { t: 'chat', text: 'damn dike' });
+  assert.equal(b.last('chat').text, 'damn ####');
+  room.send(a, { t: 'sit', seat: 0 }); room.send(b, { t: 'sit', seat: 1 });
+  room.send(a, { t: 'host', action: 'start' });
+  const m = room.engine.match;
+  m.prefix = 'f'; assert.equal(room.engine.rejectReason('fuck'), null);
+  m.prefix = 'd'; assert.equal(room.engine.rejectReason('dike'), 'not_word');
+  assert.equal(dict.has('venus'), true);
+  m.prefix = 'v'; assert.equal(room.engine.rejectReason('venus'), null);
+});
+
+test('admin pet collection and card grants acknowledge success', () => {
+  const room = createRoom(), admin = room.join('admin');
+  room.engine.players.get('admin').isAdmin = true;
+  room.send(admin, { t: 'admin', action: 'grantPet', petId: 'dragon' });
+  assert.equal(admin.last('petMergeGrant').tier, 1);
+  assert.equal(admin.last('petMergeGrant').petId, 'dragon');
+  assert.equal(admin.last('adminPetResult').petId, 'dragon');
+  room.send(admin, { t: 'admin', action: 'addCard', id: 'admin', cardId: 'heart' });
+  assert.equal(admin.last('adminCard').cardId, 'heart');
+  assert.equal(admin.last('adminCardResult').cardId, 'heart');
+});
+
+test('selling wins needs a signed-in account and updates the exact leaderboard revision', async () => {
+  let sales = 0;
+  const room = createRoom({ onSellWins: async ({ id, requestId }) => {
+    assert.equal(id, 'alice'); assert.equal(requestId, 'sale1234'); sales++;
+    return { ok: true, wins: 7, revision: 3, coins: 1000, receipt: 'wins:alice:sale1234' };
+  } });
+  const alice = room.join('alice');
+  room.send(alice, { t: 'sellWins', requestId: 'sale1234' });
+  assert.equal(alice.last('error').code, 'account_required');
+  room.engine.players.get('alice').accountCreatedAt = 1;
+  room.send(alice, { t: 'sellWins', requestId: 'sale1234' });
+  await Promise.resolve();
+  assert.equal(alice.last('winsSold').wins, 7);
+  assert.equal(alice.last('winsSold').revision, 3);
+  room.send(alice, { t: 'sellWins', requestId: 'sale1234' });
+  assert.equal(sales, 1);
+});
+
+test('bot cosmetics match difficulty and an empty room drops its bots and timers', () => {
+  assert.equal(botProfile(() => .99, new Set(), 'easy').pet, null);
+  assert.notEqual(botProfile(() => .99, new Set(), 'normal').pet, 'dragon');
+  assert.equal(botProfile(() => .99, new Set(), 'hard').pet, 'robot');
+  const room=createRoom(); const human=room.join('alice');
+  room.send(human,{t:'host',action:'addBot'});
+  assert.equal(room.engine.players.size,2);
+  const bot=[...room.engine.players.values()].find(p=>p.isBot);
+  room.send(human,{t:'host',action:'settings',settings:{botLevel:'easy'}});
+  assert.equal(bot.pet,null);
+  room.engine.random=()=>.99;
+  room.send(human,{t:'host',action:'settings',settings:{botLevel:'hard'}});
+  assert.equal(bot.pet,'robot');
+  room.engine.disconnect(human);
+  assert.equal(room.engine.players.size,0);
+  assert.equal(room.engine.match.phase,'lobby');
+  assert.equal(room.clock.pending,0);
+  assert.deepEqual(room.errors,[]);
+});
+
+test('admin room shutdown closes sockets, refunds an active game and resets the room', () => {
+  const room=createRoom(), a=room.join('alice'), b=room.join('bob');
+  room.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});
+  room.send(a,{t:'sit',seat:0}); room.send(b,{t:'sit',seat:1});
+  for(const [conn,id] of [[a,'a'],[b,'b']]) room.send(conn,{t:'bet',requestId:id,amount:25,balance:100});
+  room.send(a,{t:'host',action:'start'});
+  room.engine.shutdownRoom();
+  assert.equal(a.last('matchRefund').coins,25);
+  assert.equal(b.last('matchRefund').coins,25);
+  assert.match(a.last('kicked').reason,/shut down/);
+  assert.equal(a.closed.code,4001);
+  assert.equal(room.engine.players.size,0);
+  assert.equal(room.engine.match.phase,'lobby');
+  assert.equal(room.clock.pending,0);
+});
+
+test('trade moves coins, chairs, tiered pets and cards exactly once after both accept', () => {
+  const room = createRoom();
+  const a = room.join('alice', { inventory: { coins: 1000, ownedChairs: ['wooden', 'glass'], petTiers: { doggy: { 1: 2 } }, cards: { skip: 3 } } });
+  const b = room.join('bob', { inventory: { coins: 300, ownedBacks: ['none', 'cape'], cards: { time_tax: 2 } } });
+  room.engine.players.get('alice').accountCreatedAt = room.clock.now() - 86400001;
+  room.engine.players.get('bob').accountCreatedAt = room.clock.now() - 86400001;
+  room.send(a, { t: 'tradeRequest', targetId: 'bob' });
+  const id = a.last('tradeState').id;
+  assert.equal(b.last('tradeState').stage, 'invite');
+  room.send(b, { t: 'tradeRespond', id, accept: true });
+  const aliceOffer = { coins: 150, items: [{ kind: 'chair', id: 'glass', qty: 1 }, { kind: 'pet', id: 'doggy', tier: 1, qty: 1 }, { kind: 'card', id: 'skip', qty: 2 }] };
+  const bobOffer = { coins: 50, items: [{ kind: 'card', id: 'time_tax', qty: 1 }] };
+  room.send(a, { t: 'tradeOffer', id, offer: aliceOffer });
+  room.send(b, { t: 'tradeOffer', id, offer: bobOffer });
+  room.send(a, { t: 'tradeAccept', id, inventory: tradeInventory({ coins: 1000, ownedChairs: ['wooden', 'glass'], petTiers: { doggy: { 1: 2 } }, cards: { skip: 3 } }) });
+  room.send(b, { t: 'tradeAccept', id, inventory: tradeInventory({ coins: 300, cards: { time_tax: 2 } }) });
+  assert.equal(a.last('tradeState').accepted, true);
+  assert.equal(b.last('tradeState').accepted, true);
+  room.clock.advance(2500);
+  assert.equal(a.all('tradeComplete').length, 1);
+  assert.equal(b.all('tradeComplete').length, 1);
+  assert.equal(room.engine.players.get('alice').tradeInventory.coins, 900);
+  assert.equal(room.engine.players.get('bob').tradeInventory.coins, 400);
+  assert.deepEqual(room.engine.players.get('alice').tradeInventory.chairs, []);
+  assert.deepEqual(room.engine.players.get('bob').tradeInventory.chairs, ['glass']);
+  assert.equal(room.engine.players.get('bob').tradeInventory.pets['doggy:1'], 1);
+  assert.equal(room.engine.players.get('bob').tradeInventory.cards.skip, 2);
+  assert.deepEqual(room.errors, []);
+});
+
+test('changing a trade offer clears approvals and duplicate chairs cannot be received', () => {
+  const room = createRoom();
+  const inv = tradeInventory({ coins: 500, ownedChairs: ['wooden', 'glass'] });
+  const a = room.join('alice', { inventory: inv }), b = room.join('bob', { inventory: inv });
+  room.engine.players.get('alice').accountCreatedAt = room.clock.now() - 86400001;
+  room.engine.players.get('bob').accountCreatedAt = room.clock.now() - 86400001;
+  room.send(a, { t: 'tradeRequest', targetId: 'bob' });
+  const id = a.last('tradeState').id;
+  room.send(b, { t: 'tradeRespond', id, accept: true });
+  room.send(a, { t: 'tradeOffer', id, offer: { items: [{ kind: 'chair', id: 'glass' }] } });
+  room.send(a, { t: 'tradeAccept', id, inventory: inv });
+  assert.equal(a.last('tradeState').accepted, true);
+  room.send(b, { t: 'tradeOffer', id, offer: { coins: 10 } });
+  assert.equal(a.last('tradeState').accepted, false);
+  room.send(b, { t: 'tradeAccept', id, inventory: inv });
+  assert.match(b.last('tradeError').message, /already own/);
+  room.clock.advance(3000);
+  assert.equal(a.all('tradeComplete').length, 0);
+  room.send(a, { t: 'tradeCancel', id });
+  assert.equal(b.last('tradeClosed').reason, 'Trade canceled.');
+  assert.deepEqual(room.errors, []);
+});
+
+test('trading waits for both accounts to reach 24 hours', () => {
+  const room = createRoom();
+  const a = room.join('alice'), b = room.join('bob');
+  room.send(a, { t: 'tradeRequest', targetId: 'bob' });
+  assert.match(a.last('tradeError').message, /24 hours/);
+  room.engine.players.get('alice').accountCreatedAt = room.clock.now() - 86400001;
+  room.engine.players.get('bob').accountCreatedAt = room.clock.now() - 86400000 + 1;
+  room.send(a, { t: 'tradeRequest', targetId: 'bob' });
+  assert.match(a.last('tradeError').message, /not yet eligible/);
+  room.clock.advance(1);
+  room.send(a, { t: 'tradeRequest', targetId: 'bob' });
+  assert.equal(a.last('tradeState').stage, 'invite');
+});
 
 function game(options = {}, hello = {}) {
   const room = createRoom(options);
@@ -35,12 +304,23 @@ test('each mode loads defaults, plays a full bot match and reports its rules', (
     room.send(host, { t: 'host', action: 'addBot' });
     room.send(host, { t: 'host', action: 'addBot' });
     room.send(host, { t: 'host', action: 'start' });
-    assert.equal(room.engine.match.mode, mode.id);
+    assert.equal(room.engine.match.mode, mode.id === 'custom' ? 'classic' : mode.id);
     if (mode.id === 'chaos') assert.ok(room.engine.match.twist);
     for (let i = 0; i < 2400 && !host.last('win'); i++) room.clock.advance(500);
     assert.ok(host.last('win'), mode.id);
     assert.deepEqual(room.errors, [], mode.id);
   }
+});
+
+test('custom settings return to the preset when its values are restored', () => {
+  const room = createRoom();
+  const host = room.join('host');
+  room.send(host, { t: 'host', action: 'settings', settings: { mode: 'classic' } });
+  room.send(host, { t: 'host', action: 'settings', settings: { mode: 'custom', hearts: 3 } });
+  assert.equal(room.engine.settings.mode, 'custom');
+  room.send(host, { t: 'host', action: 'settings', settings: { mode: 'custom', hearts: 2 } });
+  assert.equal(room.engine.settings.mode, 'classic');
+  assert.equal(room.engine.settings.baseMode, undefined);
 });
 
 test('long, double, sudden, random and blitz rules apply at turns', () => {
@@ -72,7 +352,7 @@ test('WPM combos multiply coins at 3, 5, 8; mistakes and slow words reset them',
   for (const [combo, multiplier] of [[3, 1.5], [5, 2], [8, 3]]) {
     const result = seen.get(combo);
     assert.ok(result.flairs.some(f => f.id === `combo_${combo}`));
-    assert.equal(result.coins - result.flairs.reduce((sum, f) => sum + f.coins, 0), Math.round(10 * multiplier) + 10);
+    assert.equal(result.coins - result.flairs.reduce((sum, f) => sum + f.coins, 0), Math.round(10 * multiplier) + 16);
   }
   const id = room.engine.match.typerId;
   room.send(room.conns[id], { t: 'submit', word: '!' });
@@ -115,6 +395,7 @@ test('hints are valid, private, charged once, and reject stale/poor/no-answer re
   assert.equal(conn.last('hint').reason, 'already_bought');
   room.clock.advance(1000);
   room.send(conn, { t: 'submit', word: answer.word });
+  assert.equal(conn.last('result').paidAnswer, true);
   room.send(conn, { ...request, requestId: 'late' });
   assert.equal(conn.last('hint').reason, 'turn_ended');
   const current = room.conns[m.typerId];
@@ -145,7 +426,7 @@ test('queued skip, time and mistakes consume once at turn lock, and direct use i
     room.send(conn, { t: 'useCard', requestId: 'late-use', turnId: m.turnId, cardId, targetId });
     assert.equal(conn.last('cardResult').ok, false);
     assert.equal(conn.all('cardUsed').length, 1);
-    room.clock.advance(4499); assert.equal(m.phase, 'cardReveal');
+    room.clock.advance(5199); assert.equal(m.phase, 'cardReveal');
     room.clock.advance(1); assert.equal(m.phase, 'typing');
     play(room);
     if (cardId === 'skip') assert.notEqual(m.typerId, targetId);
@@ -164,7 +445,7 @@ test('Free Pass queued for yourself skips the upcoming turn without losing a hea
   room.clock.advance(1000); queue(room, actor, 'skip', actor, 'self-skip');
   const hearts = room.engine.participant(actor).hearts;
   play(room); assert.equal(m.phase, 'cardReveal');
-  room.clock.advance(4500);
+  room.clock.advance(5200);
   assert.notEqual(m.typerId, actor);
   assert.equal(room.engine.participant(actor).pending.skip, false);
   assert.equal(room.engine.participant(actor).hearts, hearts);
@@ -194,12 +475,18 @@ test('queued heart cards honor shields and can end a match during reveal', () =>
   const room = game(), m = room.engine.match, actor = room.engine.nextAlive(m.typerId), targetId = room.engine.nextAlive(actor), target = room.engine.participant(targetId);
   target.shield = true;
   queue(room, actor, 'heart', targetId, 'heart1'); play(room);
-  assert.equal(target.hearts, 2); assert.equal(target.shield, false);
+  assert.equal(target.hearts, 2); assert.equal(target.shield, true);
   assert.equal(room.conns[actor].last('cardUsed').shielded, true);
-  room.clock.advance(4500); play(room);
+  room.clock.advance(4699);
+  assert.equal(target.shield, true);
+  room.clock.advance(1);
+  assert.equal(target.shield, false);
+  room.clock.advance(500); play(room);
   queue(room, actor, 'heart', targetId, 'heart2');
   target.hearts = 1; room.engine.participant(room.engine.nextAlive(targetId)).alive = false;
   room.engine.startTurn(actor);
+  assert.equal(m.phase, 'cardReveal'); assert.equal(target.alive, true);
+  room.clock.advance(4700);
   assert.equal(m.phase, 'ended'); assert.equal(m.winnerId, actor); assert.equal(target.alive, false);
   room.clock.advance(4500); assert.notEqual(m.phase, 'typing');
   assert.deepEqual(room.errors, []);
@@ -214,6 +501,19 @@ test('in-match inventory updates and reconnects cannot refill spent cards', () =
   room.send(room.conns[id], { t: 'loadout', cards: { heart: 999 } });
   room.join(id, { cards: { heart: 999 } });
   assert.equal(player.cards.heart, 0);
+});
+
+test('a spectator can buy card boxes during a match and sync the new card without refilling players', () => {
+  const room=game();
+  const spectator=room.join('spectator',{cards:{skip:0}});
+  room.send(spectator,{t:'loadout',cards:{skip:1}});
+  assert.equal(room.engine.players.get('spectator').cards.skip,1);
+  room.join('spectator',{cards:{skip:2}});
+  assert.equal(room.engine.players.get('spectator').cards.skip,2);
+  const active=room.engine.match.typerId;
+  const before=room.engine.players.get(active).cards.skip;
+  room.send(room.conns[active],{t:'loadout',cards:{skip:999}});
+  assert.equal(room.engine.players.get(active).cards.skip,before);
 });
 
 test('dragon rolls once: half chance caps next turn at 3 seconds including time pets', () => {
@@ -260,6 +560,9 @@ test('admin tokens stay private, survive reconnect, reject forged flags and rota
   assert.equal(room.engine.view(room.engine.players.get('admin')).isAdmin, undefined);
   room.send(host, { t: 'mod', action: 'kick', id: 'admin' });
   assert.equal(host.last('error').code, 'not_allowed');
+  room.send(host, { t: 'mod', action: 'ban', id: 'admin' });
+  assert.equal(host.last('error').code, 'not_allowed');
+  assert.equal(host.last('modResult'), undefined);
   room.send(host, { t: 'admin', action: 'grant', id: 'host', coins: 100 });
   assert.equal(host.all('grant').length, 0);
   const reconnect = new FakeConn();
@@ -371,6 +674,36 @@ test('card plans are private, replaceable, cancellable and locked at reveal', ()
   assert.equal(room.engine.players.get(actor).travel, null);
   assert.equal(room.engine.players.get(actor).cards.time_tax, 1);
   assert.deepEqual(room.errors, []);
+});
+
+test('owner cancellation restores played cards and purchased answers without awarding match rewards', () => {
+  const room = game(), m = room.engine.match;
+  const first = m.typerId;
+  const next = room.engine.nextAlive(m.typerId);
+  room.send(room.conns[m.typerId], { t: 'hint', turnId: m.turnId, requestId: 'cancel-answer', balance: 250 });
+  assert.equal(room.conns[m.typerId].last('hint').ok, true);
+  queue(room, next, 'time_tax', m.typerId, 'cancel-card');
+  play(room);
+  assert.equal(room.engine.players.get(next).cards.time_tax, 1);
+  room.send(room.conns.alice, { t: 'host', action: 'endMatch' });
+  assert.equal(room.conns[next].last('matchRefund').cards[0], 'time_tax');
+  assert.equal(room.engine.players.get(next).cards.time_tax, 2);
+  assert.equal(room.conns[first].last('matchRefund').coins, 250);
+  assert.equal(room.conns[first].all('reward').length, 0);
+  assert.equal(room.conns[first].all('win').length, 0);
+  assert.deepEqual(room.errors, []);
+});
+
+test('only an unlocked admin can grant a valid card', async () => {
+  const room = createRoom({ adminCode: 'secret' }), admin = room.join('admin'), target = room.join('target');
+  room.send(admin, { t: 'admin', action: 'addCard', id: 'target', cardId: 'heart' });
+  assert.equal(room.engine.players.get('target').cards.heart || 0, 0);
+  await room.engine.onUnlock(room.engine.players.get('admin'), 'secret');
+  room.send(admin, { t: 'admin', action: 'addCard', id: 'target', cardId: 'heart' });
+  assert.equal(room.engine.players.get('target').cards.heart, 1);
+  assert.equal(target.last('adminCard').cardId, 'heart');
+  room.send(admin, { t: 'admin', action: 'addCard', id: 'target', cardId: '__invalid__' });
+  assert.equal(room.engine.players.get('target').cards.heart, 1);
 });
 
 test('disconnect cancels private plans and reconnect cannot refill spent cards or lose history', () => {

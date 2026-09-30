@@ -1,3 +1,4 @@
+import { createWordTideScene } from './word-tide.js';
 import { LIGHTHOUSE_SEATS, TOTAL_WORLD_SEATS, lighthouseSeat } from '../shared/lighthouse.js';
 import { createCardPlay } from './card-play.js';
 // createWorld(): the 3D island, players and effects behind the World API (docs/SPEC.md §5).
@@ -62,6 +63,7 @@ export async function createWorld({ container, labelLayer }) {
   const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 1500);
 
   const terrain = createTerrain(scene);
+  const beforeScenery = new Set(scene.children);
   const props = createProps(scene);
   const table = createTable(scene);
   const lobby = createLobby(scene);
@@ -128,8 +130,10 @@ export async function createWorld({ container, labelLayer }) {
   interactables.push({ i: { type: 'lighthouseDoor', to: 'island' }, x: LIGHTHOUSE_ROOM.exit.x, z: LIGHTHOUSE_ROOM.exit.z, y: LIGHTHOUSE_ROOM.exit.y, range: 2.9, stamp: 0 });
 
   // ---- State ----
+  const tideScenery = scene.children.filter(o => !beforeScenery.has(o));
   const players = new Map();
   const cardPlay=createCardPlay(scene,players,labels);
+  const tide = createWordTideScene(scene,labels,terrain,tideScenery,players);
   const cardTargets = new Map();
   const targetGeometry = new THREE.CylinderGeometry(2.2, 2.2, 6, 24, 1, true).translate(0, 3, 0);
   function clearCardTargets() {
@@ -140,6 +144,9 @@ export async function createWorld({ container, labelLayer }) {
   }
   const targetRay = new THREE.Raycaster();
   let targetPointer = null;
+  let hoverPointer = null;
+  canvas.addEventListener('pointermove', event => { hoverPointer = { x: event.clientX, y: event.clientY }; });
+  canvas.addEventListener('pointerleave', () => { hoverPointer = null; });
   canvas.addEventListener('pointerdown', event => { targetPointer = { x: event.clientX, y: event.clientY }; });
   canvas.addEventListener('pointerup', event => {
     if (!targetPointer || Math.hypot(event.clientX - targetPointer.x, event.clientY - targetPointer.y) > 8 || !cardTargets.size) return;
@@ -164,11 +171,13 @@ export async function createWorld({ container, labelLayer }) {
   let localId = null;
   let menuMode = false;
   let cameraMode = 'follow';
+  let activeMatch = null;
   let viewW = 1;
   let viewH = 1;
   let raf = 0;
 
   const local = () => (localId ? players.get(localId) ?? null : null);
+  const playingMatch = () => { const me = local(); return !!(me?.seat >= 0 && activeMatch?.participants?.some(p => p.id === me.data.id && p.alive)); };
 
   function emitInteract(i) {
     for (const cb of interactListeners) cb({ ...i });
@@ -241,7 +250,7 @@ export async function createWorld({ container, labelLayer }) {
   function updatePrompt(e) {
     frameNo++;
     preview.visible = false;
-    if (!e || e.seat >= 0 || menuMode) {
+    if (!e || e.seat >= 0 || menuMode || tide.active()) {
       prompt.set(null, null);
       return;
     }
@@ -317,6 +326,7 @@ export async function createWorld({ container, labelLayer }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, low ? 1 : 2));
     terrain.sun.castShadow = !low;
     ambient.setQuality(level);
+    tide.setQuality(level);
     resize();
   }
   setQuality('high');
@@ -339,7 +349,7 @@ export async function createWorld({ container, labelLayer }) {
 
     const me = local();
     obby.update(time, dt);
-    if (me && !menuMode && !travelLocked && (zone==='lighthouse'||!roulette.cinematic())) {
+    if (me && !menuMode && !travelLocked && !tide.active() && (zone==='lighthouse'||!playingMatch()||!roulette.cinematic())) {
       if (me.seat >= 0) {
         if (input.consumeJumpPress()) emitInteract(STAND);
         input.consumeInteract();
@@ -375,6 +385,7 @@ export async function createWorld({ container, labelLayer }) {
     rig.zoom(input.zoomDelta);
     input.orbitX = input.orbitY = input.zoomDelta = 0;
 
+    tide.update(time,dt,now);
     for (const e of players.values()) e.tick(dt, time, now);
     cardPlay.update(now);
     for (const [id, target] of cardTargets) {
@@ -396,8 +407,9 @@ export async function createWorld({ container, labelLayer }) {
     if (me) focus.copy(me.render);
     else focus.set(LAYOUT.spawn.x, 0, LAYOUT.spawn.z);
     rig.update(dt, time, focus, viewSeat());
-    if (zone !== 'lighthouse') roulette.camera(camera);
-    cardPlay.camera(camera,zone);
+    if (zone !== 'lighthouse' && (roulette.cinematic() || me?.seat >= 0 && me.seat < SEAT_COUNT)) roulette.camera(camera);
+    cardPlay.camera(camera,zone,playingMatch());
+    if (zone !== 'lighthouse') roulette.shake(camera);
     if (zone === 'lighthouse') {
       const dx = camera.position.x - LIGHTHOUSE_ROOM.center.x;
       const dz = camera.position.z - LIGHTHOUSE_ROOM.center.z;
@@ -408,6 +420,7 @@ export async function createWorld({ container, labelLayer }) {
       }
       camera.position.y = Math.min(camera.position.y, 13.1);
     }
+    tide.camera(camera,now);
     terrain.setSkyFocus(camera.position);
     effects.update(dt, camera);
 
@@ -422,6 +435,7 @@ export async function createWorld({ container, labelLayer }) {
     scene.updateMatrixWorld();
     camera.updateMatrixWorld();
     updatePrompt(me);
+    cardPlay.hover(camera,zone==='island'?hoverPointer:null,canvas.getBoundingClientRect());
     labels.update(camera, viewW, viewH);
     emitMove(now, me);
 
@@ -574,7 +588,9 @@ export async function createWorld({ container, labelLayer }) {
 
     setLeaderboardTitle(title) { lobby.setLeaderboardTitle(title); },
     setTable(id) { table.setTable(id); },
-    setRoulette(on, match, entry, mode) { cardPlay.setVisible(!on); terrain.setNight(on); lobby.setRoulette(on,mode); roulette.set(on, match, players, entry); },
+    setMatch(match) { activeMatch=match; },
+    setTide(match) { tide.set(match,localId); },
+    setRoulette(on, match, entry, mode) { cardPlay.setVisible(!on && !activeMatch?.tide); terrain.setNight(on); lobby.setRoulette(on,mode); roulette.set(on, match, players, entry); },
     setMeteor(drop,collected) { roulette.setMeteor(drop,collected); },
     knockOutRoulette(id) { roulette.knockout(id); },
     renderThumbnail: thumbnails.render,
@@ -652,7 +668,7 @@ export async function createWorld({ container, labelLayer }) {
     },
     debugSnapshot() {
       return { zone, firstPerson, localPosition: local()?.pos.toArray() ?? null, checkpoint: { ...checkpoint },
-        scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), night: terrain.nightAmount(),
+        scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), tide: tide.debug(), night: terrain.nightAmount(),
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
         cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,seat:e.seat,render:e.render.toArray(),yaw:e.renderYaw,sleeping:!!e.avatar.rouletteSleeping,faceExpression:e.avatar.faceExpression,skipRemaining:e.avatar.skipT||0,sleepWeight:e.avatar.sleepWeight||0,headBottom:e.avatar.rouletteSleeping?new THREE.Box3().setFromObject(e.avatar.headMesh).min.y:null})),

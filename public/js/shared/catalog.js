@@ -106,7 +106,7 @@ export const BLOCKS = [
   { id: 'starter', name: 'Starter Block', price: 300,  color: '#ffd43b',
     odds: { doggy: 35, kitty: 30, bunny: 15, froggy: 10, piggy: 7, foxy: 3 } },
   { id: 'secret',  name: 'Secret Block',  price: 1500, color: '#9b5de5',
-    odds: { bear: 30, penguin: 25, owl: 20, unicorn: 15, dragon: 7, robot: 3 } },
+    odds: { bear: 34, penguin: 25, owl: 20, unicorn: 15, dragon: 3, robot: 3 } },
 ];
 
 export function rollBlock(block, random = Math.random) {
@@ -141,8 +141,8 @@ export const BACK_BLING = [
   { id: 'devil', name: 'Devil Wings', rarity: 'Uncommon', price: 1500 },
   { id: 'sword', name: 'Sword', rarity: 'Rare', price: 3000 },
   { id: 'guitar', name: 'Guitar', rarity: 'Rare', price: 3500 },
-  { id: 'jetpack', name: 'Jetpack', rarity: 'Epic', price: 6000 },
-  { id: 'rainbow', name: 'Rainbow Cape', rarity: 'Epic', price: 8000 },
+  { id: 'jetpack', name: 'Jetpack', rarity: 'Epic', price: 20000 },
+  { id: 'rainbow', name: 'Rainbow Cape', rarity: 'Epic', price: 25000 },
   { id: 'dragon', name: 'Dragon Wings', rarity: 'Legendary', price: 15000 },
   { id: 'halo', name: 'Golden Halo', rarity: 'Legendary', price: 25000 },
 ];
@@ -159,6 +159,6 @@ export const CARDS = [
 export const CARDS_BY_ID = Object.fromEntries(CARDS.map((v) => [v.id, v]));
 export const CARD_IDS = new Set(CARDS.map((v) => v.id));
 export const CARD_BOXES = [
-  { id: 'card_crate', name: 'Card Crate', price: 500, color: '#19b5aa', odds: { skip: 60, time_tax: 30, pressure: 9.9, heart: .1 }, x: -26, z: 26 },
-  { id: 'royal_cards', name: 'Royal Card Crate', price: 1500, color: '#e7a928', odds: { skip: 25, time_tax: 45, pressure: 25, heart: 5 }, x: -34, z: 20 },
+  { id: 'card_crate', name: 'Card Crate', price: 500, color: '#19b5aa', odds: { skip: 60, time_tax: 9.9, pressure: 30, heart: .1 }, x: -26, z: 26 },
+  { id: 'royal_cards', name: 'Royal Card Crate', price: 1500, color: '#e7a928', odds: { skip: 25, time_tax: 25, pressure: 45, heart: 5 }, x: -34, z: 20 },
 ];

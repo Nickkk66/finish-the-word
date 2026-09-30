@@ -5,6 +5,8 @@ import { createRoom } from './helpers.js';
 function setup(entry = 25) {
   const r = createRoom({seed: 29});
   const a = r.join('alice'), b = r.join('bob');
+  r.engine.players.get('alice').accountCreatedAt = -100_000_000;
+  r.engine.players.get('bob').accountCreatedAt = -100_000_000;
   r.send(a,{t:'host',action:'settings',settings:{mode:'roulette',rouletteEntry:entry}});
   r.send(a,{t:'sit',seat:0}); r.send(b,{t:'sit',seat:1});
   return {r,a,b};
@@ -32,7 +34,7 @@ test('roulette entries require funds and a seat; standing commits the entry and 
   assert.equal(a.last('error').code,'entry_committed');
 });
 
-test('roulette hidden draw stays private, pass is once per knockout round, stale actions fail and timeout drinks',()=>{
+test('roulette hidden draw stays private, pass is once per match, stale actions fail and timeout drinks',()=>{
   const {r,a,b}=setup();bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
   const m=r.engine.match;
   assert.equal(m.phase,'roulette');
@@ -45,8 +47,25 @@ test('roulette hidden draw stays private, pass is once per knockout round, stale
   r.send(r.conns[m.typerId],{t:'roulette',action:'pass',turnId:m.turnId}); r.clock.advance(1700);
   assert.equal(m.typerId,id);
   r.send(conn,{t:'roulette',action:'pass',turnId:m.turnId}); assert.equal(m.phase,'roulette');
-  r.clock.advance(10000); assert.equal(m.roulette.event.action,'drink'); assert.ok(m.roulette.risk>1/6);
+  r.clock.advance(10000); assert.equal(m.roulette.event.action,'drink'); assert.equal(m.roulette.risk,.1);
   assert.deepEqual(r.errors,[]);
+});
+
+test('a knockout does not give an earlier passer a second pass',()=>{
+  const {r,a,b}=setup(),c=r.join('carol');
+  r.send(c,{t:'sit',seat:2});
+  bet(r,a,'a');bet(r,b,'b');bet(r,c,'c');r.send(a,{t:'host',action:'start'});
+  const m=r.engine.match, passer=m.typerId;
+  r.send(r.conns[passer],{t:'roulette',action:'pass',turnId:m.turnId});r.clock.advance(1700);
+  r.engine.random=()=>0;
+  r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);
+  assert.equal(m.phase,'roulette');
+  r.engine.random=()=>.999;
+  r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);
+  assert.equal(m.typerId,passer);
+  r.send(r.conns[passer],{t:'roulette',action:'pass',turnId:m.turnId});
+  assert.equal(m.phase,'roulette');
+  assert.equal(m.roulette.passed.has(passer),true);
 });
 
 test('roulette poisons eliminate, prize grows and winner reward is paid exactly once',()=>{
@@ -56,12 +75,42 @@ test('roulette poisons eliminate, prize grows and winner reward is paid exactly 
   r.send(r.conns[loser],{t:'roulette',action:'drink',turnId:m.turnId});
   r.clock.advance(4800);
   assert.equal(m.phase,'ended');assert.notEqual(m.winnerId,loser);
-  assert.equal(r.conns[m.winnerId].last('rouletteReward').coins,52);
+  assert.equal(r.conns[m.winnerId].last('rouletteReward').coins,50);
   assert.equal(r.conns[loser].last('rouletteReward').coins,0);
   r.engine.endRoulette(m.winnerId);
   assert.equal(r.conns[m.winnerId].all('rouletteReward').length,1);
   r.clock.advance(15000); assert.equal(r.engine.match.phase,'lobby');
   assert.equal(r.engine.players.get('alice').rouletteBet,null);assert.deepEqual(r.errors,[]);
+});
+
+test('Double Sip uses a fixed 60% risk and adds the winner’s multiplied entry to the pool once',()=>{
+  const {r,a,b}=setup();bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
+  const m=r.engine.match, first=m.typerId;
+  r.forced.push(.61);
+  r.send(r.conns[first],{t:'roulette',action:'double',turnId:m.turnId});
+  assert.equal(m.roulette.event.poisoned,false);
+  r.clock.advance(4800);
+  assert.equal(m.roulette.doubleSurvivors.has(first),true);
+  r.forced.push(0);
+  r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});
+  r.clock.advance(4800);
+  assert.equal(m.winnerId,first);
+  const reward=r.conns[first].last('rouletteReward');
+  assert.equal(reward.coins,m.roulette.pot+Math.floor(25*m.roulette.multiplier));
+  assert.match(reward.bonuses[0].label,/double sip/);
+  assert.equal(r.conns[first].all('rouletteReward').length,1);
+  assert.deepEqual(r.errors,[]);
+});
+
+test('Double Sip kills below 60% even when ordinary poison risk is low',()=>{
+  const {r,a,b}=setup();bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
+  const m=r.engine.match, loser=m.typerId;
+  r.forced.push(.5);
+  r.send(r.conns[loser],{t:'roulette',action:'double',turnId:m.turnId});
+  assert.equal(m.roulette.event.poisoned,true);
+  r.clock.advance(4800);
+  assert.notEqual(m.winnerId,loser);
+  assert.equal(r.conns[m.winnerId].last('rouletteReward').coins,m.roulette.pot);
 });
 
 test('players choose independent entries; host entry changes are ignored and abort refunds each exact stake',()=>{
@@ -75,12 +124,29 @@ test('players choose independent entries; host entry changes are ignored and abo
   assert.deepEqual(r.errors,[]);
 });
 
+test('owner cancellation returns each roulette entry once and cannot award a winner',()=>{
+  const {r,a,b}=setup();bet(r,a,'a',25);bet(r,b,'b',100);
+  r.send(a,{t:'host',action:'start'});
+  const matchId=r.engine.match.matchId;
+  r.send(b,{t:'host',action:'endMatch'});
+  assert.equal(r.engine.match.matchId,matchId);
+  r.send(a,{t:'host',action:'endMatch'});
+  assert.ok(['lobby','countdown'].includes(r.engine.match.phase));
+  assert.equal(a.last('matchRefund').coins,25);
+  assert.equal(b.last('matchRefund').coins,100);
+  assert.equal(a.all('rouletteReward').length,0);
+  assert.equal(b.all('rouletteReward').length,0);
+  r.send(a,{t:'host',action:'endMatch'});
+  assert.equal(a.all('matchRefund').length,1);
+  assert.deepEqual(r.errors,[]);
+});
+
 test('disconnect forfeits after grace, awards remaining player and reconnect replays debit and settlement receipts',()=>{
   const {r,a,b}=setup(25);bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
   r.engine.random=()=>.99;
   r.engine.disconnect(a);r.clock.advance(20000);
-  assert.equal(b.last('rouletteReward').coins,52);
-  const again=r.join('bob');assert.equal(again.last('rouletteReward').coins,52);
+  assert.equal(b.last('rouletteReward').coins,50);
+  const again=r.join('bob');assert.equal(again.last('rouletteReward').coins,50);
   assert.equal(again.last('betResult').receipt,b.last('betResult').receipt);
   assert.deepEqual(r.errors,[]);
 });
@@ -119,14 +185,42 @@ test('Custom preserves the selected word rules and a new preset replaces them',(
   assert.deepEqual(r.errors,[]);
 });
 
-test('each completed turn multiplies prize and risk, including passes; risk caps at 95 percent',()=>{
+test('prize and risk grow only after each living player acts',()=>{
  const {r,a,b}=setup();bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
  const m=r.engine.match;r.engine.random=()=>.999;
  const start=m.roulette.risk;
  r.send(r.conns[m.typerId],{t:'roulette',action:'pass',turnId:m.turnId});r.clock.advance(1700);
- assert.equal(m.roulette.pot,52);assert.equal(m.roulette.risk,start*1.25);
- for(let i=0;i<12;i++){r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);}
- assert.equal(m.roulette.risk,.95);assert.ok(m.roulette.pot>90);assert.deepEqual(r.errors,[]);
+ assert.equal(m.roulette.pot,50);assert.equal(m.roulette.risk,start);
+ r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);
+ assert.equal(m.roulette.risk,.1);
+ assert.equal(m.roulette.pot,52);
+ r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);
+ assert.equal(m.roulette.risk,.1);
+ for(let i=0;i<22;i++){r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);}
+ assert.equal(m.roulette.risk,.95);assert.ok(m.roulette.pot>75&&m.roulette.pot<100);assert.deepEqual(r.errors,[]);
+});
+
+test('one full circuit gives the same multiplier with two or five players', () => {
+  for (const count of [2, 5]) {
+    const { r, a, b } = setup();
+    const seated = [a, b];
+    for (let i = 2; i < count; i++) {
+      const id = `extra${i}`, conn = r.join(id);
+      r.engine.players.get(id).accountCreatedAt = 1;
+      r.send(conn, { t: 'sit', seat: i });
+      seated.push(conn);
+    }
+    seated.forEach((conn, i) => bet(r, conn, `stake${i}`));
+    r.send(a, { t: 'host', action: 'start' });
+    const m = r.engine.match;
+    r.engine.random = () => .999;
+    for (let i = 0; i < count; i++) {
+      r.send(r.conns[m.typerId], { t: 'roulette', action: 'drink', turnId: m.turnId });
+      r.clock.advance(4800);
+    }
+    assert.equal(m.roulette.loops, 1);
+    assert.equal(m.roulette.multiplier, 1.04);
+  }
 });
 
 test('fire charges only after 5 continuous seconds on the ground inside a crater, stops on exit or disconnect',()=>{
@@ -141,6 +235,9 @@ test('fire charges only after 5 continuous seconds on the ground inside a crater
  move(-20,5,4);r.clock.advance(6000);assert.equal(a.all('hazardDebit').length,3);
  move();r.engine.disconnect(a);r.clock.advance(6000);assert.equal(a.all('hazardDebit').length,3);
  const again=r.join('alice');assert.equal(again.all('hazardDebit').length,3,'reconnect replays receipts, not additional charges');
+ assert.equal(r.engine.settings.mode,'classic','an empty room starts fresh');
+ r.send(again,{t:'host',action:'settings',settings:{mode:'roulette'}});
+ r.send(again,{t:'move',x:-20,y:0,z:4,ry:0,anim:'idle'});
  r.clock.advance(11999);assert.equal(again.all('hazardDebit').length,3,'intro grants time before fire starts');
  r.clock.advance(1);assert.equal(again.all('hazardDebit').length,4);
  assert.deepEqual(r.errors,[]);
@@ -159,14 +256,14 @@ test('pending Roulette settings do not create invisible fire during an active wo
  assert.equal(c.all('hazardDebit').length,1);assert.deepEqual(r.errors,[]);
 });
 
-test('poison discount uses the actual individual stake and caps at 40 percent of base risk',()=>{
+test('poison discount applies only above the table average',()=>{
  const {r,a,b}=setup();bet(r,a,'a',25);bet(r,b,'b',100);r.send(a,{t:'host',action:'start'});
  const m=r.engine.match;m.roulette.risk=.55;r.engine.rouletteTurn('bob');
- let view=r.engine.matchView().roulette;assert.equal(view.baseRisk,.55);assert.ok(Math.abs(view.reduction-.22)<1e-9);assert.equal(view.risk,.33);
- r.engine.random=()=>.4;r.engine.rouletteAction('bob','drink');assert.equal(m.roulette.event.poisoned,false);
+ let view=r.engine.matchView().roulette;assert.equal(view.baseRisk,.55);assert.ok(view.reduction>0);assert.ok(view.risk<.55);
+ r.engine.random=()=>.49;r.engine.rouletteAction('bob','drink');assert.equal(m.roulette.event.poisoned,false);
  r.clock.advance(4800);m.roulette.risk=.55;r.engine.rouletteTurn('alice');r.engine.rouletteAction('alice','drink');assert.equal(m.roulette.event.poisoned,true);
  m.stakes.alice=100;m.stakes.bob=100;assert.equal(r.engine.matchView().roulette.reduction,0);
- m.stakes.alice=25;m.stakes.bob=1e9;m.typerId='bob';assert.equal(r.engine.matchView().roulette.risk,.33);
+ m.stakes.alice=25;m.stakes.bob=1e9;m.typerId='bob';assert.ok(Math.abs(r.engine.matchView().roulette.risk-.44)<1e-8);
  assert.deepEqual(r.errors,[]);
 });
 
@@ -183,10 +280,10 @@ test('Death Wish starts at 50 percent risk and grows its prize faster than The L
  assert.equal(m.mode,'roulette_deadly');assert.equal(m.roulette.risk,.5);
  assert.equal(m.roulette.pot,125);assert.equal(r.engine.roomTable(),'poker');
  r.engine.rouletteTurn('bob');
- assert.ok(Math.abs(r.engine.matchView().roulette.risk-.3)<1e-10);
+ assert.ok(r.engine.matchView().roulette.risk<.5 && r.engine.matchView().roulette.risk>.4);
  r.engine.random=()=>.99;r.engine.rouletteAction('bob','drink');r.clock.advance(4800);
- assert.equal(m.roulette.multiplier,1.25);assert.equal(m.roulette.pot,156);
- assert.equal(m.roulette.risk,.6);
+ assert.equal(m.roulette.multiplier,1);assert.equal(m.roulette.pot,125);
+ assert.equal(m.roulette.risk,.5);
  r.engine.endMatch(null);assert.equal(a.last('rouletteReward').coins,25);assert.equal(b.last('rouletteReward').coins,100);
  assert.deepEqual(r.errors,[]);
 });
@@ -194,6 +291,7 @@ test('Death Wish starts at 50 percent risk and grows its prize faster than The L
 test('night meteor arrives every three minutes, requires landing and proximity and rewards only one collector',()=>{
  const r=createRoom(),a=r.join('alice'),b=r.join('bob');r.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});
  r.clock.advance(179999);assert.equal(r.engine.meteor,null);r.clock.advance(1);const meteor=r.engine.meteor;assert.ok(meteor);assert.equal(a.last('meteor').meteor.landsIn,2400);
+ assert.equal(a.last('chat').tone,'alert');assert.equal(b.last('chat').tone,'alert');
  r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.all('meteorReward').length,0);
  r.send(a,{t:'move',x:meteor.x,y:0,z:meteor.z,ry:0,anim:'idle'});r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.all('meteorReward').length,0);
  r.clock.advance(2400);r.send(b,{t:'collectMeteor',id:meteor.id});assert.equal(b.all('meteorReward').length,0);

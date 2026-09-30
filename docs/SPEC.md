@@ -84,7 +84,7 @@ world and UI agents own the remaining areas as assigned. All API calls work from
 Tier merging consumes 3 identical same-tier pets and produces one at tier+1, capped at 3. Tiers are cosmetic:
 pet abilities remain unchanged. Existing dragon pet Blaze uses `{type:'dragon',value:3,chance:.5}`: roll once
 after its accepted word, on success cap the next typing turn at 3000ms after other modifiers. Other sabotage
-pets still subtract seconds. Hints cost `HINT_PRICE=250`.
+pets still subtract seconds. The automatic Answer action costs `HINT_PRICE=250`.
 
 Winner bonus replaces the fixed 50 with `floor(min(1800, eligibleMs / 60000 * 15))`; word/combo/participation
 and flair earnings remain separate. Only award the duration bonus when at least two human participants each
@@ -99,6 +99,7 @@ server-enforced turn/target/count limits, and optional accounts synchronize that
   8,10,15,20. Selecting a mode supplies its default hearts and turnSeconds before host overrides.
 - `hello` and `loadout` add `back`, `table`, `level` (1–999), `petTier` (1–3), `cards:{cardId:count}`.
   `hello` additionally accepts `adminToken` and `public`. Card counts are registered outside active matches;
+  spectators and eliminated players may sync purchased cards while a match runs;
   the room's copy is consumed on successful use, never incremented by in-match loadouts.
 - Player adds `back`, `level`, `petTier`, and `isAdmin` only if the admin tag is shown. Own admin authority is
   delivered privately as `welcome.isAdmin` and in `unlock` replies; do not expose hidden admins to other clients.
@@ -124,15 +125,23 @@ server-enforced turn/target/count limits, and optional accounts synchronize that
   S→C `kicked {reason}`, close 4001 or 4002; no automatic reconnect. Ban ID and hashed IP for room lifetime.
 - C→S `admin {action,...}` where actions are `takeHost`, `forceStart`, `endMatch`, `reset`, `announce` (text,
   optional global), `grant` (id,coins<=100000), `coins` (id, operation set/add, signed amount),
-  `sellChair` (id,chairId), `freeMerge` (petId,tier), `removeLeaderboard` (id), `tag` (on), `table` (table).
-  S→C `announce {text}`, `grant {coins,reason}`, `coinAdjust`, `sellChair`, and `petMergeGrant`.
+  `addCard` (id,cardId), `freeMerge` (petId,tier), `removeLeaderboard` (id), `tag` (on), `table` (table),
+  `shutdownRoom` (code). Admins can edit a connected player's coins/cards across listed rooms.
+  S→C `announce {text}`, `grant {coins,reason}`, `coinAdjust`, `adminCard`, and `petMergeGrant`.
   Global announcements are stored in the Announcements Durable Object and polled by all rooms, including
   private rooms. Admin teleport is local. Admin UI lives in Settings.
 - C→S `obby {event:'start'|'finish',ms?}`; grant 50 once/10min/player, minimum legitimate run 30s.
 - New errors include `banned`, `not_allowed`; default rate limits apply to every new message type.
 - `GET /api/leaderboard` → `{top:[{name,wins}]}` (30s edge cache), global human wins only with 2+ humans.
-- `GET /api/public` → `{rooms:[{code,humans}],players}`; `GET /api/quickplay` → `{code}`.
-  Public room heartbeat <=once/2s, keep alive while inhabited, entries expire in 60s. Private rooms stay unlisted.
+- `GET /api/public` → `{rooms:[{code,humans}],players}`; `GET /api/quickplay` always returns `{code:'PUBLIC'}`.
+  `PUBLIC` remains listed while occupied and cannot be switched to private. Invite codes remain private.
+  The shared room allows 40 players, with eight seats at the table.
+- Trading uses `tradeRequest`, `tradeRespond`, `tradeOffer`, `tradeAccept`, and `tradeCancel` client messages.
+  Both peers must have server-verified accounts at least 24 hours old.
+  Both peers see `tradeState`. A changed offer clears both acceptances; both must accept, then a 2.5-second
+  final countdown precedes `tradeComplete` receipts. Disconnects cancel open trades. Coins, owned chairs,
+  back items, tiered pets, and cards can transfer. Equipped items revert to defaults if traded away.
+  The client stores the latest 20 completed trades in the profile and optional cloud save.
 
 ### World additions
 
@@ -429,29 +438,36 @@ mistake circles `#ff4d4d` with white ✕, highlight green `#3ddc54`.
 
 ## September 25 revisions: Roulette and cosmetics
 
-Roulette (`mode: roulette`) is the custom cursed-cup game. Protocol 4 adds its rising-risk rules.
-The normal Mode picker includes Roulette. Confirming closes settings and starts a seven-second asteroid
+Roulette (`mode: roulette`) is the custom cursed-cup game. Protocol 5 adds Double Sip.
+The normal Mode picker includes Roulette. Confirming closes settings. When the match begins, seated players see a seven-second asteroid
 cinematic; the camera returns with a darker map, crater fires, a lit table, tree/leaderboard owls and
 mode-specific How to Play instructions.
 
 Phases are `roulette` (10 seconds to act) and `rouletteReveal` (1.7 seconds for a pass, 4.8 seconds for a drink).
-The server samples each committed drink against the publicly displayed risk, initially 1/6. After every
-completed action, prize multiplier is `min(100, 1.05 ** turns)` and risk is `min(.95, 1/6 * 1.25 ** turns)`.
-For each participant, discount is `min(.4, .2 * log2(stake / smallestMatchStake))`;
+The server samples each committed drink against the publicly displayed risk, initially 2%. After every
+completed circuit, the normal prize multiplier grows by 4%, capped at 2×. Base risk rises by 8 percentage
+points after every living player has acted once, up to 95%.
+For each participant, discount is `min(.4, .2 * log2(max(1, stake / averageMatchStake)))`;
 actual poison chance is `baseRisk * (1 - discount)`. Stakes freeze at match start, including eliminated
-players, so the reference never jumps mid-match. Equal entries have equal odds and the maximum discount
+players, so the reference never jumps mid-match. Only above-average entries receive a discount; equal entries have equal odds and the maximum discount
 is 40% of base risk. Match views expose `baseRisk`, current actor's `risk` and `reduction`, and stakes.
 The HUD strikes out base risk and subtracts percentage points to show the effective probability.
-Passes also increase both. Each player has one pass until a knockout; timeout drinks. A knockout restores
-passes but does not reset risk/prize. Last awake wins `floor(basePot * multiplier)`; aborted rounds refund
-original stakes. Bots use house-funded entries; their winnings aren't credited to a human account.
+Passes count toward the current circuit. Each player has one pass per match; timeout drinks. A knockout
+does not restore passes or reset risk/prize. Last awake wins `floor(basePot * multiplier)`; owner cancelled
+rounds refund original stakes. Bots use house-funded entries; their winnings aren't credited to a human account.
 
 The host cannot set entry amounts. Each seated human chooses any affordable whole-number entry of at least 25 coins and sends
 `{t: bet, requestId, amount, balance}` for an idempotent `betResult` debit receipt.
 Standing before play or changing mode sends `stakeRefund`; paid rounds never auto-rebet.
-`{t: roulette, action: drink|pass, turnId}` commits an action. `rouletteReward` settles the match once.
+Two human entries start a 15-second countdown; bots do not count toward auto-start.
+`{t: roulette, action: drink|pass|double, turnId}` commits an action. Double Sip has a fixed 60% poison
+chance; surviving it adds the winner's multiplied entry once more to the pool payout. `rouletteReward`
+settles the match once. Paid play requires at least two signed-in humans with accounts aged 24 hours, no bots, and at least one
+recorded win for every player at the table. The wins are checked against the leaderboard and not spent.
+Otherwise the match explains why it is practice: human entries are returned, with no pool payout or wins.
 Receipts replay after reconnect, bounded to 128/player and 64 departed players within the live room;
 profiles remember 512 receipts. Economy remains client-trusted; no real-money stakes.
+The owner can opt into ordinary swearing for room chat, names, live typing, and accepted game words. Slurs and abuse terms remain filtered.
 
 Shared crater footprints live in `shared/roulette.js`. The server charges `{t: hazardDebit, amount:25,
 receipt}` for each 5 continuous seconds a connected, unseated player stands at ground level inside one.
@@ -490,9 +506,9 @@ Leaving Roulette or resetting an empty room cancels the timer and removes the co
 The in-game mode picker groups Classic, Blitz, Long Words, Double Trouble, Sudden Death,
 Random Letter, Chaos and Custom under Finish the Word. The Last Sip and Death Wish are under
 Roulette. Both Roulette variants share the cursed table, paid individual entry, server-checked
-meteor reward and fire hazard. The Last Sip begins at 1/6 poison chance, grows base risk x1.25
-and prize x1.05 per completed turn. Death Wish begins at 50% poison chance, grows base risk
-x1.20 and prize x1.25. The existing 95% base-risk cap and 40% relative bet-protection cap
+meteor reward and fire hazard. The Last Sip begins at 2% poison chance, grows base risk by 8
+percentage points per circuit and prize x1.04 per completed circuit. Death Wish begins at 50% poison chance,
+grows base risk by 10 percentage points per circuit and prize x1.10 per completed circuit. Both prizes cap at 2×. The 95% base-risk cap and 40% relative bet-protection cap
 apply to both. The server computes the effective risk for each drink, and clients show it as
 the main readout with a hanging badge for the percentage-point reduction.
 
@@ -513,3 +529,36 @@ clients play a brief shrinking rock and spark burst before removing the collecti
 A poisoned sip holds the close-up through the reveal, then triggers one brief camera jolt,
 sudden slump, muted-aware sound stinger and red vignette. The normal damage and heartbeat
 borders remain separate effects.
+
+## Word Tide — September 30, 2026
+
+Protocol 6 adds Word Tide and requires older clients to refresh.
+`mode: word_tide` is tropical, simultaneous category-answer survival. Five hearts, up to eight
+seated participants, 12-round limit, fixed 20-second answers, no pet/card abilities or stakes.
+Bots make the match practice under the existing rules. The original server-only bank contains
+60 categories and 1,394 accepted forms. Category membership uses explicit normalized forms;
+aliases earn their actual letters, with no spaces/punctuation or adjective padding.
+
+Phases: `tideIntro` (18s), `tideAnswer` (20s), `tideReveal` (3s), `tideFlood` (3s including 1s warning),
+`tideResolve` (2.2s), `ended` (8s). The intro flattens the island behind tsunami spray; all participants
+have separate platforms. Answers lock privately and build only at the round deadline. Each letter
+pops into a colored block. Water damage resolves once after construction and flood animation.
+Submerged platforms lose one heart; survivors receive a rescue lift to two units above water.
+Rescue height never adds to earned letter score. Last survivor wins; round-cap rankings compare
+hearts then earned letters. Simultaneous final drownings compare pre-flood hearts then letters;
+exact ties share the win. Forfeits are excluded from tied drowning candidates.
+
+C→S `tideAnswer {matchId,round,requestId,answer}`. Private `tideAnswerResult` returns `ok`, `locked`
+(the latest valid word/letters/length), and optional `error`. Invalid replacements preserve the
+last valid answer. Late/replayed requests cannot build twice. Welcome includes only the reconnecting
+player's `tidePrivate`. Public `match.tide` exposes category prompt/id, water levels/rise, seed,
+tower geometry/history, revealed answers and winners; it never exposes private answers or the bank.
+`tideReward` uses existing bounded receipt replay and client match-receipt deduplication. Standard
+participation + 10/accepted round + 25/winner is capped at 150 coins; practice grants no coins/wins.
+
+Visual assets are original Three.js geometry plus the existing licensed lucky blocks/card crates.
+No external model pack is required for Word Tide. Shader water/waves, instanced letter blocks and
+spray, palms, wreckage, rain, lightning, and synthesized audio form its presentation. Reduced-motion
+preferences remove shake/flashes and block overshoot. Leaving/canceling restores original scenery,
+seated poses, input and camera. The browser check is `node scripts/word-tide-check.mjs` against a
+local Worker; engine tests are in `test/word-tide.test.js`.

@@ -12,22 +12,32 @@ export function surfaceTexture(kind) {
   const texture=new THREE.CanvasTexture(c);texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;cache.set(kind,texture);return texture;
 }
 let flameTexture;
-function flameMap(){
+function flameMap(poisoned=false){
+  if(poisoned) return poisonFlameMap();
   if(flameTexture)return flameTexture;
   const c=document.createElement('canvas');c.width=128;c.height=256;const x=c.getContext('2d');
   const g=x.createRadialGradient(64,192,3,64,157,100);g.addColorStop(0,'#ffffd5');g.addColorStop(.2,'#ffe985');g.addColorStop(.45,'#ffb329');g.addColorStop(.7,'#f04b13bb');g.addColorStop(1,'#e31e0000');
   x.fillStyle=g;x.beginPath();x.moveTo(64,6);x.bezierCurveTo(90,66,38,66,103,149);x.bezierCurveTo(148,246,37,284,22,210);x.bezierCurveTo(2,139,60,94,64,6);x.fill();
   flameTexture=new THREE.CanvasTexture(c);flameTexture.colorSpace=THREE.SRGBColorSpace;return flameTexture;
 }
-export function createFire(radius=1,height=3,count=10){
+let purpleFlameTexture;
+function poisonFlameMap(){
+  if(purpleFlameTexture)return purpleFlameTexture;
+  const c=document.createElement('canvas');c.width=128;c.height=256;const x=c.getContext('2d');
+  const g=x.createRadialGradient(64,192,3,64,157,100);
+  g.addColorStop(0,'#fff0ff');g.addColorStop(.2,'#d994ff');g.addColorStop(.45,'#9143ec');g.addColorStop(.7,'#5713a4bb');g.addColorStop(1,'#2d075800');
+  x.fillStyle=g;x.beginPath();x.moveTo(64,6);x.bezierCurveTo(90,66,38,66,103,149);x.bezierCurveTo(148,246,37,284,22,210);x.bezierCurveTo(2,139,60,94,64,6);x.fill();
+  purpleFlameTexture=new THREE.CanvasTexture(c);purpleFlameTexture.colorSpace=THREE.SRGBColorSpace;return purpleFlameTexture;
+}
+export function createFire(radius=1,height=3,count=10,poisoned=false){
   const group=new THREE.Group();
   // Billboard flames in one instanced draw instead of a draw for every sprite.
-  const material=new THREE.ShaderMaterial({uniforms:{map:{value:flameMap()},time:{value:0},height:{value:height}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  const material=new THREE.ShaderMaterial({uniforms:{map:{value:flameMap(poisoned)},time:{value:0},height:{value:height}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
     vertexShader:`uniform float time;uniform float height;varying vec2 vUv;varying float fade;void main(){vUv=uv;float phase=instanceMatrix[3].x*3.+instanceMatrix[3].z*7.;float wave=.85+.15*sin(time*6.+phase);vec4 center=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);vec2 scale=vec2(length(modelViewMatrix[0].xyz),length(modelViewMatrix[1].xyz));center.xy+=position.xy*vec2(height*.65*wave,height*(.85+.15*sin(time*5.+phase)))*scale;fade=.7+.15*sin(time*8.+phase);gl_Position=projectionMatrix*center;}`,
     fragmentShader:`uniform sampler2D map;varying vec2 vUv;varying float fade;void main(){vec4 c=texture2D(map,vUv);gl_FragColor=vec4(c.rgb,c.a*fade);}`});
   const flames=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),material,count),matrix=new THREE.Matrix4();
   for(let i=0;i<count;i++){const a=i*2.4,r=radius*Math.sqrt((i+.5)/count);matrix.makeTranslation(Math.cos(a)*r,height*.35,Math.sin(a)*r);flames.setMatrixAt(i,matrix);}flames.frustumCulled=false;group.add(flames);
-  const sparks=new THREE.Points(new THREE.BufferGeometry(),new THREE.PointsMaterial({color:'#ffc978',size:.09,transparent:true,depthWrite:false}));
+  const sparks=new THREE.Points(new THREE.BufferGeometry(),new THREE.PointsMaterial({color:poisoned?'#c274ff':'#ffc978',size:.09,transparent:true,depthWrite:false}));
   const positions=new Float32Array(24*3);sparks.geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));group.add(sparks);
   group.userData.update=(t)=>{material.uniforms.time.value=t;for(let i=0;i<24;i++){const age=(t*.45+i/24)%1,a=i*2.4;positions[i*3]=Math.cos(a+age)*radius*(1-age*.4);positions[i*3+1]=age*height*1.7;positions[i*3+2]=Math.sin(a+age)*radius;}sparks.geometry.attributes.position.needsUpdate=true;};
   return group;
@@ -35,16 +45,18 @@ export function createFire(radius=1,height=3,count=10){
 
 // Overlapping world-sized billboards form a continuous wake, independent of rock rotation.
 // Unlike GL points, their width does not collapse to a few pixels at island camera distances.
-export function createMeteorTrail(scene, length = 22) {
+export function createMeteorTrail(scene, length = 22, poisoned = false) {
   const count=48, geometry=new THREE.PlaneGeometry(1,1);
   geometry.setAttribute('age',new THREE.InstancedBufferAttribute(Float32Array.from({length:count},(_,i)=>i/(count-1)),1));
-  const material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  const material=new THREE.ShaderMaterial({uniforms:{poisoned:{value:poisoned?1:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
     vertexShader:`attribute float age;varying vec2 vUv;varying float fade;
       void main(){vUv=uv;fade=1.-age;vec4 center=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);
       center.xy+=position.xy*(.7+3.7*pow(fade,.65));gl_Position=projectionMatrix*center;}`,
-    fragmentShader:`varying vec2 vUv;varying float fade;void main(){float r=length(vUv-.5)*2.;
+    fragmentShader:`uniform float poisoned;varying vec2 vUv;varying float fade;void main(){float r=length(vUv-.5)*2.;
       float alpha=pow(max(0.,1.-r),2.)*smoothstep(0.,.22,fade)*.65;
-      gl_FragColor=vec4(1.,.18+.68*fade,.025+.35*pow(fade,3.),alpha);}`});
+      vec3 fire=vec3(1.,.18+.68*fade,.025+.35*pow(fade,3.));
+      vec3 poison=vec3(.62+.35*fade,.11+.25*fade,1.);
+      gl_FragColor=vec4(mix(fire,poison,poisoned),alpha);}`});
   const mesh=new THREE.InstancedMesh(geometry,material,count),matrix=new THREE.Matrix4();
   // Water is transparent and does not write depth. Draw the airborne wake after it,
   // while retaining normal depth testing against solid scenery and the meteor itself.

@@ -1,11 +1,12 @@
 // Shared constants used by BOTH the server (src/) and the browser client (public/js/).
 // Keep this file dependency-free (plain ES module, no DOM / no Node APIs).
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 6;
 
 // ---- Rooms -------------------------------------------------------------------
-export const MAX_PLAYERS = 8;            // humans + bots per room
+export const MAX_PLAYERS = 40;           // players in the shared lobby
 export const SEAT_COUNT = 8;             // seats around the table
+export const PUBLIC_ROOM_CODE = 'PUBLIC';
 export const ROOM_CODE_LENGTH = 5;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
 export const ROOM_CODE_REGEX = /^[A-Z0-9]{4,8}$/;
@@ -27,6 +28,7 @@ export const BASE_MISTAKES = 5;          // wrong submissions allowed per turn
 
 // ---- Timing (ms) -------------------------------------------------------------
 export const COUNTDOWN_MS = 8000;        // after 2+ players are seated
+export const ROULETTE_COUNTDOWN_MS = 15000; // after two entries are placed
 export const CHOOSE_MS = 10000;          // chooser picks a starting letter
 export const ROUND_END_MS = 2500;        // pause after someone loses a heart
 export const MATCH_END_MS = 7000;        // winner celebration before back to lobby
@@ -41,6 +43,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   mode: 'classic',
   botLevel: 'normal',
   public: false,
+  allowSwearing: false,
 });
 
 export const MODES = [
@@ -53,6 +56,7 @@ export const MODES = [
   { id: 'chaos', name: 'Chaos', description: 'A new twist every round.', hearts: 2, turnSeconds: 15 },
   { id: 'roulette', name: 'The Last Sip', description: 'The cursed cup. Drink or pass. Last awake wins.', hearts: 1, turnSeconds: 10 },
   { id: 'roulette_deadly', name: 'Death Wish', description: '50% starting poison risk. Prize grows ×1.25 each turn.', hearts: 1, turnSeconds: 10 },
+  { id: 'word_tide', name: 'Word Tide', description: 'Longer answers. Higher towers. Survive the tropical flood.', hearts: 5, turnSeconds: 20 },
   { id: 'custom', name: 'Custom', description: 'Your own room rules.', hearts: 2, turnSeconds: 15 },
 ];
 export const MODE_IDS = new Set(MODES.map((m) => m.id));
@@ -80,6 +84,7 @@ export const FLAIRS = {
 // ---- Economy -----------------------------------------------------------------
 export const START_COINS = 300;
 export const REWARDS = Object.freeze({ participation: 5, perWord: 10, win: 0, winPerMinute: 15, maxWin: 1800 });
+export const TRADE_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
 export const HINT_PRICE = 250;
 export const PET_MERGE_COUNT = 3;
 export const PET_MAX_TIER = 3;

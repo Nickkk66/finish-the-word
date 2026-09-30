@@ -54,7 +54,7 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onRetur
   const turnRow = h('div', { class: 'turn-row' }, heartsEl, timer, mistakesEl);
   const wordInput = createWordInput({ onSubmit, onTyping });
   const picker = createLetterPicker({ onPick });
-  const hintButton = h('button', { type: 'button', class: 'btn small yellow', onClick: onHint }, `Hint · ${HINT_PRICE}`);
+  const hintButton = h('button', { type: 'button', class: 'btn small yellow', onClick: onHint }, `Answer · ${HINT_PRICE}`);
   const cardsButton = h('button', { type: 'button', class: 'btn small purple', onClick: onCards }, 'My cards');
   const returnButton = h('button', { type: 'button', class: 'btn small blue obby-return', hidden: true, onClick: onReturn }, '← Return to island');
   const tools = h('div', { class: 'turn-tools', hidden: true }, hintButton, cardsButton);
@@ -279,11 +279,11 @@ export function createHud({ onSubmit, onTyping, onPick, onHint, onCards, onRetur
     tools.hidden = !part?.alive || !ACTIVE_PHASES.has(phase);
     hintButton.hidden = !myTyping;
     hintButton.disabled = !!st.hintPending || st.hintTurn === m?.turnId || profile.coins < HINT_PRICE;
-    hintButton.textContent = st.hintPending ? 'Finding hint…' : st.hintTurn === m?.turnId ? 'Hint purchased' : `Hint · ${HINT_PRICE}`;
+    hintButton.textContent = st.hintPending ? 'Finding answer…' : st.hintTurn === m?.turnId ? 'Answer purchased' : `Answer · ${HINT_PRICE}`;
     cardsButton.disabled = !!st.cardPending;
     returnButton.hidden = st.zone !== 'obby' && st.zone !== 'lighthouse';
     hintAnswer.hidden = !myTyping || !st.hintWord;
-    hintAnswer.textContent = st.hintWord ? `Your hint: ${st.hintWord.toUpperCase()}` : '';
+    hintAnswer.textContent = st.hintWord ? `Answer sent: ${st.hintWord.toUpperCase()}` : '';
 
     timer.hidden = !(phase === 'typing' || phase === 'choosing');
     mistakesEl.hidden = phase !== 'typing';

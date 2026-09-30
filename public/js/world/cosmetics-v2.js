@@ -4,6 +4,7 @@ import { surfaceTexture } from './ember.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LAYOUT } from '../shared/constants.js';
 import { TABLE_IDS, BACK_IDS, CARD_BOXES } from '../shared/catalog.js';
+import { attachBackModel } from './back-assets.js';
 
 const TAU = Math.PI * 2;
 function kit(name) {
@@ -226,7 +227,7 @@ export function buildBackBling(backId, capeColor = null) {
     }
     group.userData.update = (t, dt, seated = false) => flames.forEach((f, i) => { f.scale.y = seated ? .2 : .7 + .3 * Math.sin(t * 18 + i); });
   }
-  bake(group); return group;
+  bake(group); attachBackModel(group, id, capeColor); return group;
 }
 
 export function buildPortal() {

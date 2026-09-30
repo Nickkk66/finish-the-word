@@ -11,10 +11,9 @@ export function sipLift(seconds) {
 }
 export const inRouletteFire = pos => !!pos && pos.y < 2 && pos.y > -2 && ROULETTE_HAZARDS.some(h => Math.hypot(pos.x-h.x,pos.z-h.z)<h.r);
 
-// Relative to the smallest entry, each doubling removes 20% of base risk,
-// capped at 40%. Equal entries have equal odds; no bet buys immunity.
-export function rouletteOdds(baseRisk, stake, minimumStake = 25) {
-  const discount = Math.min(.4, Math.max(0, .2 * Math.log2(Math.max(1, stake / Math.max(25, minimumStake)))));
+// Only an above-average entry reduces poison risk. No bet buys immunity.
+export function rouletteOdds(baseRisk, stake, averageStake = 25) {
+  const discount = Math.min(.4, Math.max(0, .2 * Math.log2(Math.max(1, stake / Math.max(25, averageStake)))));
   return { risk: baseRisk * (1 - discount), reduction: baseRisk * discount };
 }
 export const METEOR_INTERVAL_MS = 180000;
@@ -23,5 +22,5 @@ export const METEOR_SITES = [{x:0,z:22},{x:0,z:-18},{x:15,z:-10}];
 
 export const isRouletteMode = mode => mode === 'roulette' || mode === 'roulette_deadly';
 export const rouletteRules = mode => mode === 'roulette_deadly'
-  ? { startingRisk:.5, riskGrowth:1.2, prizeGrowth:1.25, name:'Death Wish' }
-  : { startingRisk:1/6, riskGrowth:1.25, prizeGrowth:1.05, name:'The Last Sip' };
+  ? { startingRisk:.5, riskStep:.1, prizeGrowth:1.1, name:'Death Wish' }
+  : { startingRisk:.02, riskStep:.08, prizeGrowth:1.04, name:'The Last Sip' };

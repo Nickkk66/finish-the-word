@@ -44,10 +44,11 @@ export function createSidebar({ onInvite, openPanel }) {
     ['chairs', 'Shop', 'orange', icons.chair, () => openPanel('chairs')],
     ['pets', 'Pets', 'purple', icons.paw, () => openPanel('pets')],
     ['cards', 'Cards', 'blue', icons.gift, () => openPanel('cards')],
+    ['trade', 'Trade', 'green', icons.trade, () => openPanel('trade')],
     ['free', 'Free', 'pink', icons.gift, () => openPanel('free'), freeBadge],
     ['profile', 'Profile', 'blue', icons.face, () => openPanel('profile')],
-    ['gameSettings', 'Game Settings', 'orange', icons.gear, () => openPanel('gameSettings')],
     ['settings', 'Settings', 'grey', icons.gear, () => openPanel('settings')],
+    ['gameSettings', 'Game Settings', 'orange', icons.gear, () => openPanel('gameSettings')],
   ];
   const buttons = Object.fromEntries(defs.map(([id, label, color, icon, onClick, badge]) => [id,
     h('button', { type: 'button', class: `side-btn ${color}`, 'aria-label': label, onClick },
@@ -92,8 +93,8 @@ export function createSidebar({ onInvite, openPanel }) {
   buttons.gameSettings.hidden = true;
 
   const el = h('div', { class: 'sidebar' },
-    h('nav', { class: 'side', 'aria-label': 'Menu' }, Object.values(buttons), pop),
-    h('div', { class: 'counters' }, wins.el, coins.el));
+    h('nav', { class: 'side', 'aria-label': 'Menu' }, Object.values(buttons).filter(button => button !== buttons.gameSettings), pop),
+    h('div', { class: 'counters' }, wins.el, coins.el, buttons.gameSettings));
 
   function updateFree() {
     const wait = freeReadyIn();

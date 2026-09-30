@@ -100,6 +100,8 @@ function boing(at) {
 }
 
 const sounds = {
+  tideWave() { noise({type:'lowpass',freq:1400,slide:180,dur:1.9,vol:.35,attack:.3});tone(55,{dur:1.8,vol:.18,slide:28}); },
+  tidePop(step=0) { tone(midi(60+[0,2,4,7,9,12][step%6]),{type:'triangle',dur:.12,vol:.09,slide:midi(64+[0,2,4,7,9,12][step%6])}); },
   heartbeat() { tone(55,{dur:.16,vol:.22,slide:35});tone(48,{at:.2,dur:.2,vol:.17,slide:28}); },
   omen() { tone(75,{dur:5,vol:.14,slide:30}); noise({type:'lowpass',freq:220,dur:5,vol:.22,attack:.5}); },
   impact() { noise({type:'lowpass',freq:450,slide:60,dur:1.8,vol:.5});tone(70,{dur:1.5,vol:.35,slide:22}); },

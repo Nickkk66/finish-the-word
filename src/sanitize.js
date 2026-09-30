@@ -16,10 +16,10 @@ const TURN_SECONDS = [8, 10, 15, 20];
 const cleanText = (text) => text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '').trim();
 
 /** Letters, digits, space and _-.' only, ≤ NAME_MAX, filtered. '' if nothing usable. */
-export function sanitizeName(name) {
+export function sanitizeName(name, allowSwearing = false) {
   if (typeof name !== 'string') return '';
   const clean = name.replace(/[^A-Za-z0-9 _.'-]/g, '').replace(/ +/g, ' ').trim();
-  return filterText(clean.slice(0, NAME_MAX).trim());
+  return filterText(clean.slice(0, NAME_MAX).trim(), allowSwearing);
 }
 
 export const randomPlayerName = (random) => `Player${1000 + Math.floor(random() * 9000)}`;
@@ -41,9 +41,9 @@ export function sanitizeCards(cards) {
 }
 
 /** Chat line: cleaned, ≤ CHAT_MAX characters (code points), filtered. '' if empty. */
-export function sanitizeChat(text) {
+export function sanitizeChat(text, allowSwearing = false) {
   if (typeof text !== 'string') return '';
-  return filterText(Array.from(cleanText(text)).slice(0, CHAT_MAX).join('').trim());
+  return filterText(Array.from(cleanText(text)).slice(0, CHAT_MAX).join('').trim(), allowSwearing);
 }
 
 /** Live typing text for the speech bubble: lowercase a-z only, ≤ MAX_WORD_LENGTH. */
@@ -54,7 +54,7 @@ export const sanitizeTyping = (text) =>
 export const normalizeWord = (word) => (typeof word === 'string' ? word.trim().toLowerCase() : '');
 
 /** How a (possibly invalid) submitted word is echoed to everyone in `result`. */
-export const displayWord = (word) => filterText(Array.from(cleanText(word)).slice(0, MAX_WORD_LENGTH).join(''));
+export const displayWord = (word, allowSwearing = false) => filterText(Array.from(cleanText(word)).slice(0, MAX_WORD_LENGTH).join(''), allowSwearing);
 
 /** { x, y, z, ry, anim } with finite, clamped, rounded numbers, or null if unusable. */
 export function sanitizeMove(msg) {
@@ -70,7 +70,7 @@ export function sanitizeSettings(input, current) {
   if (!input || typeof input !== 'object') return next;
   const mode = MODES.find(m => m.id === input.mode);
   if (mode) Object.assign(next, { mode: mode.id, ...(mode.id !== 'custom' ? {
-    hearts: mode.hearts, turnSeconds: mode.turnSeconds, petAbilities: !isRouletteMode(mode.id), botLevel: 'normal', public: false,
+    hearts: mode.hearts, turnSeconds: mode.turnSeconds, petAbilities: !isRouletteMode(mode.id) && mode.id !== 'word_tide', botLevel: 'normal', public: false,
   } : {}) });
   if (mode?.id === 'custom') next.baseMode = current.mode === 'custom' ? current.baseMode || 'classic' : isRouletteMode(current.mode) ? 'classic' : current.mode;
   else if (mode) delete next.baseMode;
@@ -79,5 +79,14 @@ export function sanitizeSettings(input, current) {
   if (typeof input.petAbilities === 'boolean') next.petAbilities = input.petAbilities;
   if (Object.hasOwn(BOT_LEVELS, input.botLevel)) next.botLevel = input.botLevel;
   if (typeof input.public === 'boolean') next.public = input.public;
+  if (typeof input.allowSwearing === 'boolean') next.allowSwearing = input.allowSwearing;
+  if (next.mode === 'custom') {
+    const preset = MODES.find(m => m.id === next.baseMode) || MODES[0];
+    if (next.hearts === preset.hearts && next.turnSeconds === preset.turnSeconds && next.petAbilities === true) {
+      next.mode = preset.id;
+      delete next.baseMode;
+    }
+  }
+  if (next.mode === 'word_tide') Object.assign(next, { hearts: 5, turnSeconds: 20, petAbilities: false });
   return next;
 }

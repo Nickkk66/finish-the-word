@@ -83,6 +83,8 @@ export class PlayerEntity {
 
   setBack(id, capeColor) {
     if (this.back) { this.back.removeFromParent(); disposeObject(this.back); this.back = null; }
+    this.avatar.jetpack = id === 'jetpack';
+    this.avatar.guitar = id === 'guitar';
     if (id && id !== 'none') {
       this.back = buildBackBling(id, capeColor);
       this.back.position.set(0, 3, 0);
@@ -269,17 +271,19 @@ export class PlayerEntity {
       const dx=this.portal.to.x-this.portal.from.x,dz=this.portal.to.z-this.portal.from.z;
       if(Math.hypot(dx,dz)>.05){this.renderYaw=Math.atan2(dx,dz);this.anim=k<1?'walk':'idle';this.speed=k<1?4:0;}
     }
+    if (this.tidePose) { r.set(this.tidePose.x,this.tidePose.y,this.tidePose.z); this.renderYaw=this.tidePose.yaw; this.avatar.setSeated(false); }
     const root = this.avatar.root;
     root.position.copy(r);
     root.rotation.y = this.renderYaw;
     this.avatar.setLocomotion(this.seat >= 0 ? 'idle' : this.anim, this.speed);
     this.avatar.update(dt, t);
-    this.back?.userData.update?.(t, dt, this.seat >= 0, this.speed);
+    this.back?.userData.update?.(t, dt, this.seat >= 0, this.speed, !this.status.out && !this.avatar.rouletteSleeping);
+    if (this.back?.userData.halo) this.back.userData.halo.position.y = this.data.look?.hairStyle === 2 ? 3.85 : 3.35;
     if (this.back && !this.back.userData.update) this.back.scale.setScalar(this.seat >= 0 ? .7 : 1);
     if (this.aura?.visible) { this.aura.position.copy(r); this.aura.rotation.y = t * 1.5; this.aura.position.y += Math.sin(t * 4) * .2; }
 
     this.stack.anchor.set(r.x, r.y + this.avatar.headTop() + 0.55, r.z);
-    if (this.pet) this.updatePet(dt, t);
+    if (this.pet) { this.updatePet(dt, t); if (this.tidePose) this.pet.object.visible=false; }
     if (this.turnRing) {
       this.turnRing.object.position.set(r.x, this.seat >= 0 ? DECK.top : r.y, r.z);
       this.turnRing.update(t);

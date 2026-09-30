@@ -6,8 +6,9 @@ import { modelArt } from '../art.js';
 import { profile, cleanName, level } from '../../profile.js';
 import { PETS, BACK_BLING, CHAIRS } from '../../shared/catalog.js';
 import { NAME_MAX } from '../../shared/constants.js';
+import { attachPetTooltip, hidePetTooltip } from '../pet-tooltip.js';
 
-export function profilePanel({ actions }) {
+export function profilePanel({ actions, state }) {
   return { id: 'profile', title: 'Profile', color: 'blue', icon: icons.face,
     mount(body) {
       let tab = 'Look';
@@ -20,12 +21,14 @@ export function profilePanel({ actions }) {
       const levelText = h('span');
       const progress = h('progress', { max: 100, 'aria-label': 'Level progress' });
       const stats = h('div', { class: 'stats' });
+      const sellWins = h('button', { type: 'button', class: 'btn small green', onClick: () => actions.sellWins() }, 'Sell 5 wins · +1,000 coins');
       const tabContent = h('div', { class: 'profile-tab-content scroll' });
       const tabs = ['Look', 'Back Bling', 'Pets', 'Chairs'].map((label) => h('button', { type: 'button', class: 'seg-btn', onClick: () => { tab = label; updateTab(); } }, label));
       body.append(h('div', { class: 'profile-columns' },
-        h('div', { class: 'profile-summary' }, h('div', { class: 'avatar-stage' }, preview.el), h('label', { class: 'field-label' }, 'Name', name), h('div', { class: 'level-progress' }, levelText, progress), stats),
+        h('div', { class: 'profile-summary' }, h('div', { class: 'avatar-stage' }, preview.el), h('label', { class: 'field-label' }, 'Name', name), h('div', { class: 'level-progress' }, levelText, progress), stats, sellWins),
         h('div', { class: 'profile-customize' }, h('div', { class: 'seg profile-tabs' }, tabs), tabContent)));
       function updateTab() {
+        hidePetTooltip();
         tabs.forEach((b) => b.setAttribute('aria-pressed', String(b.textContent === tab)));
         if (tab === 'Look') { tabContent.replaceChildren(editor.el); return; }
         const capeControls = tab === 'Back Bling' && (profile.ownedBacks.includes('cape') || profile.ownedBacks.includes('rainbow'))
@@ -42,12 +45,14 @@ export function profilePanel({ actions }) {
           const isBack = tab === 'Back Bling';
           const isChair = tab === 'Chairs';
           const equipped = isBack ? profile.equippedBack === item.id : isChair ? profile.equippedChair === item.id : profile.equippedPet === item.id;
-          return h('button', { type: 'button', class: `profile-item${equipped ? ' equipped' : ''}`, onClick: () => isBack ? actions.cosmetic('back', item.id)
+          const card = h('button', { type: 'button', class: `profile-item${equipped ? ' equipped' : ''}`, onClick: () => isBack ? actions.cosmetic('back', item.id)
             : isChair ? actions.cosmetic('chair', item.id) : actions.equipPet(item.id, [3, 2, 1].find((tier) => profile.petTiers[item.id]?.[tier])) },
             modelArt(actions, isBack ? 'back' : isChair ? 'chair' : 'pet', item.id, item.name, 90), h('span', null, item.name), h('small', null, equipped ? 'Equipped' : 'Equip'));
+          if (!isBack && !isChair) attachPetTooltip(card, item);
+          return card;
         }) : h('p', { class: 'empty' }, 'Your collection will appear here.')));
       }
-      function stat(label, value) { return h('div', { class: 'stat' }, h('span', { class: 'stat-label' }, label), h('span', { class: 'stat-value', title: String(value) }, value)); }
+      function stat(label, value) { return h('div', { class: `stat${label === 'Longest word' ? ' longest-word-stat' : ''}` }, h('span', { class: 'stat-label' }, label), h('span', { class: 'stat-value', title: String(value) }, value)); }
       function update() {
         const lvl = level();
         const start = (lvl - 1) ** 2 * 100; const next = lvl ** 2 * 100;
@@ -57,10 +62,12 @@ export function profilePanel({ actions }) {
           stat('Win rate', profile.gamesPlayed ? `${Math.round(profile.wins / profile.gamesPlayed * 100)}%` : '—'), stat('Best WPM', profile.bestWpm || '—'),
           stat('Words', fmt(profile.wordsTyped)), stat('Longest word', profile.longestWord.toUpperCase() || '—'),
           stat('Pets found', `${profile.discoveredPets.length}/${PETS.length}`), stat('Coins', fmt(profile.coins)));
+        sellWins.disabled = profile.wins < 5 || !state.inRoom || state.account?.status !== 'saved';
+        sellWins.title = state.account?.status !== 'saved' ? 'Sign in to sell wins.' : profile.wins < 5 ? 'You need 5 wins.' : '';
         if (document.activeElement !== name) name.value = profile.name;
         preview.set(profile.look); editor.set(profile.look); updateTab();
       }
-      update(); return { update };
+      update(); return { update, unmount: hidePetTooltip };
     },
   };
 }

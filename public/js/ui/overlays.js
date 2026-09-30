@@ -95,8 +95,8 @@ export function confirmDialog({ title, message, details = null, ok = 'OK', cance
     const okBtn = h('button', { type: 'button', class: `btn ${tone}`, onClick: () => done(true) }, ok);
     const el = overlay('confirm',
       h('div', { class: 'overlay-title stroke' }, title),
-      details ? h('div', { class: 'confirm-details' }, details.map(({ label, text, prominent }) =>
-        h('div', { class: `confirm-detail${prominent ? ' prominent' : ''}` },
+      details ? h('div', { class: 'confirm-details' }, details.map(({ label, text, prominent, tone }) =>
+        h('div', { class: `confirm-detail${prominent ? ' prominent' : ''}${tone ? ` ${tone}` : ''}` },
           h('span', { class: 'confirm-detail-label' }, label), h('span', { class: 'confirm-detail-text' }, text))))
         : h('p', { class: 'overlay-text' }, message),
       h('div', { class: 'overlay-buttons' },

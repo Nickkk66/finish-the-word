@@ -43,6 +43,8 @@ const full = collect({
   minLength: MIN_WORD_LENGTH,
   maxLength: MAX_WORD_LENGTH,
 });
+// SCOWL excludes proper names. Players expect the planet Venus to count.
+full.words = [...new Set([...full.words, 'venus'])].sort();
 const bots = collect({ variants: ['english', 'american'], maxTier: 35, minLength: MIN_WORD_LENGTH, maxLength: 9 });
 
 const dictionary = new Set(full.words);

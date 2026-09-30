@@ -77,7 +77,7 @@ export function createMenu({ invitedCode, actions }) {
   const publicBtn = button('Play Public', 'big block green', () => play('public'));
   const createBtn = button('Create Private Game', 'big block blue', () => play(null));
   const joinBtn = button('Join', 'blue', joinTyped);
-  const publicCount = h('p', { class: 'card-note' }, 'Finding public games…');
+  const publicCount = h('p', { class: 'card-note' }, 'Finding the public room…');
   const publicList = h('div', { class: 'public-room-list' });
 
   function joinTyped() {
@@ -124,7 +124,7 @@ export function createMenu({ invitedCode, actions }) {
           h('div', { class: 'join-row' }, codeInput, joinBtn),
           codeHint,
           publicCount, publicList,
-          h('p', { class: 'card-note' }, `Up to ${MAX_PLAYERS} players per table. Share the invite link with friends!`),
+          h('p', { class: 'card-note' }, `Up to ${MAX_PLAYERS} players in the room, with 8 seats at the table. Share the invite link with friends!`),
         ),
         h('section', { class: 'card avatar-card' },
           h('h2', { class: 'card-title stroke' }, 'Avatar'),
@@ -162,7 +162,7 @@ export function createMenu({ invitedCode, actions }) {
       const response = await fetch(apiUrl('/api/public'));
       if (!response.ok) throw new Error('Unavailable');
       const data = await response.json();
-      publicCount.textContent = `${data.players || 0} players in public games`;
+      publicCount.textContent = `${data.players || 0} players in the main public room`;
       publicList.replaceChildren(...(data.rooms || []).slice(0, 3).map((room) =>
         h('button', { type: 'button', class: 'public-room', onClick: () => play(room.code) }, `${room.code} · ${room.humans}/${MAX_PLAYERS} players`, h('span', null, 'Join →'))));
     } catch { publicCount.textContent = 'Create a private game or try public games shortly.'; }

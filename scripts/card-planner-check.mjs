@@ -21,10 +21,12 @@ try {
   await actor.clickText('Time Tax','button.quick-card');
   await actor.clickText(state.players.find(p=>p.id===target).name,'.quick-card-targets button');
   await actor.wait('window.__ftw.state.cardQueue?.cardId==="time_tax"');
+  assert.equal(await actor.eval('window.__ftw.state.cardQueue.style'),style);
   assert.equal(await (actor===a?c:a).eval('window.__ftw.state.cardQueue??null'),null);
   await actor.shot(`tray-${style}`);
   await actor.clickText('×','.quick-card-tray button');
   await submit();await a.wait('window.__ftw.state.match.phase==="cardReveal"');
+  await a.wait(`window.__ftw.world.debugSnapshot().cardPlay.played===${index+1}`);
   await delay(style==='deck'?1800:650);await actor.shot(`animation-${style}`);await (actor===a?c:a).shot(`view-${style}`);
   for(const p of [a,c])assert.equal(await p.eval('window.__ftw.world.debugSnapshot().cardPlay.style'),style);
   await a.wait('window.__ftw.state.match.phase==="typing"');await delay(500);

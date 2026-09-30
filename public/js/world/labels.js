@@ -196,7 +196,8 @@ export class HeadStack extends Label {
     this.name.textContent = name;
   }
   setBadges(level = 1, admin = false, combo = 0) {
-    this.level.textContent = admin ? '[ADMIN]' : `Lv ${level}`;
+    this.level.textContent = admin ? '✦ ADMIN ✦' : `Lv ${level}`;
+    this.level.classList.toggle('admin', admin);
     this.combo.textContent = combo >= 3 ? `🔥 ${combo}` : '';
   }
   flair(text, color = '#ffd43b') {

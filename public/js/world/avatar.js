@@ -225,6 +225,17 @@ function faceMaterial(index) {
 }
 
 let starMaterial = null;
+let musicNoteTexture = null;
+function noteTexture() {
+  if (musicNoteTexture) return musicNoteTexture;
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+  const context = canvas.getContext('2d');
+  context.font = 'bold 100px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle';
+  context.strokeStyle = '#3c2065'; context.lineWidth = 8; context.strokeText('♪', 64, 62);
+  context.fillStyle = '#d96aff'; context.fillText('♪', 64, 62);
+  musicNoteTexture = new THREE.CanvasTexture(canvas); musicNoteTexture.colorSpace = THREE.SRGBColorSpace;
+  return musicNoteTexture;
+}
 
 // ---- Avatar --------------------------------------------------------------------------------
 
@@ -266,6 +277,9 @@ export class Avatar {
     this.rArm = pivot(1.5, 3.5, 0, this.rArmMesh);
     this.lLeg = pivot(-0.5, 2, 0, this.lLegMesh);
     this.rLeg = pivot(0.5, 2, 0, this.rLegMesh);
+    this.guitarElbow = new THREE.Group(); this.guitarElbow.position.set(0, -.72, 0); this.rArm.add(this.guitarElbow);
+    this.guitarForearm = part(G.limb, 0, -.5, .08); this.guitarForearm.scale.set(.82, .52, .82);
+    this.guitarElbow.add(this.guitarForearm); this.guitarElbow.visible = false;
 
     this.head = new THREE.Group(); // pivot at the neck
     this.head.position.set(0, 4, 0);
@@ -275,6 +289,13 @@ export class Avatar {
     this.face.position.copy(this.headMesh.position);
     this.hair = part(G.hair.Bacon, 0, HEAD_SIZE / 2, 0);
     this.head.add(this.headMesh, this.face, this.hair);
+    this.singMouth = new THREE.Mesh(new THREE.SphereGeometry(.14, 12, 8), new THREE.MeshBasicMaterial({ color: '#361022', depthTest: false }));
+    this.singMouth.scale.set(1, 1.3, .14); this.singMouth.position.set(0, .43, .655); this.singMouth.renderOrder = 8; this.singMouth.visible = false; this.head.add(this.singMouth);
+    this.musicNotes = new THREE.Group(); this.musicNotes.visible = false; this.rig.add(this.musicNotes);
+    for (let i = 0; i < 3; i++) {
+      const note = new THREE.Sprite(new THREE.SpriteMaterial({ map: noteTexture(), transparent: true, depthWrite: false }));
+      note.scale.set(.55, .55, 1); this.musicNotes.add(note);
+    }
 
     this.weights = new Float32Array(STATES);
     this.weights[IDLE] = 1;
@@ -284,6 +305,8 @@ export class Avatar {
     this.speed = 0;
     this.walkPhase = 0;
     this.seated = false;
+    this.jetpack = false;
+    this.guitar = false;
     this.typing = false;
     this.out = false;
     this.wType = 0;
@@ -317,6 +340,7 @@ export class Avatar {
     this.headMesh.material = skin;
     this.lArmMesh.material = skin;
     this.rArmMesh.material = skin;
+    this.guitarForearm.material = skin;
     this.torso.material = colorMaterial(c(this.look.shirt));
     this.lLegMesh.material = this.rLegMesh.material = colorMaterial(c(this.look.pants));
     this.hair.material = colorMaterial(c(this.look.hair));
@@ -399,6 +423,31 @@ export class Avatar {
     if (total > 0) for (let k = 0; k < CHANNELS; k++) o[k] /= total;
 
     this.applyModifiers(dt, t, o);
+    if (this.jetpack && !this.out && !this.rouletteSleeping && this.flightT < 0) {
+      const hover = this.seated ? .82 : .74;
+      o[BY] += hover + Math.sin(t * 5.4) * .1;
+      o[LLX] = this.seated ? -.7 : -.48;
+      o[RLX] = this.seated ? -.8 : -.48;
+      o[LLZ] = -.12; o[RLZ] = .12;
+      const thrusting = !this.seated && this.speed > 1;
+      o[BX] = thrusting ? .32 + Math.min(.14, this.speed * .007) : this.seated ? -.05 : .08;
+      if (thrusting) { o[LAX] = -.38; o[RAX] = -.38; o[LAZ] = .18; o[RAZ] = .18; }
+    }
+    const strumming = this.guitar && !this.seated && this.loco === WALK && this.speed > 1 && !this.out;
+    this.singMouth.visible = this.musicNotes.visible = strumming;
+    this.guitarElbow.visible = strumming;
+    this.rArmMesh.scale.y = strumming ? .52 : 1;
+    this.rArmMesh.position.y = strumming ? -.25 : -.5;
+    if (strumming) {
+      o[LAX] = -1.1; o[LAZ] = .42;
+      o[RAX] = -.95 + Math.sin(t * 13) * .15; o[RAZ] = -.48;
+      this.guitarElbow.rotation.x = -1.2 + Math.sin(t * 13) * .4;
+      this.musicNotes.children.forEach((note, i) => {
+        const age = (t * .65 + i / 3) % 1;
+        note.position.set(.7 + age * .8 + i * .12, 4.1 + age * 2, .8);
+        note.material.opacity = Math.min(1, (1 - age) * 2);
+      });
+    }
     const lift = this.sipStarted == null ? 0 : sipLift((performance.now()-this.sipStarted)/1000);
     if (lift > 0) { o[RAX]=lerp(o[RAX],-1.9,lift); o[RAZ]=lerp(o[RAZ],-.5,lift); o[HX]-=lift*.12; }
     this.sleepWeight = damp(this.sleepWeight || 0, this.rouletteSleeping && this.seated && this.sleepAge>.28 ? 1 : 0, 24, dt);
@@ -621,5 +670,8 @@ export class Avatar {
 
   dispose() {
     this.root.removeFromParent();
+    this.singMouth.geometry.dispose();
+    this.singMouth.material.dispose();
+    for (const note of this.musicNotes.children) note.material.dispose();
   }
 }

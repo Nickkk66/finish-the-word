@@ -1,14 +1,17 @@
+import { TIDE_PHASES } from './shared/word-tide.js';
+import { createTideHud } from './ui/word-tide.js';
 import { isRouletteMode } from './shared/roulette.js';
 // Boot + glue: profile → world (menu mode) → menu → connect → wire net <-> world <-> UI.
 
-import { DEFAULT_SETTINGS, MAX_PLAYERS, PROTOCOL_VERSION, ROOM_CODE_REGEX, makeRoomCode, EMOTES, HINT_PRICE, OBBY } from './shared/constants.js';
+import { DEFAULT_SETTINGS, MAX_PLAYERS, SEAT_COUNT, PROTOCOL_VERSION, ROOM_CODE_REGEX, makeRoomCode, EMOTES, HINT_PRICE, OBBY } from './shared/constants.js';
 import { LIGHTHOUSE_ROOM } from './world/lighthouse-interior.js';
 import { BLOCKS, CHAIRS, PETS_BY_ID, BACK_BLING, CARDS_BY_ID, CARD_BOXES, rollBlock } from './shared/catalog.js';
+import { tradeInventory } from './shared/trade.js';
 import {
   profile, onProfileChange, setName, setLook, buyOrEquipChair, payForBlock, addPet, equipPet,
-  recordWord, recordMatch, setSetting, claimFree, FREE_COINS,
-  buyOrEquip, mergePet, deletePet, addCard, consumeCard, reconcileCards, spendCoins, grantCoins, recordObby, level,
-  adjustCoins, sellChair, grantPetTier, setCapeColor,
+  recordWord, recordMatch, captureMatchProgress, finishMatchProgress, setSetting, claimFree, FREE_COINS,
+  buyOrEquip, mergePet, deletePet, addCard, grantCard, refundMatch, consumeCard, reconcileCards, spendCoins, grantCoins, recordObby, level,
+  adjustCoins, grantPetTier, setCapeColor, completeTrade, syncWins,
 } from './profile.js';
 import { createAccount } from './account.js';
 import { accountPanel } from './ui/panels/account.js';
@@ -19,6 +22,7 @@ import { trackViewport } from './ui/viewport.js';
 import { createMenu, cleanCode } from './ui/menu.js';
 import { createHud } from './ui/hud.js';
 import { createRouletteHud } from './ui/roulette.js';
+import { rouletteEntryDetails } from './ui/roulette-copy.js';
 import { createPlayerList } from './ui/playerList.js';
 import { createChat } from './ui/chat.js';
 import { createSidebar } from './ui/sidebar.js';
@@ -30,6 +34,7 @@ import { settingsPanel, gameSettingsPanel } from './ui/panels/settings.js';
 import { createCardTray } from './ui/card-tray.js';
 import { cardsPanel } from './ui/panels/cards.js';
 import { profilePanel } from './ui/panels/profile.js';
+import { tradePanel } from './ui/panels/trade.js';
 import { initFx, toast, banner, confetti, countdownPop, rewardPop } from './ui/fx.js';
 import { initOverlays, setBusy, showError, confirmDialog, cancelConfirmation, closeOverlay } from './ui/overlays.js';
 import { playHatch } from './ui/hatch.js';
@@ -37,7 +42,7 @@ import { cardArt } from './ui/art.js';
 
 const RECONNECT_OVERLAY_DELAY_MS = 700;
 const LOADOUT_DEBOUNCE_MS = 250;
-const MATCH_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', 'roulette', 'rouletteReveal']);
+const MATCH_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', 'roulette', 'rouletteReveal', ...TIDE_PHASES]);
 const TITLE = document.title;
 
 const REASONS = {
@@ -66,9 +71,14 @@ const state = {
   inRoom: false,           // welcome received
   lastFail: null,          // last `fail` message (for the roundEnd status line)
   roundStartCount: null,   // match.wordCount when the current round started (null = unknown)
+  rouletteShown: false, rouletteIntroMatchId: null, rouletteEntry: 0, betPending: null,
   isAdmin: false, public: false, table: 'classic', zone: 'island',
   hintPending: null, hintWord: null, hintTurn: null, cardPending: null, cardUsedTurn: null,
   bannedPlayers: new Map(),
+  adminRooms: [],
+  adminLeaders: [],
+  trade: null,
+  tradePending: false,
 };
 
 const net = createNet();
@@ -91,7 +101,7 @@ let lastEmoteAt = 0;
 let turnConfirmation = null;
 let unlockToken = '';
 let targeting = null;
-try { unlockToken = localStorage.getItem('ftw_admin_v1') || ''; } catch {}
+try { localStorage.removeItem('ftw_admin_v1'); } catch {}
 
 async function purchase(item, commit, stillValid = () => true) {
   if (purchasePending || state.hintPending) return false;
@@ -104,7 +114,7 @@ async function purchase(item, commit, stillValid = () => true) {
   } finally { purchasePending = false; }
 }
 
-function syncLoadout() { sendLoadout({ chair: profile.equippedChair, pet: profile.equippedPet, petTier: profile.equippedPetTier, back: profile.equippedBack, capeColor: profile.capeColor, level: level(), cards: { ...profile.cards } }); }
+function syncLoadout() { sendLoadout({ chair: profile.equippedChair, pet: profile.equippedPet, petTier: profile.equippedPetTier, back: profile.equippedBack, capeColor: profile.capeColor, level: level(), wins: profile.wins, cards: { ...profile.cards }, inventory: tradeInventory(profile) }); }
 
 // ------------------------------------------------------------------ UI
 
@@ -119,12 +129,7 @@ const actions = {
   async enterRoulette(amount = 25) {
     if (state.betPending) return;
     if (!Number.isSafeInteger(amount) || amount < 25 || amount > profile.coins) return toast('Enter a whole number from 25 up to your coin balance.', 'bad');
-    if (!await confirmDialog({ title: 'Join the cursed table?', details: [
-      { label: 'YOUR ENTRY', text: `${fmt(amount)} coins`, prominent: true },
-      { label: 'THE STAKES', text: 'Bigger bets lower your poison odds. The prize grows each turn.' },
-      { label: 'THE WINNER', text: 'Last one awake takes the pot.' },
-      { label: 'ENTRY IS COMMITTED', text: 'Standing up or leaving will not return it.' },
-    ], ok: 'Place entry', tone: 'purple' })) return;
+    if (!await confirmDialog({ title: 'Join the cursed table?', details: rouletteEntryDetails(amount), ok: 'Place entry', tone: 'purple' })) return;
     state.betPending = { requestId: crypto.randomUUID(), amount, balance: profile.coins };
     net.send({ t: 'bet', ...state.betPending }); refreshRoom();
   },
@@ -196,14 +201,15 @@ const actions = {
   },
   async openCardBox(boxId) {
     const box = CARD_BOXES.find((v) => v.id === boxId);
-    const available = () => state.inRoom && !MATCH_PHASES.has(state.match?.phase);
-    if (!box || !available()) { toast('Open card boxes between matches.', 'info'); return; }
+    const available = () => state.inRoom && !(MATCH_PHASES.has(state.match?.phase) && state.match?.participants?.some(p => p.id === state.you && p.alive));
+    if (!box || !available()) { toast('Open card boxes when you are not playing a match.', 'info'); return; }
     return purchase(box, () => {
       if (!payForBlock(box)) return false;
       const id = rollBlock(box); addCard(id); syncLoadout(); panels.close(); sidebar.markNew('cards');
       const card = CARDS_BY_ID[id]; sfx.hatch();
       net.send({ t: 'celebrate', kind: 'hatch' });
       const reveal = h('div', { class: 'card-reveal-front', hidden: true },
+        h('div', { class: 'card-purchase-stamp stroke' }, 'NEW CARD!'),
         h('div', { class: 'overlay-title stroke' }, card.name), cardArt(card),
         h('span', { class: `card-rarity rarity-${card.rarity.toLowerCase()}` }, card.rarity),
         h('p', { class: 'overlay-text' }, card.description),
@@ -211,7 +217,7 @@ const actions = {
       const mystery = h('div', { class: 'card-mystery', 'aria-hidden': 'true' }, '?');
       const overlay = h('div', { class: 'overlay card-reveal' }, h('div', { class: 'overlay-card' }, mystery, reveal));
       let revealed = false;
-      const showReveal = () => { if (revealed) return; revealed = true; mystery.remove(); reveal.hidden = false; reveal.querySelector('button').focus({ preventScroll: true }); sfx.hatch(); };
+      const showReveal = () => { if (revealed) return; revealed = true; mystery.remove(); reveal.hidden = false; reveal.querySelector('button').focus({ preventScroll: true }); sfx.hatch(); confetti(60); toast(`${card.name} added to your cards!`, 'good', 4000); };
       const revealTimer = setTimeout(showReveal, 1050);
       const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); if (revealed) closeReveal(); else showReveal(); } };
       function closeReveal() { clearTimeout(revealTimer); document.removeEventListener('keydown', onKey, true); closeOverlay(overlay); }
@@ -224,15 +230,11 @@ const actions = {
     const m = state.match;
     if (m?.phase !== 'typing' || m.typerId !== state.you || state.hintPending || state.hintTurn === m.turnId) return;
     const turnId = m.turnId;
-    turnConfirmation = turnId;
-    await purchase({ name: 'Exact-answer hint', price: HINT_PRICE }, () => {
-      const requestId = crypto.randomUUID();
-      state.hintPending = { requestId, turnId };
-      if (!net.send({ t: 'hint', turnId, requestId, balance: profile.coins })) state.hintPending = null;
-      hud.update(state);
-      return true;
-    }, () => state.match?.phase === 'typing' && state.match.typerId === state.you && state.match.turnId === turnId);
-    turnConfirmation = null;
+    if (profile.coins < HINT_PRICE) return toast(`You need ${fmt(HINT_PRICE - profile.coins)} more coins.`, 'bad');
+    const requestId = crypto.randomUUID();
+    state.hintPending = { requestId, turnId };
+    if (!net.send({ t: 'hint', turnId, requestId, balance: profile.coins })) state.hintPending = null;
+    hud.update(state);
   },
   beginCardTarget() { openCards(); },
   useCard(cardId, targetId) {
@@ -245,10 +247,16 @@ const actions = {
   setCardStyle(style) { setSetting('cardStyle', style); if (state.cardQueue) actions.useCard(state.cardQueue.cardId, state.cardQueue.targetId); },
   thumbnail: (kind, id, size) => world ? world.renderThumbnail(kind, id, size) : Promise.reject(new Error('World not ready')),
   preference: setSetting,
-  setView(view) { world?.setFirstPerson(view === 'first'); setSetting('view', view); },
+  setView(view) { world?.setFirstPerson(view === 'first'); setSetting('view', view); if (view === 'first') toast('First-person view. Press P to return to third person.', 'info', 5000); },
   returnToIsland() { if (state.zone === 'obby' || state.zone === 'lighthouse') return onInteract({ type: 'portal', to: 'island' }); },
   unlock: (code) => net.send({ t: 'unlock', code }),
   admin: (action, fields = {}) => net.send({ t: 'admin', action, ...fields }),
+  async joinAdminRoom(code) {
+    if (!ROOM_CODE_REGEX.test(code) || code === state.code) return;
+    if (isAliveParticipant() && !(await confirmForfeit(`Leave this game and join ${code}?`, 'Join room'))) return;
+    leaveRoom();
+    await joinRoom(code, code === 'PUBLIC');
+  },
   teleportToPlayer(id) {
     const x = state.players.get(id)?.pos?.x;
     if (!Number.isFinite(x)) return;
@@ -294,6 +302,16 @@ const actions = {
     if (setCapeColor(color)) sendLoadout({ capeColor: profile.capeColor });
   },
   ping: () => net.rtt,
+  tradeRequest(targetId) { net.send({ t: 'tradeRequest', targetId }); },
+  tradeRespond(id, accept) { net.send({ t: 'tradeRespond', id, accept }); },
+  tradeOffer(offer) { if (state.trade && !state.tradePending) { state.tradePending = true; panels.refresh(); net.send({ t: 'tradeOffer', id: state.trade.id, offer, inventory: tradeInventory(profile) }); } },
+  tradeAccept(id) { if (!state.tradePending) net.send({ t: 'tradeAccept', id, inventory: tradeInventory(profile) }); },
+  tradeCancel(id) { net.send({ t: 'tradeCancel', id }); },
+  async sellWins() {
+    if (!state.inRoom || state.account?.status !== 'saved') return toast('Sign in and enter a room to sell wins.', 'bad');
+    if (profile.wins < 5) return toast('You need 5 wins to sell.', 'bad');
+    if (await confirmDialog({ title: 'Sell 5 wins?', message: 'Your profile and leaderboard will lose 5 wins. You will receive 1,000 coins.', ok: 'Sell wins', tone: 'orange' })) net.send({ t: 'sellWins', requestId: crypto.randomUUID() });
+  },
 };
 
 const panelCtx = { state, actions };
@@ -305,6 +323,7 @@ const PANELS = {
   settings: settingsPanel(panelCtx),
   gameSettings: gameSettingsPanel(panelCtx),
   cards: cardsPanel(panelCtx),
+  trade: tradePanel(panelCtx),
   account: accountPanel(panelCtx),
 };
 
@@ -319,7 +338,8 @@ const playerList = createPlayerList();
 const chat = createChat({ onSend: sendChat, onEmote: playEmote });
 const panels = createPanelHost(uiRoot);
 const sidebar = createSidebar({ onInvite: invite, openPanel: (id) => id === 'cards' ? openCards() : panels.open(PANELS[id]), onView: toggleView });
-const gameUi = h('div', { class: 'game-ui', hidden: true }, hud.el, rouletteHud.el, playerList.el, chat.el, sidebar.el);
+const tideHud = createTideHud({ send: msg => net.send(msg), start: () => actions.host('start') });
+const gameUi = h('div', { class: 'game-ui', hidden: true }, hud.el, rouletteHud.el, tideHud.el, playerList.el, chat.el, sidebar.el);
 
 const invited = cleanCode(new URLSearchParams(location.search).get('room'));
 const menu = createMenu({
@@ -344,7 +364,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'c' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && state.inRoom && !isTextField(document.activeElement) && !document.querySelector('.overlay:not(.leaving)')) {
     e.preventDefault(); openCards(); return;
   }
-  if (e.key.toLowerCase() !== 'p' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || !state.inRoom || isTextField(document.activeElement) || isMyTurn(state.match || {}) || state.match?.phase === 'choosing' || document.querySelector('.overlay')) return;
+  if (e.key.toLowerCase() !== 'p' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || !state.inRoom || isTextField(document.activeElement) || isMyTurn(state.match || {}) || state.match?.phase === 'choosing' || document.querySelector('.overlay:not(.leaving):not([hidden])')) return;
   e.preventDefault(); toggleView();
 });
 
@@ -368,7 +388,7 @@ onProfileChange(() => {
 
 const worldReady = loadWorld();
 const account = createAccount({
-  onChange(value) { state.account = value; panels.refresh(); },
+  onChange(value) { state.account = value; panels.refresh(); if (value.status === 'saved') syncRemoteWins(); },
   beforeReplace() {
     if (state.inRoom || state.code) leaveRoom();
     shopKey = '';
@@ -426,10 +446,23 @@ async function syncLeaderboard() {
 }
 setInterval(syncLeaderboard, 60000);
 
+async function syncRemoteWins() {
+  const id = profile.id;
+  try {
+    const response = await fetch(apiUrl(`/api/wins?id=${encodeURIComponent(id)}`));
+    if (!response.ok || profile.id !== id) return;
+    const value = await response.json();
+    if (profile.id === id && syncWins(value) && state.inRoom) syncLoadout();
+  } catch { /* retry on the next poll */ }
+}
+setInterval(syncRemoteWins, 10000);
+account.ready.then(syncRemoteWins).catch(() => {});
+
 function toggleView() {
   if (!state.inRoom) return;
   const on = profile.settings.view !== 'first';
   world.setFirstPerson(on); setSetting('view', on ? 'first' : 'third'); sidebar.setView(on);
+  if (on) toast('First-person view. Press P to return to third person.', 'info', 5000);
 }
 
 function cancelCardTarget() {
@@ -589,7 +622,7 @@ function resolvePrompt(i) {
   }
   if (i.type === 'cardBox') {
     const box = CARD_BOXES.find((v) => v.id === i.boxId);
-    return box ? { text: `Cards · $${fmt(box.price)}`, key: 'E', enabled: profile.coins >= box.price && !MATCH_PHASES.has(state.match?.phase) } : null;
+    return box ? { text: `Cards · $${fmt(box.price)}`, key: 'E', enabled: profile.coins >= box.price && !isAliveParticipant() } : null;
   }
   if (i.type === 'portal') return { text: i.to === 'obby' ? 'Travel to obby' : 'Return to island', key: 'E', enabled: !isAliveParticipant() };
   if (i.type === 'lighthouseDoor') return { text: i.to === 'lighthouse' ? 'Enter lighthouse' : 'Leave lighthouse', key: 'E', enabled: !isAliveParticipant() };
@@ -658,7 +691,8 @@ function hello() {
     chair: profile.equippedChair,
     pet: profile.equippedPet,
     petTier: profile.equippedPetTier, back: profile.equippedBack, capeColor: profile.capeColor, level: level(),
-    cards: { ...profile.cards }, adminToken: unlockToken || undefined, public: requestedPublic,
+    wins: profile.wins,
+    cards: { ...profile.cards }, inventory: tradeInventory(profile), adminToken: unlockToken || undefined, accountToken: account.token() || undefined, public: requestedPublic,
     v: PROTOCOL_VERSION,
   };
 }
@@ -688,6 +722,10 @@ async function joinRoom(code, isPublic = false) {
 
 /** Tears the room down locally and returns to the menu (the socket must already be closed). */
 function exitRoom() {
+  state.trade = null;
+  state.tradePending = false;
+  state.adminRooms = [];
+  state.adminLeaders = [];
   cancelCardTarget();
   cardTray.close(); world?.clearCards(); state.cardQueue = null;
   cancelConfirmation(); state.hintPending = null; state.cardPending = null;
@@ -695,7 +733,7 @@ function exitRoom() {
   for (const id of [...state.players.keys()]) removePlayer(id);
   Object.assign(state, {
     code: null, hostId: null, settings: { ...DEFAULT_SETTINGS }, match: null, deadline: 0,
-    inRoom: false, lastFail: null, roundStartCount: null, rouletteShown: false, rouletteEntry: 0, betPending: null,
+    inRoom: false, lastFail: null, roundStartCount: null, rouletteShown: false, rouletteIntroMatchId: null, rouletteEntry: 0, betPending: null,
     isAdmin: false, public: false, zone: 'island', hintWord: null, hintTurn: null, cardUsedTurn: null,
   });
   bubbles.clear();
@@ -708,6 +746,7 @@ function exitRoom() {
   world.setRoulette?.(false, null);
   world.clearCards();
   rouletteHud.update(state, false);
+  tideHud.update(state, false); world?.setTide?.(null); document.body.classList.remove("tide-scene", "tide-cinema");
   world.setZone('island');
   teleporting=false;world.setTravelLocked(false);travelOverlay?.remove();
   panels.close();
@@ -759,6 +798,10 @@ net.onState((s, reason) => {
   } else if (s === 'reconnecting' && state.inRoom) {
     setBusy('Reconnecting...', { delay: RECONNECT_OVERLAY_DELAY_MS, action: { label: 'Leave', onClick: leaveRoom } });
   } else if (s === 'closed' && reason !== 'user') {
+    if (reason === 'bad_hello') {
+      const marker = `ftw_reloaded_protocol_${PROTOCOL_VERSION}`;
+      try { if (!sessionStorage.getItem(marker)) { sessionStorage.setItem(marker, '1'); location.reload(); return; } } catch { /* refresh remains available below */ }
+    }
     const info = CLOSE_REASONS[reason] || { title: 'Disconnected', message: 'Lost the connection to the room.' };
     const code = state.code;
     setBusy(null);
@@ -792,9 +835,15 @@ function refreshMode() {
   const m = state.match;
   const active = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? isRouletteMode(m.mode) : isRouletteMode(state.settings.mode));
   rouletteHud.update(state, active && state.zone!=='lighthouse');
-  if (active && state.zone!=='lighthouse') hud.hide(); else if (state.inRoom) hud.show();
+  const tideMode = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode) === 'word_tide' && state.zone !== 'lighthouse';
+  tideHud.update(state, tideMode);
+  world?.setTide?.(tideMode && m?.tide ? m : null);
+  document.body.classList.toggle('tide-scene', !!(tideMode && m?.tide));
+  document.body.classList.toggle('tide-cinema', !!(tideMode && m?.phase === 'tideIntro'));
+  if ((active || tideMode) && state.zone!=='lighthouse') hud.hide(); else if (state.inRoom) hud.show();
   world?.setRoulette?.(active, m, state.rouletteEntry, MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode);
-  if (active && !state.rouletteShown && state.zone!=='lighthouse') {
+  if (active && m?.startedAt && m.matchId !== state.rouletteIntroMatchId && Date.now() - m.startedAt < 7000 && state.zone!=='lighthouse') {
+    state.rouletteIntroMatchId = m.matchId;
     panels.close(); cancelConfirmation();
     uiRoot.classList.add('roulette-cinematic');setTimeout(()=>uiRoot.classList.remove('roulette-cinematic'),7000);
     const intro=h('div',{class:'roulette-intro'},'Something has found us.'); uiRoot.append(intro); setTimeout(()=>intro.remove(),7000);
@@ -836,6 +885,7 @@ net.on('welcome', (msg) => {
     chat.add({ system: true, text: `Welcome to room ${msg.code}! Press Invite to bring friends.` });
   }
   applyMatch(msg.match, true);
+  if (msg.tidePrivate) tideHud.receipt(msg.tidePrivate);
   if (state.betPending) net.send({ t: 'bet', ...state.betPending });
   refreshRoom();
 });
@@ -850,6 +900,23 @@ net.on('leave', ({ id }) => {
   refreshRoom();
 });
 
+net.on('tradeState', trade => {
+  const firstInvite = trade.stage === 'invite' && trade.requesterId !== state.you && state.trade?.id !== trade.id;
+  state.trade = trade;
+  state.tradePending = false;
+  if (firstInvite) { toast(`${trade.peerName} wants to trade with you.`, 'good'); panels.open(PANELS.trade); }
+  else if (!panels.isOpen('trade')) panels.open(PANELS.trade);
+  else panels.refresh();
+});
+net.on('tradeClosed', ({ reason }) => { state.trade = null; state.tradePending = false; if(panels.isOpen('trade'))panels.close(); toast(reason || 'Trade canceled.'); });
+net.on('tradeError', ({ message }) => { state.tradePending = false; panels.refresh(); toast(message || 'Trade could not continue.', 'bad'); });
+net.on('tradeComplete', result => {
+  state.trade = null;
+  state.tradePending = false;
+  if(panels.isOpen('trade'))panels.close();
+  if (completeTrade(result)) { syncLoadout(); sfx.coin(); toast(`Trade completed with ${result.partner}.`, 'good'); }
+});
+
 net.on('room', ({ hostId, settings, table, public: isPublic, rouletteEntry = 0 }) => {
   const becameHost = hostId === state.you && state.hostId !== state.you;
   state.hostId = hostId;
@@ -862,6 +929,8 @@ net.on('room', ({ hostId, settings, table, public: isPublic, rouletteEntry = 0 }
 });
 
 net.on('match', ({ m }) => applyMatch(m));
+net.on('tideAnswerResult', msg => tideHud.receipt(msg));
+net.on('tideReward', reward => { if (recordMatch(reward)) { syncLoadout(); if (!reward.practice) { sfx.coin(); toast(`Word Tide · +${reward.coins} coins`, 'good'); } } });
 
 net.on('moves', ({ list }) => world.applyMoves(list));
 
@@ -875,7 +944,7 @@ net.on('typing', ({ id, text }) => {
   }
 });
 
-net.on('result', ({ id, word, ok, reason, mistakes, wpm = 0, combo = 0, coins = 0, flairs = [] }) => {
+net.on('result', ({ id, word, ok, reason, mistakes, wpm = 0, combo = 0, coins = 0, flairs = [], paidAnswer = false }) => {
   const mine = id === state.you;
   if (ok) {
     if (lastWord && lastWord.id !== id) setBubble(lastWord.id, null);
@@ -895,7 +964,7 @@ net.on('result', ({ id, word, ok, reason, mistakes, wpm = 0, combo = 0, coins = 
     if (mine) {
       hud.wordResult(true);
       if (/^[a-z]+$/.test(word)) {
-        const result = recordWord(word, wpm, combo);
+        const result = recordWord(word, wpm, combo, paidAnswer);
         if (result.record) world.playEffect(id, 'flair', { text: `NEW RECORD! ${word.toUpperCase()}`, color: '#ffe45c' });
         if (result.levelUp) { world.playEffect(id, 'flair', { text: `LEVEL ${level()}!`, color: '#ffe45c' }); sfx.levelUp(); }
         syncLoadout();
@@ -922,7 +991,7 @@ net.on('fail', (msg) => {
   const { id, cause, hearts, shielded } = msg;
   const mine = id === state.you;
   state.lastFail = msg;
-  if(mine){cardTray.close();cancelCardTarget();if(panels.isOpen('cards'))panels.close();}
+  if(mine){cancelCardTarget();if(panels.isOpen('cards'))panels.close();}
   if (lastWord?.id !== id && bubbles.has(id)) setBubble(id, null);
   if (shielded) {
     sfx.pick();
@@ -948,7 +1017,9 @@ net.on('elim', ({ id }) => {
   else toast(`💥 ${nameOf(id)} was knocked out!`);
 });
 
-net.on('win', ({ id, flairs = [] }) => {
+net.on('win', ({ id, mode, flairs = [], practice = false, practiceReason = '' }) => {
+  if (mode === 'word_tide') { leaderboardKey = ''; syncLeaderboard(); return; }
+  if (practice) { banner('PRACTICE COMPLETE', { sub: practiceReason || 'No match coins or wins.', tone: 'good', ms: 4500 }); return; }
   if (id) world.playEffect(id, 'win');
   if (id) world.playEmote(id, 'dance');
   flairs.forEach((flair, i) => setTimeout(() => world.playEffect(id, 'flair', { text: flair.label, color: flair.color }), 500 + i * 600));
@@ -965,6 +1036,7 @@ net.on('reward', (reward) => {
   const { coins, won, words } = reward;
   const before = level();
   if (!recordMatch(reward)) return;
+  if (reward.practice) { syncLoadout(); toast('Practice finished: no match coins or wins.', 'info'); return; }
   if (level() > before) { sfx.levelUp(); toast(`Level ${level()}!`, 'good'); }
   syncLoadout();
   setTimeout(() => {
@@ -981,9 +1053,9 @@ net.on('picked', ({ id, letter }) => {
   if (id !== state.you) toast(`${nameOf(id)} picked ${letter.toUpperCase()}!`, 'info', 1500);
 });
 
-net.on('chat', ({ id, name, text }) => {
+net.on('chat', ({ id, name, text, tone }) => {
   if (id == null) {
-    chat.add({ system: true, text });
+    chat.add({ system: true, text, tone });
   } else {
     chat.add({ name, text });
     world.setChatBubble(id, text);
@@ -1003,7 +1075,8 @@ net.on('hint', (msg) => {
   const current = state.match?.phase === 'typing' && state.match.typerId === state.you && state.match.turnId === msg.turnId;
   if (msg.ok && current && state.hintTurn !== msg.turnId && spendCoins(HINT_PRICE)) {
     state.hintTurn = msg.turnId; state.hintWord = msg.word;
-  } else if (!msg.ok && current) toast(msg.reason === 'already_bought' ? 'You already bought this turn’s hint.' : 'No hint available. You were not charged.', 'info');
+    submitWord(msg.word);
+  } else if (!msg.ok && current) toast(msg.reason === 'already_bought' ? 'You already bought this turn’s answer.' : 'No answer available. You were not charged.', 'info');
   hud.update(state);
 });
 net.on('cardQueue', ({ queue, reason }) => {
@@ -1033,11 +1106,12 @@ net.on('cardUsed', (event) => {
     chat.add({system:true,text:`${nameOf(targetId)} used their Free Pass: turn skipped, no heart lost.`});return;
   }
   if(!card)return;
+  if (actorId === state.you) cardTray.close();
   const result=card.effect==='skip'?'next turn skipped · no heart lost':
     card.effect==='time'?'−2 seconds next turn':
     card.effect==='mistakes'?'2 fewer mistakes next turn · minimum 1':
     shielded?'pet shield blocked Heartbreaker':'lost 1 heart';
-  const message=`${nameOf(targetId)}: ${result}`;
+  const message=card.effect==='skip' ? `${nameOf(targetId)} has their next turn skipped!` : `${nameOf(targetId)}: ${result}`;
   world.playCard(actorId,targetId,cardId,message,event);
   world.playEffect(targetId, 'flair', { text: result, color: card.color });
   toast(`${nameOf(actorId)} played ${card.name}. ${message}`, 'info', 5500);
@@ -1067,9 +1141,22 @@ net.on('celebrate', ({ id, kind, to, door }) => {
 net.on('unlock', ({ ok, token }) => {
   if (ok) {
     state.isAdmin = true; unlockToken = token;
-    try { localStorage.setItem('ftw_admin_v1', token); } catch {}
     refreshRoom();
   } else { state.unlockFailed = true; panels.refresh(); }
+});
+net.on('adminRooms', ({ rooms, leaders }) => { state.adminRooms = Array.isArray(rooms) ? rooms : []; state.adminLeaders = Array.isArray(leaders) ? leaders : []; panels.refresh(); });
+net.on('adminRoomShutdown', ({ code }) => { state.adminRooms = state.adminRooms.filter(room => room.code !== code); panels.refresh(); toast(`${code} shut down.`, 'good'); });
+net.on('winsSync', value => { if (syncWins(value)) { syncLoadout(); toast(`Your wins are now ${fmt(value.wins)}.`, 'good'); } });
+net.on('winsSetResult', ({ name, wins }) => { toast(`${name}'s wins set to ${fmt(wins)}.`, 'good'); leaderboardKey = ''; syncLeaderboard(); });
+net.on('winsSold', result => {
+  const changed = syncWins(result);
+  const credited = grantCoins(result.coins, result.receipt);
+  if (changed || credited) { syncLoadout(); panels.refresh(); leaderboardKey = ''; syncLeaderboard(); toast('Sold 5 wins for 1,000 coins.', 'good'); }
+});
+net.on('modResult', ({ action, id, name }) => {
+  if (action === 'ban') state.bannedPlayers.set(id, name);
+  if (action === 'unban') state.bannedPlayers.delete(id);
+  panels.refresh();
 });
 net.on('announce', ({ text }) => banner(text, { tone: 'win', ms: 5000 }));
 let latestGlobalNotice = 0;
@@ -1095,9 +1182,6 @@ net.on('grant', ({ coins, reason, grantId }) => {
 net.on('coinAdjust', ({ operation, amount, receipt }) => {
   if (adjustCoins(operation, amount, receipt)) toast(`Coins ${operation === 'set' ? 'set to' : 'changed by'} ${fmt(amount)}.`, 'good');
 });
-net.on('sellChair', ({ chairId, receipt }) => {
-  if (sellChair(chairId, receipt)) { syncLoadout(); toast(`${CHAIRS.find(v => v.id === chairId)?.name || 'Chair'} sold.`, 'good'); }
-});
 net.on('petMergeGrant', ({ petId, tier, receipt }) => {
   if (grantPetTier(petId, tier, receipt)) { syncLoadout(); sidebar.markNew('pets'); toast(`Free tier ${tier} ${PETS_BY_ID[petId]?.name || 'pet'} added.`, 'good'); }
 });
@@ -1108,21 +1192,27 @@ net.on('betResult', result => {
   refreshRoom();
 });
 net.on('meteor', ({meteor,collected}) => world?.setMeteor(meteor,collected));
+net.on('adminCard', ({ cardId, receipt }) => { if (grantCard(cardId, receipt)) { syncLoadout(); sidebar.markNew('cards'); toast(`${CARDS_BY_ID[cardId]?.name || 'Card'} added for free.`, 'good'); } });
+net.on('adminCardResult', ({ cardId }) => toast(`${CARDS_BY_ID[cardId]?.name || 'Card'} granted successfully.`, 'good'));
+net.on('adminPetResult', ({ petId, name }) => toast(`${PETS_BY_ID[petId]?.name || 'Pet'} collected for ${name}.`, 'good'));
+net.on('matchRefund', refund => { if (refundMatch(refund)) { syncLoadout(); toast('Game ended. Your entry, answer purchases, and played cards were refunded.', 'good'); } });
 net.on('meteorReward', ({coins,receipt}) => { if (grantCoins(coins,receipt)) { sfx.coin(); rewardPop(`+${fmt(coins)} 💵`,sidebar.coinsEl); toast('Meteor collected: +150 coins','good'); } });
 net.on('hazardDebit', ({ amount, receipt }) => { if (adjustCoins('add', -amount, receipt)) { world?.playEffect(state.you, 'flair', {text:'−25 COINS · FIRE',color:'#ff8a4b'}); replay(gameUi,'damage-hit'); sfx.thud(); } });
 net.on('stakeRefund', ({ coins, receipt }) => { if (grantCoins(coins, receipt) && coins) toast(`${fmt(coins)} entry coins returned.`, 'good'); });
 net.on('rouletteReward', reward => {
-  if (recordMatch(reward)) { sfx.coin(); toast(`${fmt(reward.coins)} coins · ${reward.bonuses[0].label}`, 'good'); syncLoadout(); }
+  if (recordMatch(reward)) { if (reward.coins) sfx.coin(); toast(reward.practice ? `${fmt(reward.coins)} entry coins returned from practice.` : `${fmt(reward.coins)} coins · ${reward.bonuses[0].label}`, 'good'); syncLoadout(); }
 });
 net.on('rouletteOut', ({ id }) => { world?.knockOutRoulette?.(id); if(id===state.you)replay(gameUi,'damage-hit'); sfx.thud(); });
 
 function applyMatch(m, resync = false) {
   const prev = state.match;
+  if (m.matchId && MATCH_PHASES.has(m.phase) && m.matchId !== prev?.matchId) captureMatchProgress(m.matchId);
+  if (m.matchId && m.phase === 'ended') finishMatchProgress(m.matchId);
   state.match = m;
-  if (MATCH_PHASES.has(m.phase) && panels.isOpen('cards')) panels.close();
+  if (m.phase === 'tideIntro' && prev?.matchId !== m.matchId) { panels.close(); cancelConfirmation(); }
+  world?.setMatch?.(m);
   if(m.phase==='lobby'||m.startedAt!==prev?.startedAt)world.clearCards();
   if (resync) world.restoreCards(m.cardHistory || []);
-  if ((m.typerId === state.you && m.phase === 'cardReveal') || (prev?.typerId === state.you && (m.typerId !== state.you || prev.turnId !== m.turnId))) cardTray.close();
   cardTray.update();
   if(prev?.phase==='typing'&&prev.typerId===state.you&&(m.phase!=='typing'||m.typerId!==state.you||m.turnId!==prev.turnId)&&panels.isOpen('cards'))panels.close();
   if (prev?.turnId !== m.turnId || m.phase !== 'typing') {
@@ -1162,7 +1252,7 @@ function applyMatch(m, resync = false) {
 
 /** Local player must type or choose right now. */
 function isMyTurn(m) {
-  return (['typing', 'roulette'].includes(m.phase) && m.typerId === state.you) || (m.phase === 'choosing' && m.chooserId === state.you);
+  return (m.phase === 'tideAnswer' && m.participants?.some(p => p.id === state.you && p.alive)) || (['typing', 'roulette'].includes(m.phase) && m.typerId === state.you) || (m.phase === 'choosing' && m.chooserId === state.you);
 }
 
 // `?debug` exposes internals for automated tests and troubleshooting.

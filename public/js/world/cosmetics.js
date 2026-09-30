@@ -51,6 +51,7 @@ export function buildLuckyBlock(blockId) {
 /** Frees geometries/materials/textures under obj that are not shared through the caches. */
 export function disposeObject(obj) {
   if (!obj) return;
+  obj.userData.disposed = true;
   obj.traverse((o) => {
     if (o.isInstancedMesh) o.dispose(); // frees per-instance buffers only
     if (o.geometry && !o.isSprite && !shared.has(o.geometry)) o.geometry.dispose();

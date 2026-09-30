@@ -19,7 +19,7 @@ const WHOLE = [
   'rapist',
   // slurs
   'nigger', 'nigga', 'negro', 'negroes', 'coon', 'chink', 'gook', 'jap', 'kike', 'spic',
-  'wetback', 'beaner', 'paki', 'raghead', 'towelhead', 'fag', 'faggot', 'faggy', 'dyke', 'homo',
+  'wetback', 'beaner', 'paki', 'raghead', 'towelhead', 'fag', 'faggot', 'faggy', 'dyke', 'dike', 'homo',
   'tranny', 'retard', 'retarded', 'spaz',
   'sex', 'sexy', 'sexual', 'sexually', 'sexes', 'sexed', 'sexting', 'sext', 'nude', 'nudity',
   'naked', 'horny', 'orgasm', 'erotic', 'erotica', 'fetish', 'kinky', 'kink', 'penis', 'vagina',
@@ -33,10 +33,13 @@ const WHOLE_RE = new RegExp(`^(?:${WHOLE.join('|')})[sz]?$`);
 const ANYWHERE_RE = new RegExp(ANYWHERE.join('|'));
 const LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't', '@': 'a', $: 's' };
 const TOKEN_RE = /[A-Za-z0-9@$]+/g;
+// Room owners may opt into ordinary swearing. Slurs, sexual content and abuse remain filtered.
+export const ALLOWED_SWEARS = new Set(['ass','arse','asshole','bastard','bollock','bugger','crap','crappy','damn','damned','dammit','goddamn','goddamned','fuck','fucking','fucked','fucker','shit','shitty','bullshit','piss','pissed','pissing','dick','dickhead','cock','twat','wank','wanker','wanking','dumbass','jackass']);
 
 /** True if a single token (a word, possibly with leetspeak) is blocked. */
-export function isBlockedWord(token) {
+export function isBlockedWord(token, allowSwearing = false) {
   const word = token.toLowerCase().replace(/[013457@$]/g, (c) => LEET[c]);
+  if (allowSwearing && ALLOWED_SWEARS.has(word)) return false;
   if (word === 'scunthorpe') return false;
   // Runs of 3+ equal letters are (almost) never real spelling, so also try them squeezed
   // to one and to two letters: "fuuuuck" -> "fuck", "asssss" -> "ass".
@@ -45,9 +48,9 @@ export function isBlockedWord(token) {
 }
 
 /** Roblox-style filter: every blocked token is replaced by '#' of the same length. */
-export function filterText(text) {
+export function filterText(text, allowSwearing = false) {
   // Check separated single-letter runs without joining ordinary words ("s e x").
   return text.replace(/\b(?:[A-Za-z0-9@$][\s._-]+){2,}[A-Za-z0-9@$]\b/g, (run) =>
-    isBlockedWord(run.replace(/[\s._-]/g, '')) ? '#'.repeat(run.length) : run)
-    .replace(TOKEN_RE, (token) => (isBlockedWord(token) ? '#'.repeat(token.length) : token));
+    isBlockedWord(run.replace(/[\s._-]/g, ''), allowSwearing) ? '#'.repeat(run.length) : run)
+    .replace(TOKEN_RE, (token) => (isBlockedWord(token, allowSwearing) ? '#'.repeat(token.length) : token));
 }

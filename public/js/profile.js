@@ -3,6 +3,7 @@
 
 import { START_COINS, NAME_MAX } from './shared/constants.js';
 import { randomLook, sanitizeLook, CHAIRS, CHAIR_IDS, PETS_BY_ID, BACK_BLING, CARDS } from './shared/catalog.js';
+import { tradeInventory, tradeOffer, transferInventory } from './shared/trade.js';
 
 const STORAGE_KEY = 'ftw_profile_v1';
 export const FREE_COINS = 100;
@@ -55,6 +56,7 @@ function normalize(raw) {
     look: p.look ? sanitizeLook(p.look) : randomLook(),
     coins: count(p.coins, START_COINS),
     wins: count(p.wins),
+    winsRevision: count(p.winsRevision),
     gamesPlayed: count(p.gamesPlayed),
     wordsTyped: count(p.wordsTyped),
     longestWord: typeof p.longestWord === 'string' && /^[a-z]{1,30}$/.test(p.longestWord) ? p.longestWord : '',
@@ -71,6 +73,7 @@ function normalize(raw) {
     cards: Object.fromEntries(CARDS.map((card) => [card.id, count(p.cards?.[card.id])])),
     xp: count(p.xp), bestWpm: count(p.bestWpm), bestCombo: count(p.bestCombo), bestObbyMs: count(p.bestObbyMs),
     receipts: Array.isArray(p.receipts) ? p.receipts.filter((v) => typeof v === 'string').slice(-512) : [],
+    tradeHistory: Array.isArray(p.tradeHistory) ? p.tradeHistory.filter(v => v && (v.status == null || v.status === 'completed') && typeof v.partner === 'string' && Number.isSafeInteger(v.at) && v.outgoing && v.incoming).slice(-20).map(v => ({ status: 'completed', at: v.at, partner: v.partner.slice(0, 16), outgoing: tradeOffer(v.outgoing), incoming: tradeOffer(v.incoming) })) : [],
     settings: {
       sound: settings.sound !== false,
       prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket',
@@ -196,26 +199,47 @@ export function equipPet(petId, tier = 1) {
 
 export function level() { return Math.min(999, Math.floor(Math.sqrt(profile.xp / 100)) + 1); }
 
-export function recordWord(word, wpm = 0, combo = 0) {
+export function recordWord(word, wpm = 0, combo = 0, paidAnswer = false) {
   const previousLevel = level();
-  const record = (profile.wordsTyped > 0 && word.length > profile.longestWord.length) || (profile.bestWpm > 0 && wpm > profile.bestWpm);
+  const record = !paidAnswer && ((profile.wordsTyped > 0 && word.length > profile.longestWord.length) || (profile.bestWpm > 0 && wpm > profile.bestWpm));
   profile.wordsTyped += 1;
   profile.xp += 10;
-  profile.bestWpm = Math.max(profile.bestWpm, wpm || 0);
+  if (!paidAnswer) profile.bestWpm = Math.max(profile.bestWpm, wpm || 0);
   profile.bestCombo = Math.max(profile.bestCombo, combo || 0);
-  if (word.length > profile.longestWord.length) profile.longestWord = word;
+  if (!paidAnswer && word.length > profile.longestWord.length) profile.longestWord = word;
   commit();
   return { record, levelUp: level() > previousLevel };
 }
 
-export function recordMatch({ won, coins, matchId, bestWpm = 0, bestCombo = 0 }) {
+const matchProgressKey = id => `ftw_match_progress:${id}`;
+export function captureMatchProgress(id) {
+  if (!id) return;
+  try {
+    if (localStorage.getItem(matchProgressKey(id))) return;
+    localStorage.setItem(matchProgressKey(id), JSON.stringify({ wordsTyped: profile.wordsTyped, xp: profile.xp, longestWord: profile.longestWord, bestWpm: profile.bestWpm, bestCombo: profile.bestCombo }));
+  } catch { /* progress remains available for this session */ }
+}
+export function finishMatchProgress(id) {
+  try { localStorage.removeItem(matchProgressKey(id)); } catch {}
+}
+
+export function recordMatch({ won, coins, matchId, practice = false, bestWpm = 0, bestCombo = 0 }) {
   if (matchId && !claimReceipt(`match:${matchId}`)) return false;
+  if (practice) { profile.coins += count(coins); commit(); return true; }
   profile.gamesPlayed += 1;
   if (won) profile.wins += 1;
   if (won) profile.xp += 50;
   profile.bestWpm = Math.max(profile.bestWpm, bestWpm);
   profile.bestCombo = Math.max(profile.bestCombo, bestCombo);
   if (coins > 0) profile.coins += Math.floor(coins);
+  commit();
+  return true;
+}
+
+export function syncWins({ wins, revision }) {
+  if (!Number.isSafeInteger(wins) || wins < 0 || wins > 1000000000 || !Number.isSafeInteger(revision) || revision <= profile.winsRevision) return false;
+  profile.wins = wins;
+  profile.winsRevision = revision;
   commit();
   return true;
 }
@@ -253,17 +277,8 @@ export function adjustCoins(operation, amount, receipt) {
   profile.coins = Math.max(0, Math.min(1000000000, operation === 'set' ? amount : profile.coins + amount));
   commit(); return true;
 }
-export function sellChair(id, receipt) {
-  const chair = CHAIRS.find(item => item.id === id);
-  if (!chair || id === 'wooden' || !profile.ownedChairs.includes(id)) return false;
-  if (receipt && !claimReceipt(`sell:${receipt}`)) return false;
-  profile.ownedChairs = profile.ownedChairs.filter(owned => owned !== id);
-  if (profile.equippedChair === id) profile.equippedChair = 'wooden';
-  profile.coins += Math.floor(chair.price / 2);
-  commit(); return true;
-}
 export function grantPetTier(id, tier, receipt) {
-  if (!PETS_BY_ID[id] || ![2, 3].includes(tier)) return false;
+  if (!PETS_BY_ID[id] || ![1, 2, 3].includes(tier)) return false;
   if (receipt && !claimReceipt(`merge:${receipt}`)) return false;
   profile.petTiers[id] ||= { 1: 0, 2: 0, 3: 0 };
   profile.petTiers[id][tier]++;
@@ -274,6 +289,48 @@ export function grantPetTier(id, tier, receipt) {
 export function addCard(id) {
   if (!CARDS.some((v) => v.id === id)) return false;
   profile.cards[id] = (profile.cards[id] || 0) + 1; commit(); return true;
+}
+export function grantCard(id, receipt) {
+  if (!CARDS.some(v => v.id === id) || !claimReceipt(`grant-card:${receipt}`)) return false;
+  profile.cards[id] = (profile.cards[id] || 0) + 1; commit(); return true;
+}
+export function completeTrade({ outgoing, incoming, receipt, partner }) {
+  if (!receipt || profile.receipts.includes(receipt)) return false;
+  const before = tradeInventory(profile), giving = tradeOffer(outgoing), getting = tradeOffer(incoming);
+  const after = transferInventory(before, giving, getting);
+  profile.coins = after.coins;
+  profile.ownedChairs = ['wooden', ...after.chairs];
+  profile.ownedBacks = ['none', ...after.backs];
+  if (!profile.ownedChairs.includes(profile.equippedChair)) profile.equippedChair = 'wooden';
+  if (!profile.ownedBacks.includes(profile.equippedBack)) profile.equippedBack = 'none';
+  for (const id of Object.keys(PETS_BY_ID)) {
+    const tiers = { 1: after.pets[`${id}:1`] || 0, 2: after.pets[`${id}:2`] || 0, 3: after.pets[`${id}:3`] || 0 };
+    const count = tiers[1] + tiers[2] + tiers[3];
+    if (count) { profile.petTiers[id] = tiers; profile.pets[id] = count; if (!profile.discoveredPets.includes(id)) profile.discoveredPets.push(id); }
+    else { delete profile.petTiers[id]; delete profile.pets[id]; }
+  }
+  if (!profile.pets[profile.equippedPet]) { profile.equippedPet = null; profile.equippedPetTier = 1; }
+  else if (!profile.petTiers[profile.equippedPet]?.[profile.equippedPetTier]) profile.equippedPetTier = [1, 2, 3].find(tier => profile.petTiers[profile.equippedPet][tier]) || 1;
+  for (const card of CARDS) profile.cards[card.id] = after.cards[card.id] || 0;
+  profile.tradeHistory.push({ status: 'completed', at: Date.now(), partner: String(partner || 'Player').slice(0, 16), outgoing: giving, incoming: getting });
+  profile.tradeHistory = profile.tradeHistory.slice(-20);
+  claimReceipt(receipt);
+  commit();
+  return true;
+}
+export function refundMatch({ matchId, coins = 0, cards = [], receipt }) {
+  if (!matchId || !claimReceipt(receipt)) return false;
+  profile.coins += count(coins);
+  for (const id of cards) if (CARDS.some(v => v.id === id)) profile.cards[id] = (profile.cards[id] || 0) + 1;
+  try {
+    const saved = JSON.parse(localStorage.getItem(matchProgressKey(matchId)));
+    if (saved && Number.isInteger(saved.wordsTyped) && Number.isInteger(saved.xp)) {
+      for (const key of ['wordsTyped', 'xp', 'bestWpm', 'bestCombo']) profile[key] = saved[key];
+      profile.longestWord = saved.longestWord;
+    }
+  } catch {}
+  finishMatchProgress(matchId);
+  commit(); return true;
 }
 export function reconcileCards(cards, receipts = []) {
   for (const card of CARDS) profile.cards[card.id] = count(cards?.[card.id]);

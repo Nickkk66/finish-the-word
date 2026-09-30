@@ -49,6 +49,6 @@ test('expanded room permits its new perimeter and releases disconnected seats',(
   const room=createRoom(),a=enter(room,'alice');
   room.send(a,{t:'move',x:312,y:0,z:0,ry:0});assert.equal(room.engine.players.get('alice').pos.x,312);
   room.send(a,{t:'move',x:314,y:0,z:0,ry:0});assert.equal(room.engine.players.get('alice').pos.x,312);
-  near(room,a,8);room.send(a,{t:'sit',seat:8});room.engine.disconnect(a);assert.equal(room.engine.seatOwner(8)?.id,'alice');room.clock.advance(RECONNECT_GRACE_MS+1);assert.equal(room.engine.seatOwner(8),null);
+  near(room,a,8);room.send(a,{t:'sit',seat:8});room.engine.disconnect(a);assert.equal(room.engine.seatOwner(8),null);room.clock.advance(RECONNECT_GRACE_MS+1);assert.equal(room.engine.seatOwner(8),null);
   for(const seat of LIGHTHOUSE_SEATS){const stand=lighthouseSeatPosition(seat.id,true);assert.ok(Math.hypot(stand.x-300,stand.z)<LIGHTHOUSE_ROOM.radius);}
 });

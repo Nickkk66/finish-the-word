@@ -8,7 +8,7 @@ const write = (key, value) => { try { value ? localStorage.setItem(key, JSON.str
 
 export function createAccount({ onChange, beforeReplace }) {
   let session = read(KEY), applying = false, timer, inFlight = null, generation = 0;
-  const state = { username: session?.username || '', status: session ? 'connecting' : 'guest', busy: false, error: '', recoveryCode: '' };
+  const state = { username: session?.username || '', createdAt: session?.createdAt || null, status: session ? 'connecting' : 'guest', busy: false, error: '', recoveryCode: '' };
   const emit = () => onChange({ ...state });
   function status(value, error = '') { state.status = value; state.error = error; emit(); }
   async function request(path, method = 'GET', body, token = session?.token) {
@@ -56,6 +56,7 @@ export function createAccount({ onChange, beforeReplace }) {
     try {
       const data = await request('me');
       if (ticket !== generation) return;
+      session.createdAt = data.createdAt; state.createdAt = data.createdAt; write(KEY, session);
       if (session.dirty) {
         if (session.revision !== data.revision) { status('conflict', 'Another device has a newer save. Your local progress is still safe.'); return; }
         await save();
@@ -71,8 +72,8 @@ export function createAccount({ onChange, beforeReplace }) {
       const data = await request(mode, 'POST', { ...credentials, ...(mode === 'register' ? { profile: exportProfile() } : {}) }, null);
       if (!session) write(GUEST, exportProfile());
       generation++; clearTimeout(timer);
-      session = { username: data.username, token: data.token, revision: data.revision, dirty: false };
-      write(KEY, session); state.username = data.username;
+      session = { username: data.username, token: data.token, revision: data.revision, createdAt: data.createdAt, dirty: false };
+      write(KEY, session); state.username = data.username; state.createdAt = data.createdAt;
       state.recoveryCode = data.recoveryCode || '';
       const backup = read(`ftw_backup_${data.username}`);
       if (backup?.dirty && backup.profile?.id === data.profile.id) {
@@ -91,6 +92,7 @@ export function createAccount({ onChange, beforeReplace }) {
   setInterval(() => { if (session?.dirty && state.status === 'offline') save(); }, 30000);
   return {
     ready, save,
+    token: () => session && !['guest', 'expired', 'offline', 'conflict'].includes(state.status) ? session.token : null,
     register: credentials => authenticate('register', credentials),
     login: credentials => authenticate('login', credentials),
     reset: credentials => authenticate('reset', credentials),
@@ -113,7 +115,7 @@ export function createAccount({ onChange, beforeReplace }) {
         write(`ftw_backup_${session.username}`, { profile: exportProfile(), revision: session.revision, dirty: session.dirty });
         try { await request('logout', 'POST'); } catch { /* revoke on expiry when offline */ }
       }
-      generation++; clearTimeout(timer); session = null; write(KEY, null); state.username = ''; state.recoveryCode = '';
+      generation++; clearTimeout(timer); session = null; write(KEY, null); state.username = ''; state.createdAt = null; state.recoveryCode = '';
       apply(read(GUEST) || {}); status('guest');
     },
   };

@@ -62,7 +62,7 @@
   box-shadow: 0 3px 0 var(--ink);
 }
 .chain-word:not(:last-child) { opacity: .82; }
-.chain-word .hi { color: var(--good); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+.chain-word .hi { color: var(--good); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; margin-left: .12em; }
 .chain-word.new { animation: pop-in .35s ease both; }
 .chain-arrow { font: 700 18px / 1 var(--font); color: #fff; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; }
 
@@ -257,6 +257,7 @@
 .plist.collapsed .plist-title::after { content: ' ▸'; }
 .plist-count { font-weight: 600; opacity: .75; }
 .plist-wins-head { width: 26px; text-align: center; }
+.plist-rows { max-height: min(55vh, 600px); overflow-y: auto; }
 .plist.collapsed .plist-rows { display: none; }
 .plist-row {
   display: grid;
@@ -280,6 +281,7 @@
 .pl-crown { font-size: 13px; }
 .pl-tag { flex: none; padding: 2px 5px 1px; font: 700 10px / 1 var(--font); color: #fff; background: #5b6b80; border-radius: 5px; text-shadow: none; }
 .pl-tag.bot { background: #7a5cff; }
+.pl-tag.admin { padding:3px 7px; color:#fff9dc; border:1px solid #ffe7a4; background:linear-gradient(120deg,#704ac7,#d2882a,#704ac7); box-shadow:0 0 9px #e7ad69aa; letter-spacing:.05em; }
 .pl-hearts { display: inline-flex; }
 .pl-heart { width: 17px; height: 17px; color: var(--heart); }
 .pl-shield { margin-right: 2px; font-size: 13px; }
@@ -289,7 +291,7 @@
 .pl-wins { text-align: center; font-weight: 700; }
 
 /* ================================================================ chat (top-left) */
-.chat { position: absolute; top: calc(10px + var(--sat)); left: calc(10px + var(--sal)); width: var(--chat-w); }
+.chat { position: absolute; z-index: 40; top: calc(10px + var(--sat)); left: calc(10px + var(--sal)); width: var(--chat-w); }
 .chat-toggle {
   display: none;
   position: relative;
@@ -337,6 +339,7 @@
 .chat.faded .chat-msg { opacity: 0; }
 .chat-name { font-weight: 700; }
 .chat-msg.system { color: #ffe27a; }
+.chat-msg.system.alert { color: #ff6477; font-weight: 700; text-shadow: 0 1px 4px #320713; }
 .chat-input {
   width: 100%;
   padding: 8px 10px;

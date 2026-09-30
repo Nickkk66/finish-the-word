@@ -1,10 +1,11 @@
+import { TIDE_PHASES } from '../shared/word-tide.js';
 // Roblox-style player list (top-right): name, host crown, BOT tag, hearts / OUT, wins, turn highlight.
 
 import { h } from './dom.js';
 import { icons } from './icons.js';
 import { MAX_PLAYERS } from '../shared/constants.js';
 
-const LIVE_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', 'roulette', 'rouletteReveal', 'ended']);
+const LIVE_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', 'roulette', 'rouletteReveal', 'ended', ...TIDE_PHASES]);
 
 export function createPlayerList() {
   const count = h('span', { class: 'plist-count' });
@@ -44,6 +45,7 @@ export function createPlayerList() {
         id: p.id,
         name: p.name,
         bot: p.isBot,
+        admin: p.isAdmin,
         host: p.id === state.hostId,
         me: p.id === state.you,
         offline: !p.connected,
@@ -73,6 +75,7 @@ export function createPlayerList() {
         h('span', { class: 'pl-name' },
           r.host ? h('span', { class: 'pl-crown', title: 'Host' }, '👑') : null,
           h('span', { class: 'pl-text' }, r.name),
+          r.admin ? h('span', { class: 'pl-tag admin' }, '✦ ADMIN') : null,
           r.bot ? h('span', { class: 'pl-tag bot' }, 'BOT') : null,
           r.offline ? h('span', { class: 'pl-tag off', title: 'Reconnecting' }, '···') : null),
         h('span', { class: 'pl-status' }, status),

@@ -2,7 +2,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   PROTOCOL_VERSION, BASE_MISTAKES, COUNTDOWN_MS, CHOOSE_MS, ROUND_END_MS, MATCH_END_MS, MIN_TURN_MS,
-  ABS_MIN_TURN_MS, RECONNECT_GRACE_MS, DEFAULT_SETTINGS, REWARDS, CHAT_MAX, NAME_MAX,
+  ABS_MIN_TURN_MS, RECONNECT_GRACE_MS, DEFAULT_SETTINGS, REWARDS, CHAT_MAX, NAME_MAX, MAX_PLAYERS,
 } from '../public/js/shared/constants.js';
 import { PETS_BY_ID, sanitizeLook } from '../public/js/shared/catalog.js';
 import WORDS from '../src/words.js';
@@ -43,6 +43,20 @@ const other = (id, ids = ['alice', 'bob']) => ids.find((x) => x !== id);
 const participant = (conn, id) => lastMatch(conn).participants.find((p) => p.id === id);
 
 describe('joining', () => {
+  test('main public room stays public and invite rooms stay private', () => {
+    const publicRoom = createRoom({ code: 'PUBLIC' });
+    const a = publicRoom.join('alice');
+    assert.equal(a.last('welcome').public, true);
+    publicRoom.send(a, { t: 'host', action: 'settings', settings: { public: false } });
+    assert.equal(publicRoom.engine.settings.public, true);
+    publicRoom.engine.removePlayer('alice');
+    assert.equal(publicRoom.engine.settings.public, true);
+    const privateRoom = createRoom({ code: 'ABCDE' });
+    const b = privateRoom.join('bob', { public: true });
+    privateRoom.send(b, { t: 'host', action: 'settings', settings: { public: true } });
+    assert.equal(privateRoom.engine.settings.public, false);
+    assert.deepEqual([...publicRoom.errors, ...privateRoom.errors], []);
+  });
   test('hello → welcome; the first human is host; others see the new player', () => {
     const room = createRoom();
     const a = room.join('alice', { name: 'Alice', pet: 'unicorn', chair: 'throne', look: { skin: '#FFFFFF' } });
@@ -98,27 +112,28 @@ describe('joining', () => {
     assert.equal(room.engine.players.size, 0);
   });
 
-  test('a full room rejects the 9th human', () => {
+  test('a full room rejects one more than the lobby capacity', () => {
     const room = createRoom();
-    for (let i = 0; i < 8; i++) room.join(`human${i}`);
-    const late = room.join('human8');
+    for (let i = 0; i < MAX_PLAYERS; i++) room.join(`human${i}`);
+    const late = room.join(`human${MAX_PLAYERS}`);
     assert.equal(late.last('error').code, 'room_full');
     assert.equal(late.closed.code, 1008);
-    assert.equal(room.engine.players.size, 8);
+    assert.equal(room.engine.players.size, MAX_PLAYERS);
   });
 
   test('a joining human evicts a bot when no match is being played', () => {
     const room = createRoom();
     const host = room.join('host1');
     for (let i = 0; i < 7; i++) room.send(host, { t: 'host', action: 'addBot' });
-    assert.equal(room.engine.players.size, 8);
+    for (let i = 0; i < MAX_PLAYERS - 8; i++) room.join(`spectator${i}`);
+    assert.equal(room.engine.players.size, MAX_PLAYERS);
     assert.equal(room.engine.match.phase, 'countdown');
     host.clear();
     const late = room.join('late1');
     assert.ok(late.last('welcome'));
     const evicted = host.last('leave').id;
     assert.match(evicted, /^bot-/);
-    assert.equal(room.engine.players.size, 8);
+    assert.equal(room.engine.players.size, MAX_PLAYERS);
     assert.ok(!room.engine.players.has(evicted));
   });
 
@@ -126,11 +141,12 @@ describe('joining', () => {
     const room = createRoom();
     const host = room.join('host1');
     for (let i = 0; i < 7; i++) room.send(host, { t: 'host', action: 'addBot' });
+    for (let i = 0; i < MAX_PLAYERS - 8; i++) room.join(`spectator${i}`);
     room.send(host, { t: 'host', action: 'start' });
     assert.equal(room.engine.match.phase, 'choosing');
     const late = room.join('late1');
     assert.equal(late.last('error').code, 'room_full');
-    assert.equal(room.engine.players.size, 8);
+    assert.equal(room.engine.players.size, MAX_PLAYERS);
   });
 });
 
@@ -680,10 +696,10 @@ describe('bots', () => {
   test('adding a bot to a full room tells the host', () => {
     const room = createRoom();
     const a = room.join('alice');
-    for (let i = 0; i < 7; i++) room.send(a, { t: 'host', action: 'addBot' });
+    for (let i = 1; i < MAX_PLAYERS; i++) room.join(`guest${i}`);
     room.send(a, { t: 'host', action: 'addBot' });
     assert.deepEqual(a.last('chat'), { t: 'chat', id: null, name: 'System', text: 'The room is full.' });
-    assert.equal(room.engine.players.size, 8);
+    assert.equal(room.engine.players.size, MAX_PLAYERS);
   });
 
   test('bots play a whole match on their own', () => {
@@ -716,7 +732,8 @@ describe('bots', () => {
     assert.ok(host.all('elim').length >= 2);
     const winner = room.engine.players.get(win.id);
     assert.equal(winner.isBot, true);
-    assert.equal(winner.wins, 1);
+    assert.equal(win.practice, true);
+    assert.equal(winner.wins, 0);
     assert.equal(host.all('reward').length, 0, 'the host did not play');
     assert.deepEqual(room.errors, []);
   });

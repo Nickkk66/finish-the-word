@@ -28,6 +28,10 @@ function gearPath(cx, cy, rOuter, rInner, teeth, rHole) {
 const HEART_PATH = 'M24 43C11 34 4 26 4 16.5 4 9.5 9.2 5 15 5c4 0 7.2 2.2 9 5.4C25.8 7.2 29 5 33 5c5.8 0 11 4.5 11 11.5C44 26 37 34 24 43Z';
 
 export const icons = {
+  trade: () => icon('i-trade',
+    shape('path', { d: 'M5 14h31l-6-6 4-4 13 13-13 13-4-4 6-6H5Z' }, '#8ef5ae'),
+    shape('path', { d: 'M43 34H12l6 6-4 4L1 31l13-13 4 4-6 6h31Z' }, '#ffe388'),
+  ),
   invite: () => icon('i-invite',
     shape('circle', { cx: 17, cy: 15, r: 8 }),
     shape('path', { d: 'M3 40c0-8.5 6.3-14 14-14s14 5.5 14 14Z' }),
