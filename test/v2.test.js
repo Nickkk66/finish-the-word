@@ -378,13 +378,15 @@ test('hints are valid, private, charged once, and reject stale/poor/no-answer re
   const room = game();
   const m = room.engine.match;
   const conn = room.conns[m.typerId];
-  const request = { t: 'hint', turnId: m.turnId, requestId: 'hint1', balance: 250 };
+  const request = { t: 'hint', turnId: m.turnId, requestId: 'hint1', balance: 1000 };
   room.send(conn, { ...request, requestId: 'poor', balance: 249 });
   assert.equal(conn.last('hint').reason, 'insufficient_funds');
   room.send(conn, request);
   const answer = conn.last('hint');
   assert.equal(answer.ok, true);
-  assert.equal(answer.cost, 250);
+  assert.equal(answer.cost, 1000);
+  assert.equal(answer.matchId, m.matchId);
+  assert.equal(answer.receipt, `answer:${m.matchId}:${m.turnId}:${m.typerId}`);
   assert.equal(room.engine.rejectReason(answer.word), null);
   for (const other of Object.values(room.conns).filter(c => c !== conn)) assert.equal(other.all('hint').length, 0);
   room.send(conn, request);
@@ -394,6 +396,9 @@ test('hints are valid, private, charged once, and reject stale/poor/no-answer re
   room.clock.advance(1000);
   room.send(conn, { t: 'submit', word: answer.word });
   assert.equal(conn.last('result').paidAnswer, true);
+  assert.equal(conn.last('result').coins, 0);
+  assert.equal(conn.last('result').combo, 0);
+  assert.deepEqual(conn.last('result').flairs, []);
   room.send(conn, { ...request, requestId: 'late' });
   assert.equal(conn.last('hint').reason, 'turn_ended');
   const current = room.conns[m.typerId];
@@ -681,7 +686,7 @@ test('owner cancellation restores played cards and purchased answers without awa
   const room = game(), m = room.engine.match;
   const first = m.typerId;
   const next = room.engine.nextAlive(m.typerId);
-  room.send(room.conns[m.typerId], { t: 'hint', turnId: m.turnId, requestId: 'cancel-answer', balance: 250 });
+  room.send(room.conns[m.typerId], { t: 'hint', turnId: m.turnId, requestId: 'cancel-answer', balance: 1000 });
   assert.equal(room.conns[m.typerId].last('hint').ok, true);
   queue(room, next, 'time_tax', m.typerId, 'cancel-card');
   play(room);
@@ -689,7 +694,7 @@ test('owner cancellation restores played cards and purchased answers without awa
   room.send(room.conns.alice, { t: 'host', action: 'endMatch' });
   assert.equal(room.conns[next].last('matchRefund').cards[0], 'time_tax');
   assert.equal(room.engine.players.get(next).cards.time_tax, 2);
-  assert.equal(room.conns[first].last('matchRefund').coins, 250);
+  assert.equal(room.conns[first].last('matchRefund').coins, 1000);
   assert.equal(room.conns[first].all('reward').length, 0);
   assert.equal(room.conns[first].all('win').length, 0);
   assert.deepEqual(room.errors, []);
@@ -830,4 +835,24 @@ test('ordinary profanity submits as a valid game answer when swearing is on',()=
  r.send(a,{t:'sit',seat:0});r.send(b,{t:'sit',seat:1});r.send(a,{t:'host',action:'start'});r.engine.pick(r.engine.match.options[0]);
  const m=r.engine.match;m.prefix='f';m.minLength=1;r.send(r.conns[m.typerId],{t:'submit',word:'fuck'});
  assert.equal(r.conns[m.typerId]?.last('result')?.ok ?? a.last('result')?.ok,true);assert.ok(m.used.has('fuck'));
+});
+
+
+test('answer payment receipt survives a lost reply, turn change and reconnect before refund', () => {
+  const room = game(), m = room.engine.match, id = m.typerId, conn = room.conns[id];
+  room.send(conn, { t:'hint', turnId:m.turnId, requestId:'lost-reply', balance:1000 });
+  const purchase = conn.last('hint');
+  conn.clear(); // Simulate a client that never received the payment response.
+  for(let i=0;i<140;i++)room.engine.remember(room.engine.players.get(id),`hint:spam${i}`,{t:'hint',ok:false});
+  room.clock.advance(m.endsAt-room.clock.now()+1);
+  room.engine.disconnect(conn);
+  const reconnected=room.join(id);
+  assert.deepEqual(reconnected.last('hint'),purchase);
+  room.send(room.conns.alice,{t:'host',action:'endMatch'});
+  assert.equal(reconnected.last('matchRefund').coins,purchase.cost);
+  room.engine.disconnect(reconnected);
+  const again=room.join(id);
+  const payments=again.sent.filter(msg=>msg.t==='hint'||msg.t==='matchRefund');
+  assert.equal(payments[0].receipt,purchase.receipt);
+  assert.equal(payments[1].coins,purchase.cost);
 });

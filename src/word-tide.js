@@ -69,7 +69,7 @@ export const wordTideMethods = {
   this.noteActivity(player, true);
   const locked = validateTideAnswer(m.tide.category.id, word);
   m.tide.answers.set(player.id, locked);
-  return { ...response, ok: true, word, locked, matchId: m.matchId, round: m.round, cost: TIDE.hintPrice };
+  return { ...response, ok: true, word, locked, matchId: m.matchId, round: m.round, cost: TIDE.hintPrice, receipt: `answer:${m.matchId}:${m.turnId}:${player.id}` };
  },
  revealTide() {
   const m = this.match, t = m.tide;

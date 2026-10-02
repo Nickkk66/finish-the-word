@@ -268,7 +268,7 @@ try {
   const typing = (await host.next(m => m.t === 'match' && m.m.phase === 'typing')).m;
   const actor = typing.typerId === host.id ? host : other;
   const target = actor === host ? other : host;
-  actor.send({ t: 'hint', turnId: typing.turnId, requestId: 'hintintegration', balance: 250 });
+  actor.send({ t: 'hint', turnId: typing.turnId, requestId: 'hintintegration', balance: 1000 });
   const hint = await actor.next(m => m.t === 'hint');
   assert.ok(hint.ok && hint.word.startsWith(typing.prefix));
   assert.ok(!target.inbox.some(m => m.t === 'hint'));

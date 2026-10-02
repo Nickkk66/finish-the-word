@@ -45,3 +45,8 @@
 .tide-form.answer-saved { border-color:#28c95b!important; background:#e6ffed!important; box-shadow:0 0 0 4px #3eea7466,0 5px 0 #176f32!important; }
 .tide-form.answer-saved .tide-input { color:#145d2d; }
 .tide-form.answer-saved::before { border-color:#28c95b!important; }
+
+.tide-spectator,.game-spectator{position:absolute;bottom:100px;left:50%;transform:translateX(-50%);pointer-events:auto;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 18px;border:3px solid #162e3d;border-radius:20px;background:#eefaffed;color:#163c4a;text-shadow:none;box-shadow:0 5px 0 #162e3d;max-width:calc(100vw - 28px)}
+.tide-watch-target{display:flex;align-items:center;gap:12px}.tide-watch-target strong{min-width:140px;max-width:220px;overflow-wrap:anywhere}.tide-spectator .btn,.game-spectator .btn{font-size:16px}
+
+.game-spectator[hidden],.game-spectator [hidden]{display:none!important}

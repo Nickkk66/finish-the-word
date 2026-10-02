@@ -1,6 +1,7 @@
 import { createAnimationTester } from './ui/animation-tester.js';
 import { TIDE, TIDE_PHASES } from './shared/word-tide.js';
 import { createPresenceCheck } from './ui/presence.js';
+import { createSpectator } from './ui/spectator.js';
 import { createTideHud } from './ui/word-tide.js';
 import { isRouletteMode, fireDamage } from './shared/roulette.js';
 // Boot + glue: profile → world (menu mode) → menu → connect → wire net <-> world <-> UI.
@@ -12,7 +13,7 @@ import { tradeInventory } from './shared/trade.js';
 import {
   profile, exportProfile, onProfileChange, setName, setLook, buyOrEquipChair, payForBlock, addPet, equipPet,
   recordWord, recordMatch, captureMatchProgress, finishMatchProgress, setSetting, claimFree, recordFreePlayTime, flushFreePlayTime, FREE_COINS,
-  buyOrEquip, mergePet, deletePet, addCard, grantCard, refundMatch, consumeCard, reconcileCards, spendCoins, grantCoins, recordObby, level,
+  buyOrEquip, mergePet, deletePet, addCard, grantCard, refundMatch, consumeCard, reconcileCards, grantCoins, recordObby, level,
   adjustCoins, grantPetTier, setCapeColor, completeTrade, syncWins,
 } from './profile.js';
 import { createHandles, guestHandleToken } from './handles.js';
@@ -352,9 +353,10 @@ const playerList = createPlayerList();
 const chat = createChat({ onSend: sendChat, onEmote: playEmote });
 const panels = createPanelHost(uiRoot);
 const sidebar = createSidebar({ onInvite: invite, openPanel: (id) => id === 'cards' ? openCards() : panels.open(PANELS[id]), onView: toggleView });
-const tideHud = createTideHud({ onHint: actions.hint, onGiveUp: () => onInteract({type:'stand'}), send: msg => net.send(msg), start: () => actions.host('start') });
+const tideHud = createTideHud({ onHint: actions.hint, onSpectate: (id, view) => world?.spectateTide?.(id, view), onGiveUp: () => onInteract({type:'stand'}), send: msg => net.send(msg), start: () => actions.host('start') });
+const spectator = createSpectator({onView:(id,view)=>world?.spectatePlayer?.(id,view)});
 const presenceCheck = createPresenceCheck({ net, inRoom: () => state.inRoom });
-const gameUi = h('div', { class: 'game-ui', hidden: true }, hud.el, rouletteHud.el, tideHud.el, playerList.el, chat.el, sidebar.el);
+const gameUi = h('div', { class: 'game-ui', hidden: true }, hud.el, rouletteHud.el, tideHud.el, spectator.el, playerList.el, chat.el, sidebar.el);
 
 const invited = cleanCode(new URLSearchParams(location.search).get('room'));
 const menu = createMenu({
@@ -878,15 +880,16 @@ function refreshRoom() {
 let rouletteIntroTimer=0, rouletteIntroElement=null;
 function clearRouletteIntro(){clearTimeout(rouletteIntroTimer);rouletteIntroTimer=0;rouletteIntroElement?.remove();rouletteIntroElement=null;uiRoot.classList.remove('roulette-cinematic');}
 function refreshMode() {
+  spectator.update(state);
   const m = state.animationPreview || state.match;
   const shownState = state.animationPreview ? {...state,localPreview:true,match:m,deadline:performance.now()+m.phaseEndsIn} : state;
   const active = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? isRouletteMode(m.mode) : isRouletteMode(state.settings.mode));
   rouletteHud.update(state, active && state.zone!=='lighthouse');
   const tideMode = state.inRoom && (MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode) === 'word_tide';
-  tideHud.update(shownState, tideMode);
   world?.setTide?.(tideMode && m?.tide ? m : null);
+  tideHud.update(shownState, tideMode);
   document.body.classList.toggle('tide-scene', !!(tideMode && m?.tide));
-  document.body.classList.toggle('tide-cinema', !!(tideMode && m?.phase === 'tideIntro'));
+  document.body.classList.toggle('tide-cinema', !!(tideMode && m?.phase === 'tideIntro' && !m.skipIntro));
   if (tideMode || active && state.zone!=='lighthouse') hud.hide(); else if (state.inRoom) hud.show();
   world?.setRoulette?.(active, m, state.rouletteEntry, MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode);
   const rouletteMode = MATCH_PHASES.has(m?.phase) || m?.phase === 'ended' ? m.mode : state.settings.mode;
@@ -904,6 +907,7 @@ net.on('welcome', (msg) => {
   if (msg.cards) reconcileCards(msg.cards, msg.cardReceipts);
   state.cardQueue = msg.cardQueue; state.cardPending = null;
   state.you = msg.you;
+  state.skipTideIntroMatchId = msg.match?.tide ? msg.match.matchId : null;
   const identity=msg.players.find(p=>p.id===msg.you);if(identity)setName(identity.name);
   state.code = msg.code;
   state.hostId = msg.hostId;
@@ -1120,14 +1124,16 @@ net.on('error', ({ code, message }) => {
 
 net.on('hint', (msg) => {
   const pending = state.hintPending;
-  if (!pending || pending.requestId !== msg.requestId || pending.turnId !== msg.turnId) return;
-  state.hintPending = null;
+  // An approved purchase must settle even after a timeout, phase change or reconnect.
+  if (msg.ok && msg.receipt) adjustCoins('add', -msg.cost, msg.receipt);
+  const requested = pending?.requestId === msg.requestId && pending?.turnId === msg.turnId;
+  if (requested) state.hintPending = null;
   const tide = state.match?.phase === 'tideAnswer' && state.match.participants.some(p => p.id === state.you && p.alive);
-  const current = (tide || state.match?.phase === 'typing' && state.match.typerId === state.you) && state.match.turnId === msg.turnId;
-  if (msg.ok && current && state.hintTurn !== msg.turnId && spendCoins(tide ? TIDE.hintPrice : HINT_PRICE)) {
+  const current = (tide || state.match?.phase === 'typing' && state.match.typerId === state.you) && state.match.turnId === msg.turnId && state.match.matchId === msg.matchId;
+  if (msg.ok && current && state.hintTurn !== msg.turnId) {
     state.hintTurn = msg.turnId; state.hintWord = msg.word;
-    if (tide) tideHud.answer(msg.word, msg); else submitWord(msg.word);
-  } else if (!msg.ok && current) toast(msg.reason === 'already_bought' ? 'You already bought this turn’s answer.' : 'No answer available. You were not charged.', 'info');
+    if (tide) tideHud.answer(msg.word, msg); else if (requested) submitWord(msg.word);
+  } else if (!msg.ok && current && requested) toast(msg.reason === 'already_bought' ? 'You already bought this turn’s answer.' : 'No answer available. You were not charged.', 'info');
   hud.update(state); tideHud.update(state, state.settings.mode === 'word_tide');
 });
 net.on('cardQueue', ({ queue, reason }) => {
@@ -1269,7 +1275,9 @@ function applyMatch(m, resync = false) {
   const prev = state.match;
   if (m.matchId && MATCH_PHASES.has(m.phase) && m.matchId !== prev?.matchId) captureMatchProgress(m.matchId);
   if (m.matchId && m.phase === 'ended') finishMatchProgress(m.matchId);
+  m.skipIntro = !!m.tide && m.matchId === state.skipTideIntroMatchId;
   state.match = m;
+  if (prev?.matchId !== m.matchId) state.hintTurn = null;
   if (m.phase === 'tideIntro' && prev?.matchId !== m.matchId) { panels.close(); cancelConfirmation(); }
   world?.setMatch?.(m);
   if(m.phase==='lobby'||m.startedAt!==prev?.startedAt)world.clearCards();

@@ -84,7 +84,7 @@ export const FLAIRS = {
 export const START_COINS = 300;
 export const REWARDS = Object.freeze({ participation: 5, perWord: 10, win: 0, winPerMinute: 15, maxWin: 1800 });
 export const TRADE_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
-export const HINT_PRICE = 250;
+export const HINT_PRICE = 1000;
 export const PET_MERGE_COUNT = 3;
 export const PET_MAX_TIER = 3;
 

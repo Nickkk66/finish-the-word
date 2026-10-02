@@ -283,7 +283,7 @@ export class GameEngine {
     });
     this.sendPresence(player);
     this.broadcast({ t: 'player', p: this.view(player) }, id);
-    for (const receipt of player.requests.values()) if (['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward', 'matchRefund', 'cardReturned', 'adminCard', 'petMergeGrant', 'tradeComplete', 'winsSold', 'tideReward'].includes(receipt.t)) this.send(player, receipt);
+    for (const receipt of player.requests.values()) if ((receipt.t !== 'hint' || receipt.ok) && ['hint', 'betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward', 'matchRefund', 'cardReturned', 'adminCard', 'petMergeGrant', 'tradeComplete', 'winsSold', 'tideReward'].includes(receipt.t)) this.send(player, receipt);
     if (isNew) this.broadcast(systemChat(`${player.name} joined the game`));
     this.reportListing();
   }
@@ -337,7 +337,7 @@ export class GameEngine {
     this.cancelTrade(player, 'The other player left.');
     this.fail(id, 'left'); // knocked out if still playing
     if (!player.isBot) {
-      const receipts = [...player.requests].filter(([,value]) => ['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward', 'matchRefund', 'cardReturned', 'adminCard', 'petMergeGrant', 'tradeComplete', 'winsSold', 'tideReward'].includes(value.t));
+      const receipts = [...player.requests].filter(([,value]) => (value.t !== 'hint' || value.ok) && ['hint', 'betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward', 'matchRefund', 'cardReturned', 'adminCard', 'petMergeGrant', 'tradeComplete', 'winsSold', 'tideReward'].includes(value.t));
       if (receipts.length) this.rouletteReceipts.set(id, receipts.slice(-100));
       if (this.rouletteReceipts.size > 64) this.rouletteReceipts.delete(this.rouletteReceipts.keys().next().value);
     }
@@ -701,12 +701,16 @@ export class GameEngine {
 
   remember(player, key, result) {
     player.requests.set(key, result);
-    while (player.requests.size > 128) player.requests.delete(player.requests.keys().next().value);
+    while (player.requests.size > 128) {
+      // Rejected spam must not evict an approved answer payment before reconnect.
+      const expendable = [...player.requests].find(([, value]) => value.ok === false) || [...player.requests].find(([, value]) => value.t !== 'hint' || !value.ok);
+      player.requests.delete(expendable?.[0] ?? player.requests.keys().next().value);
+    }
   }
 
   onHint(player, msg) {
     this.request(player, 'hint', msg, () => {
-      const answer = { t: 'hint', ok: false, turnId: msg.turnId, requestId: msg.requestId };
+      const answer = { t: 'hint', ok: false, turnId: msg.turnId, requestId: msg.requestId, matchId: this.match.matchId };
       const m = this.match;
       if (m.tide) return this.tideHint(player, msg, answer);
       if (m.phase !== 'typing' || m.typerId !== player.id || msg.turnId !== m.turnId || this.now() >= m.endsAt) return { ...answer, reason: 'turn_ended' };
@@ -718,7 +722,7 @@ export class GameEngine {
       p.hintedTurn = m.turnId;
       p.hintSpent = (p.hintSpent || 0) + HINT_PRICE;
       this.broadcast(systemChat(`${player.name} bought the answer.`));
-      return { ...answer, ok: true, word, cost: HINT_PRICE };
+      return { ...answer, ok: true, word, cost: HINT_PRICE, receipt: `answer:${m.matchId}:${m.turnId}:${player.id}` };
     });
   }
 
@@ -1327,15 +1331,17 @@ export class GameEngine {
 
     const participant = this.participant(player.id);
     const wpm = Math.min(250, Math.round((word.length / 5) * 60000 / Math.max(250, this.now() - (m.firstKeyAt ?? m.turnStartAt))));
-    const fast = wpm >= 45 && this.now() - m.turnStartAt <= m.duration * .6;
+    const paidAnswer = participant.hintedTurn === m.turnId;
+    const fast = !paidAnswer && wpm >= 45 && this.now() - m.turnStartAt <= m.duration * .6;
     participant.combo = fast ? participant.combo + 1 : 0;
-    participant.bestWpm = Math.max(participant.bestWpm, wpm);
+    if (!paidAnswer) participant.bestWpm = Math.max(participant.bestWpm, wpm);
     participant.bestCombo = Math.max(participant.bestCombo, participant.combo);
     const multiplier = participant.combo >= 8 ? 3 : participant.combo >= 5 ? 2 : participant.combo >= 3 ? 1.5 : 1;
-    const coins = Math.round(REWARDS.perWord * multiplier) + Math.max(0, Math.min(16, Math.floor((wpm - 40) / 8)));
+    const coins = paidAnswer ? 0 : Math.round(REWARDS.perWord * multiplier) + Math.max(0, Math.min(16, Math.floor((wpm - 40) / 8)));
     if (!m.practice) participant.coins += coins;
     const flairs = [];
     const flair = (id, amount) => {
+      if (paidAnswer) return;
       const value = { id, ...FLAIRS[id], ...(amount === undefined ? {} : { coins: amount }) };
       flairs.push(value);
       if (value.coins) participant.bonuses.push({ label: value.label, coins: value.coins });

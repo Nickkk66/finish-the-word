@@ -84,7 +84,7 @@ try {
   const actor = m.typerId === guestA ? a : c;
   // Both clients get a card before their next match; choose the initial holder's turn.
   if (actor === c) {
-    await c.send({t:'hint',turnId:m.turnId,requestId:'qa-hint',balance:250});
+    await c.send({t:'hint',turnId:m.turnId,requestId:'qa-hint',balance:1000});
     await delay(500);
     const { default: words } = await import('../src/words.js');
     const word = words.split('\n').find(w=>w.startsWith(m.prefix)&&w.length>=3);

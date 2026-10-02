@@ -137,6 +137,7 @@ export async function createWorld({ container, labelLayer }) {
   // ---- State ----
   const tideScenery = scene.children.filter(o => !beforeScenery.has(o));
   const players = new Map();
+  let spectatorId=null,spectatorView='follow';
   const cardPlay=createCardPlay(scene,players,labels);
   const tide = createWordTideScene(scene,labels,terrain,tideScenery,players);
   const cardTargets = new Map();
@@ -430,6 +431,14 @@ export async function createWorld({ container, labelLayer }) {
       camera.position.y = Math.min(camera.position.y, 13.1);
     }
     tide.camera(camera,now);
+    const spectator=players.get(spectatorId);
+    if(spectator&&!tide.active()&&zone==='island'&&!playingMatch()&&activeMatch?.participants.some(p=>p.id===spectatorId&&p.alive)){
+      const angle=spectator.renderYaw+Math.PI+(rig.mode==='table'?rig.tableYaw:rig.yaw);
+      const y=spectator.render.y+4;
+      if(spectatorView==='overhead')camera.position.set(spectator.render.x+.01,y+32,spectator.render.z+.01);
+      else camera.position.set(spectator.render.x+Math.sin(angle)*14,y+7,spectator.render.z+Math.cos(angle)*14);
+      camera.lookAt(spectator.render.x,y,spectator.render.z);
+    }
     terrain.setSkyFocus(camera.position);
     effects.update(dt, camera);
 
@@ -598,6 +607,8 @@ export async function createWorld({ container, labelLayer }) {
     setLeaderboardTitle(title) { lobby.setLeaderboardTitle(title); },
     setTable(id) { table.setTable(id); },
     setMatch(match) { activeMatch=match; },
+    spectatePlayer(id,view){spectatorId=id;spectatorView=view;},
+    spectateTide(id,view){tide.spectate(id,view);},
     setTide(match) { tide.set(match,localId); },
     setRoulette(on, match, entry, mode) { modeCard.set(mode); cardPlay.setVisible(!on && !activeMatch?.tide); terrain.setNight(on); lobby.setRoulette(on,mode); roulette.set(on, match, players, entry, mode); },
     setMeteor(drop,collected) { roulette.setMeteor(drop,collected); },
@@ -676,7 +687,7 @@ export async function createWorld({ container, labelLayer }) {
       }
     },
     debugSnapshot() {
-      return { zone, firstPerson, localPosition: local()?.pos.toArray() ?? null, checkpoint: { ...checkpoint },
+      return { zone, firstPerson, cameraPosition:camera.position.toArray(),spectatorId,spectatorView, localPosition: local()?.pos.toArray() ?? null, checkpoint: { ...checkpoint },
         modeCard:modeCard.debug(), scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), tide: tide.debug(), night: terrain.nightAmount(),
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,

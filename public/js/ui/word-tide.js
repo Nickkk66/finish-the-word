@@ -3,7 +3,7 @@ import { TIDE } from '../shared/word-tide.js';
 import { sfx } from '../audio.js';
 import { WRECK, wreckStage } from '../shared/tide-wreck.js';
 import { TIDE_FLIGHT } from '../shared/tide-flight.js';
-export function createTideHud({ send, start, onHint, onGiveUp }) {
+export function createTideHud({ send, start, onHint, onGiveUp, onSpectate }) {
  const eyebrow = h('div', { class: 'tide-eyebrow' }, 'TROPICAL SURVIVAL');
  const title = h('h1', {}, 'WORD TIDE');
  const prompt = h('div', { class: 'tide-question', role: 'status' });
@@ -28,7 +28,26 @@ export function createTideHud({ send, start, onHint, onGiveUp }) {
  const spray = h('div', { class: 'tide-screen-spray', 'aria-hidden': true });
  const credit=h('div',{class:'tide-shark-credit',hidden:true},h('a',{href:'https://poly.pizza/m/8Ke5qCnWxsZ',target:'_blank',rel:'noopener'},'Shark'), ' / ',h('a',{href:'https://poly.pizza/m/c307K4BlGr2',target:'_blank',rel:'noopener'},'Piranha'),' · Poly by Google · CC BY 3.0');
  const parachuteCredit=h('div',{class:'tide-shark-credit',hidden:true},h('a',{href:'https://poly.pizza/m/3Z7vJ96JIEB',target:'_blank',rel:'noopener'},'Parachute'),' · Poly by Google · CC BY 3.0');
- const el = h('div', { class: 'tide-hud', hidden: true }, top, bottom, caption, spray,credit,parachuteCredit,giveUp,damage);
+ let watchingId=null, watchingMatch=null, watchingView='follow';
+ const watchingName=h('strong',{},'Watching');
+ const previous=h('button',{type:'button',class:'btn small blue','aria-label':'Watch previous player',onClick:()=>cycle(-1)},'←');
+ const next=h('button',{type:'button',class:'btn small blue','aria-label':'Watch next player',onClick:()=>cycle(1)},'→');
+ const perspective=h('button',{type:'button',class:'btn small yellow',onClick:()=>{watchingView=watchingView==='follow'?'overhead':'follow';refreshSpectator();}},'View: Follow');
+ const spectator=h('div',{class:'tide-spectator',hidden:true},h('div',{class:'tide-watch-target'},previous,watchingName,next),perspective);
+ function survivors(){return st?.match?.participants.filter(p=>p.alive&&st.players.get(p.id)?.connected!==false)||[];}
+ function cycle(direction){const list=survivors();if(!list.length)return;const index=list.findIndex(p=>p.id===watchingId);watchingId=list[(Math.max(0,index)+direction+list.length)%list.length].id;refreshSpectator();}
+ function refreshSpectator(){
+  const m=st?.match, own=m?.participants.find(p=>p.id===st.you);
+  spectator.hidden=!m?.tide||!!own?.alive||m.phase==='ended';
+  if(spectator.hidden)return;
+  if(watchingMatch!==m.matchId){watchingMatch=m.matchId;watchingId=null;watchingView='follow';}
+  const list=survivors();if(!list.some(p=>p.id===watchingId))watchingId=list[0]?.id||null;
+  watchingName.textContent=watchingId?`Watching ${st.players.get(watchingId)?.name||'Player'}`:'No survivors';
+  previous.disabled=next.disabled=list.length<2;perspective.disabled=!watchingId;
+  perspective.textContent=watchingView==='follow'?'View: Follow':'View: Overhead';
+  onSpectate?.(watchingId,watchingView);
+ }
+ const el = h('div', { class: 'tide-hud', hidden: true }, top, bottom, caption, spray,credit,parachuteCredit,giveUp,damage,spectator);
  let st, key = '', pending = null, locked = null, raf = 0, lastSecond = null, observed=null, received=0, lastHearts=null, heartMatch=null;
  function frame() {
   raf = 0; if (el.hidden || !st) return;
@@ -43,8 +62,8 @@ export function createTideHud({ send, start, onHint, onGiveUp }) {
    if (sec !== lastSecond && sec > 0 && sec <= 5) sfx.tick(sec === 1);
    lastSecond = sec; if (!remaining) { input.disabled = submit.disabled = true; }
   }
-  parachuteCredit.hidden=m?.phase!=='tideIntro'||remaining>TIDE.intro-TIDE_FLIGHT.deploy*1000;
-  if (m?.phase === 'tideIntro') {
+  parachuteCredit.hidden=m?.phase!=='tideIntro'||m.skipIntro||remaining>TIDE.intro-TIDE_FLIGHT.deploy*1000;
+  if (m?.phase === 'tideIntro' && !m.skipIntro) {
    const t = (TIDE.intro - remaining)/1000;
    setText(caption, t<3?'The ocean is pulling back…':t<5?'THE GROUND IS SHAKING!':t<TIDE_FLIGHT.deploy?'Here comes the tide!':t<TIDE_FLIGHT.tuck?'PARACHUTES OPEN!':'Coming in to land…');
    spray.style.opacity = t > 10 && t < 13 ? String(.55 * Math.max(0, 1 - Math.abs(t - 11.5)/1.5)) : '0';
@@ -91,7 +110,7 @@ export function createTideHud({ send, start, onHint, onGiveUp }) {
    if (phase === 'tideResolve' && part && m.tide.towers[st.you]?.rescued) sfx.heart();
    if (phase === 'ended' && !m.cancelled) sfx.win();
   }
-  const intro = phase === 'tideIntro'; el.classList.toggle('cinematic', intro);el.classList.toggle('ending',phase==='ended');
+  const intro = phase === 'tideIntro' && !m.skipIntro; el.classList.toggle('cinematic', intro);el.classList.toggle('ending',phase==='ended');
   caption.hidden = !intro; bottom.hidden = intro;
   eyebrow.textContent = active && !intro ? `WORD TIDE   ·   ROUND ${m.round || 1} / ${TIDE.rounds}` : 'THE OCEAN IS RISING';
   title.hidden = active && !intro && phase !== 'ended';
@@ -109,6 +128,7 @@ export function createTideHud({ send, start, onHint, onGiveUp }) {
   hint.disabled = !!st.hintPending || st.hintTurn === m?.turnId;
   hint.textContent = st.hintPending ? 'Finding answer…' : st.hintTurn === m?.turnId ? 'Answer purchased' : `Answer · ${TIDE.hintPrice}`;
   startButton.hidden = active || !(st.hostId === st.you || st.isAdmin);
+  refreshSpectator();
   if (!raf) raf = requestAnimationFrame(frame);
  }
  input.addEventListener('input', () => {form.classList.remove('invalid', 'answer-saved');submit.textContent='➜';submit.setAttribute('aria-label','Submit answer');});

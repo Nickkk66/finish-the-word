@@ -111,6 +111,7 @@ export function createWordTideScene(scene, labels, terrain, scenery, players) {
  const sweepPlane=new THREE.Plane(new THREE.Vector3(0,0,1),230);
  function prepareSweep(){for(const obj of scenery){savedVisibility.set(obj,obj.visible);obj.traverse(node=>{if(!node.isMesh||!node.material)return;savedMaterials.set(node,node.material);const clone=m=>{const c=m.clone();c.clippingPlanes=[sweepPlane];c.clipShadows=true;return c;};node.material=Array.isArray(node.material)?node.material.map(clone):clone(node.material);});}}
 
+ let spectatorId=null,spectatorView='follow';
  let orbitYaw=0,orbitPitch=.28,orbitDistance=30,followHeight=null;
  let match=null,received=0,on=false,ruptured=false,currentWater=0,localId=null,lastPop=-1,lastAudio='',quality='high';
  const reduced=matchMedia('(prefers-reduced-motion: reduce)');
@@ -127,7 +128,7 @@ export function createWordTideScene(scene, labels, terrain, scenery, players) {
   localId=id;
   if (m && m === match) return;
   if(!m?.tide){if(on)restore();on=false;match=null;return;}
-  if(match?.matchId!==m.matchId){if(on)restore();lastAudio='';lastPop=-1;followHeight=null;orbitYaw=0;orbitPitch=.28;prepareSweep();}
+  if(match?.matchId!==m.matchId){if(on)restore();lastAudio='';lastPop=-1;spectatorId=null;spectatorView='follow';followHeight=null;orbitYaw=0;orbitPitch=.28;prepareSweep();}
   on=true;root.visible=true;match=m;received=performance.now();
   for(const tower of Object.values(m.tide.towers))if(!towerLabels.has(tower.id)){
    const entity=players.get(tower.id);if(entity)launchOrigins.set(tower.id,entity.render.clone());
@@ -140,7 +141,7 @@ export function createWordTideScene(scene, labels, terrain, scenery, players) {
  }
  function update(time,dt,now){
   if(!on)return;
-  const m=match,t=m.tide,elapsed=m.previewSeconds ?? (m.phaseDuration-m.phaseEndsIn+now-received)/1000,intro=m.phase==='tideIntro',outro=m.phase==='ended',it=intro?elapsed:24;
+  const m=match,t=m.tide,elapsed=m.previewSeconds ?? (m.phaseDuration-m.phaseEndsIn+now-received)/1000,intro=m.phase==='tideIntro'&&!m.skipIntro,outro=m.phase==='ended',it=intro?elapsed:24;
   const endTime=Math.max(0,elapsed-(t.endingHoldMs||0)/1000), waterProgress=tideWaterProgress(m,elapsed);
   const front=intro?-230+clamp((it-5)/10)*460:outro?230-ease((endTime-5)/7)*460:230;
   const destroyed=intro?front>-65:!outro||endTime<12.7;
@@ -252,8 +253,10 @@ export function createWordTideScene(scene, labels, terrain, scenery, players) {
  }
  function camera(cam,now){
   if(!on)return;
-  const m=match,elapsed=m.previewSeconds ?? (m.phaseDuration-m.phaseEndsIn+now-received)/1000,intro=m.phase==='tideIntro';
-  const tower=m.tide.towers[localId]&&m.participants.find(p=>p.id===localId)?.alive?m.tide.towers[localId]:Object.values(m.tide.towers).find(t=>m.participants.find(p=>p.id===t.id)?.alive)||Object.values(m.tide.towers)[0];
+  const m=match,elapsed=m.previewSeconds ?? (m.phaseDuration-m.phaseEndsIn+now-received)/1000,intro=m.phase==='tideIntro'&&!m.skipIntro;
+  const watching=!m.participants.find(p=>p.id===localId)?.alive;
+  const selected=watching&&m.participants.find(p=>p.id===spectatorId&&p.alive)&&m.tide.towers[spectatorId];
+  const tower=selected||(m.tide.towers[localId]&&m.participants.find(p=>p.id===localId)?.alive?m.tide.towers[localId]:Object.values(m.tide.towers).find(t=>m.participants.find(p=>p.id===t.id)?.alive)||Object.values(m.tide.towers)[0]);
   const angle=(tower?platforms[tower.seat].pos.yaw-Math.PI:0)+orbitYaw;
   const targetHeight=tower?platforms[tower.seat].g.position.y:currentWater;followHeight=followHeight===null?targetHeight:followHeight+(targetHeight-followHeight)*.16;const localHeight=followHeight;
   const narrow=cam.aspect<.85;
@@ -261,13 +264,14 @@ export function createWordTideScene(scene, labels, terrain, scenery, players) {
   const radius=orbitDistance*(narrow?1.2:1);
   look.set(pos.x,localHeight+3,pos.z);
   camPos.set(pos.x+Math.sin(angle)*radius*Math.cos(orbitPitch),Math.max(currentWater+4,look.y+radius*Math.sin(orbitPitch)),pos.z+Math.cos(angle)*radius*Math.cos(orbitPitch));
+  if(watching&&spectatorView==='overhead'){camPos.set(pos.x+.01,Math.max(currentWater+8,look.y+orbitDistance*1.6),pos.z+.01);}
   if(m.phase==='ended'){
    const winner=m.tide.winners[Math.floor(elapsed/2.5)%Math.max(1,m.tide.winners.length)],wp=m.tide.towers[winner],p=wp&&platforms[wp.seat];
    if(p&&elapsed<5){const y=p.g.position.y+5.1+Math.abs(Math.sin(elapsed*6))*2;look.set(p.pos.x,y,p.pos.z);camPos.set(p.pos.x+Math.sin(p.pos.yaw)*9,y+1,p.pos.z+Math.cos(p.pos.yaw)*9);}
    else {const k=ease((elapsed-5)/10),a=.7+k*1.8;camPos.set(Math.sin(a)*100,55+(currentWater>30?currentWater*.6:0),Math.cos(a)*100);look.set(0,currentWater,0);}
   }
 
-  if(!intro)wrecks.camera(camPos,look,localId,currentWater,cam.aspect);
+  if(!intro&&!watching)wrecks.camera(camPos,look,localId,currentWater,cam.aspect);
   normalPos.copy(cam.position);normalQ.copy(cam.quaternion);playPos.copy(camPos);playLook.copy(look);
   if(intro&&elapsed<24){
    if(elapsed<8){const k=ease(elapsed/8);camPos.set(60-k*35,28+k*12,75-k*55);look.set(0,10+k*17,-35-k*100);}
@@ -282,5 +286,5 @@ export function createWordTideScene(scene, labels, terrain, scenery, players) {
   if(m.phase==='ended'&&endTime>12){const blend=ease((endTime-12)/2);cam.position.lerp(normalPos,blend);cam.quaternion.slerp(normalQ,blend);}
   if(!reduced.matches){const impact=intro?Math.max(0,1-Math.abs(elapsed-11)/1.2)+Math.max(0,1-Math.abs(elapsed-3)/1)*.5:m.phase==='tideFlood'?Math.max(0,1-Math.abs(elapsed-(m.tide.holdMs||0)/1000-2)/.7)*.08:0;cam.position.x+=Math.sin(now*.12)*impact*1.3;cam.position.y+=Math.cos(now*.16)*impact*.8;}
  }
- return {orbit:(x,y,z)=>{if(on){orbitYaw-=x*.006;orbitPitch=Math.max(-.08,Math.min(1.1,orbitPitch+y*.004));orbitDistance=Math.max(13,Math.min(80,orbitDistance+z*.035));}},set,update,camera,active:()=>on,setQuality:level=>quality=level,debug:()=>({active:on,ruptured,water:currentWater,waveTop:surge.group.visible?surge.group.position.y+60*surge.group.scale.y:null,blocks:blocks.count,platforms:platforms.filter(p=>p.g.visible).map(p=>p.g.position.toArray()),riders:[...players.values()].filter(e=>e.tidePose).map(e=>({id:e.id,y:e.render.y,airborne:!!e.tidePose.airborne,seated:e.avatar.seated,seatBlend:e.tidePose.seatBlend,legAngle:e.avatar.lLeg.rotation.x,seatContact:e.tidePose.seatY==null?null:Math.min(new THREE.Box3().setFromObject(e.avatar.lLegMesh).min.y,new THREE.Box3().setFromObject(e.avatar.rLegMesh).min.y)-e.tidePose.seatY,platformY:platforms[match.tide.towers[e.id].seat].g.position.y})),visibleRocks:terrainBits.children.filter(o=>o.visible).length,blockClearance:.66,cinematic:match?.phase==='tideIntro',orbitYaw,parachutes:[...parachutes.values()].filter(p=>p.root.visible).length,parachuteModels:[...parachutes.values()].filter(p=>p.root.userData.parachuteModelLoaded).length,ropeRadius:.09,canopyBanks:[...parachutes.values()].map(p=>p.root.userData.canopyBank||0),airborne:[...players.values()].filter(e=>e.tidePose?.airborne).length,chairs:platforms.filter(p=>p.chair&&p.g.visible).length,ending:match?.phase==='ended',wrecks:wrecks.debug()})};
+ return {spectate:(id,view='follow')=>{spectatorId=id;spectatorView=view;followHeight=null;},orbit:(x,y,z)=>{if(on){orbitYaw-=x*.006;orbitPitch=Math.max(-.08,Math.min(1.1,orbitPitch+y*.004));orbitDistance=Math.max(13,Math.min(80,orbitDistance+z*.035));}},set,update,camera,active:()=>on,setQuality:level=>quality=level,debug:()=>({active:on,ruptured,water:currentWater,waveTop:surge.group.visible?surge.group.position.y+60*surge.group.scale.y:null,blocks:blocks.count,platforms:platforms.filter(p=>p.g.visible).map(p=>p.g.position.toArray()),riders:[...players.values()].filter(e=>e.tidePose).map(e=>({id:e.id,y:e.render.y,airborne:!!e.tidePose.airborne,seated:e.avatar.seated,seatBlend:e.tidePose.seatBlend,legAngle:e.avatar.lLeg.rotation.x,seatContact:e.tidePose.seatY==null?null:Math.min(new THREE.Box3().setFromObject(e.avatar.lLegMesh).min.y,new THREE.Box3().setFromObject(e.avatar.rLegMesh).min.y)-e.tidePose.seatY,platformY:platforms[match.tide.towers[e.id].seat].g.position.y})),visibleRocks:terrainBits.children.filter(o=>o.visible).length,blockClearance:.66,cinematic:match?.phase==='tideIntro'&&!match.skipIntro,spectatorId,spectatorView,orbitYaw,parachutes:[...parachutes.values()].filter(p=>p.root.visible).length,parachuteModels:[...parachutes.values()].filter(p=>p.root.userData.parachuteModelLoaded).length,ropeRadius:.09,canopyBanks:[...parachutes.values()].map(p=>p.root.userData.canopyBank||0),airborne:[...players.values()].filter(e=>e.tidePose?.airborne).length,chairs:platforms.filter(p=>p.chair&&p.g.visible).length,ending:match?.phase==='ended',wrecks:wrecks.debug()})};
 }

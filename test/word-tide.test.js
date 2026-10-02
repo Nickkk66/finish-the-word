@@ -141,10 +141,10 @@ test('ending during an elimination preserves the current waterline and existing 
 test('Word Tide answer purchases validate alive round, balance, replay and cancellation refunds',()=>{
  const {r,a,b}=setup();r.clock.advance(TIDE.intro);const m=r.engine.match;
  r.send(a,{t:'hint',turnId:m.turnId,requestId:'poor',balance:0});assert.equal(a.last('hint').ok,false);
- r.send(a,{t:'hint',turnId:m.turnId,requestId:'paid',balance:999});const receipt=a.last('hint');
+ r.send(a,{t:'hint',turnId:m.turnId,requestId:'paid',balance:1000});const receipt=a.last('hint');
  assert.equal(receipt.ok,true);assert.ok(validateTideAnswer(m.tide.category.id,receipt.word));assert.equal(receipt.cost,TIDE.hintPrice);
- assert.equal(b.all('hint').length,0);r.send(a,{t:'hint',turnId:m.turnId,requestId:'paid',balance:999});assert.deepEqual(a.last('hint'),receipt);
- r.send(a,{t:'hint',turnId:m.turnId,requestId:'again',balance:999});assert.equal(a.last('hint').reason,'already_bought');
+ assert.equal(b.all('hint').length,0);r.send(a,{t:'hint',turnId:m.turnId,requestId:'paid',balance:1000});assert.deepEqual(a.last('hint'),receipt);
+ r.send(a,{t:'hint',turnId:m.turnId,requestId:'again',balance:1000});assert.equal(a.last('hint').reason,'already_bought');
  answer(r,a,receipt.word);assert.equal(a.last('tideAnswerResult').ok,true);
  r.send(a,{t:'host',action:'endMatch'});assert.equal(a.last('matchRefund').coins,TIDE.hintPrice);
 });
