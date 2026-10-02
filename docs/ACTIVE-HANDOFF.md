@@ -113,3 +113,7 @@ User requests smaller, equal-sized, distinct Mystic/Mythic pet pools rather than
 
 ## October 2 Cards panel follow-up completed
 Cards panel now aligns from the top like Pets and scrolls within the viewport on short screens. Cards the player does not own show “Find in crate”; clicking scrolls to and highlights the cheapest crate containing that card and explains the crate name and coin price. Existing owned-card use behavior is unchanged. Deployed to Cloudflare main, version cda7a753-324c-434b-8273-31fa5d7e32d7. Committed per standing authorization. No tests run for this UI adjustment.
+
+
+## October 2 card panel placement correction
+After user reported the Cards UI remained too far down, traced the inventory to rendering below the card-box section. Reordered Cards so Your Cards appears first, with crate section beneath; CTA scrolls/highlights the source crate. Explicitly top-anchored `.panel-cards` in the grid as well as the panel layer. Previously deployed Mystic/Mythic catalog values verified directly from production; current page sessions retain their already-loaded JS until refreshed. Latest Cloudflare deploy version27e365c7-8cc4-43d7-9b7e-c0c509d8df25. Commit per standing authorization.

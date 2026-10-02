@@ -10,7 +10,7 @@
 .panel-pets .pets-grid .model-thumb { width:120px; height:120px; max-width:none; max-height:none; }
 .panel-pets .pets-grid { grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); }
 .panel-layer:has(.panel-cards) { align-items:start; overflow-y:auto; }
-.panel-cards { margin:12px 0 24px; max-height:calc(100dvh - 54px); }
+.panel-cards { align-self:start; margin:12px 0 24px; max-height:calc(100dvh - 54px); }
 .panel-cards .panel-body { overflow-y:auto; }
 .panel-cards .card-box-highlight { animation:card-box-pulse .55s ease-in-out 4; outline:5px solid #45d878; outline-offset:3px; }
 @keyframes card-box-pulse { 50% { box-shadow:0 0 0 8px #45d87866,0 6px var(--ink); } }

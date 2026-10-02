@@ -13,7 +13,7 @@ export function cardsPanel({ state, actions }) {
       const note = h('p', { class: 'panel-note' });
       const boxHeading = h('h3', { class: 'section-title stroke' }, 'Card Boxes');
       let selected = null;
-      body.append(boxHeading, boxes, h('h3', { class: 'section-title stroke' }, 'Your Cards'), note, inventory);
+      body.append(h('h3', { class: 'section-title stroke' }, 'Your Cards'), note, inventory, boxHeading, boxes);
       function update() {
         const m = state.match;
         const active = ['choosing', 'typing', 'cardReveal', 'roundEnd'].includes(m?.phase) && m?.participants?.some(p => p.id === state.you && p.alive);
