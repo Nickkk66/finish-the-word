@@ -9,6 +9,11 @@
 .panel-pets .pets-grid .item-art { width:130px; height:130px; }
 .panel-pets .pets-grid .model-thumb { width:120px; height:120px; max-width:none; max-height:none; }
 .panel-pets .pets-grid { grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); }
+.panel-layer:has(.panel-cards) { align-items:start; overflow-y:auto; }
+.panel-cards { margin:12px 0 24px; max-height:calc(100dvh - 54px); }
+.panel-cards .panel-body { overflow-y:auto; }
+.panel-cards .card-box-highlight { animation:card-box-pulse .55s ease-in-out 4; outline:5px solid #45d878; outline-offset:3px; }
+@keyframes card-box-pulse { 50% { box-shadow:0 0 0 8px #45d87866,0 6px var(--ink); } }
 .profile-summary .longest-word-stat { grid-column:1/-1; }
 .profile-summary .longest-word-stat .stat-value { white-space:normal; overflow-wrap:anywhere; text-overflow:clip; font-size:16px; }
 .panel-cards .block-card > .model-thumb { width:122px; height:122px; max-width:none; max-height:none; margin:-10px -12px -10px -5px; }
