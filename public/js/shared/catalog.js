@@ -79,7 +79,7 @@ export const PETS = [
   { id: 'froggy',  name: 'Froggy',  rarity: 'Uncommon',  emoji: '🐸', ability: { type: 'mistakes', value: 1 }, model: { kind: 'frog',    body: '#6cc24a', accent: '#f7e26b' } },
   { id: 'piggy',   name: 'Piggy',   rarity: 'Uncommon',  emoji: '🐷', ability: { type: 'time', value: 3 }, model: { kind: 'pig',     body: '#ffb3c7', accent: '#e57399' } },
   { id: 'foxy',    name: 'Foxy',    rarity: 'Rare',      emoji: '🦊', ability: { type: 'sabotage', value: 1 },     model: { kind: 'fox',     body: '#ff7a1a', accent: '#ffffff' } },
-  // Mystic Block pool
+  // Pets from upgraded blocks
   { id: 'bear',    name: 'Grizzly', rarity: 'Rare',      emoji: '🐻', ability: { type: 'sabotage', value: 2 }, model: { kind: 'bear',    body: '#7b4a2a', accent: '#d9b38c' } },
   { id: 'penguin', name: 'Pengu',   rarity: 'Rare',      emoji: '🐧', ability: { type: 'time', value: 3 },     model: { kind: 'penguin', body: '#1f2937', accent: '#ffffff' } },
   { id: 'owl',     name: 'Hoot',    rarity: 'Epic',      emoji: '🦉', ability: { type: 'time', value: 3 },     model: { kind: 'owl',     body: '#9c6b3c', accent: '#ffd166' } },
@@ -150,9 +150,9 @@ export const BLOCKS = [
   { id: 'starter', name: 'Starter Block', price: 300,  color: '#ffd43b',
     odds: { doggy: 35, kitty: 30, bunny: 15, froggy: 10, piggy: 7, foxy: 3 } },
   { id: 'secret',  name: 'Mystic Block',  price: 1500, color: '#9b5de5',
-    odds: { bear: 28, penguin: 22, owl: 20, unicorn: 3, dragon: 3, robot: 3, shellback:8, frostbite:4, badger:6, moth:3 } },
+    odds: { bear: 25, penguin: 25, shellback: 20, badger: 20, moth: 10 } },
   { id: 'mythic', name: 'Mythic Block', price: 3000, color: '#ff8357',
-    odds: { bear: 14, penguin: 14, owl: 16, unicorn: 3, dragon: 8, robot: 8, shellback:12, frostbite:10, badger:8, moth:7 } },
+    odds: { owl: 40, frostbite: 40, dragon: 8, robot: 8, unicorn: 4 } },
 ];
 
 export function rollBlock(block, random = Math.random) {

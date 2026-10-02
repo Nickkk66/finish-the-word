@@ -71,6 +71,7 @@ if icons_path.exists():s=s.replace('const data=', 'Object.assign(petImages,'+ico
 s=re.sub(r'<button data-tab="emotes"[^>]*>.*?</button>','',s)
 s=s.replace('All 12 card slots now have ideas. Spellbreak (name to choose) and Mirrored Shield are Legendary, with proposed Royal odds of 3% and 2%.','Nine approved cards are live. Nope and Mirrored Shield are Legendary with Royal odds of 3% and 2%.')
 s=s.replace('Four new counter pets and all balance changes below remain proposals.','The approved pet and card changes below are live.').replace('Secret Block','Mystic Block')
+s=s.replace('Crates:</strong> Starter $300, Mystic $1,500, Mythic $3,000.','Crates:</strong> Starter $300, Mystic $1,500, Mythic $3,000. Mystic and Mythic each have five exclusive pets. Mystic: Grizzly 25%, Pengu 25%, Shellback 20%, Ironhide 20%, Moon Moth 10%. Mythic: Hoot 40%, Frostbite 40%, Blaze 8%, Tick-Tock 8%, Sparkle 4%. Starter stays unchanged; all 16 pets remain obtainable.',1)
 Path('public/review.html').write_text(s)
 for name,tab in [('balance-review','pets'),('player-list-review','rosters'),('secret-accessories','accessories')]:
  Path(f'public/{name}.html').write_text(f'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="0;url=review.html#{tab}"><title>Finish the Word review</title><p><a href="review.html#{tab}">Open the combined game review</a></p></html>')
