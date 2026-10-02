@@ -69,6 +69,8 @@ export const wordTideMethods = {
   this.noteActivity(player, true);
   const locked = validateTideAnswer(m.tide.category.id, word);
   m.tide.answers.set(player.id, locked);
+  this.broadcast({t:'chat',id:null,name:'System',text:`${player.name} purchased a Word Tide answer for ${TIDE.hintPrice.toLocaleString()} coins.`});
+  this.broadcast({t:'purchaseNotice',id:player.id,name:player.name,cost:TIDE.hintPrice,receipt:`answer:${m.matchId}:${m.turnId}:${player.id}`});
   return { ...response, ok: true, word, locked, matchId: m.matchId, round: m.round, cost: TIDE.hintPrice, receipt: `answer:${m.matchId}:${m.turnId}:${player.id}` };
  },
  revealTide() {

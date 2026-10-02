@@ -154,14 +154,14 @@ try {
   assert.equal((await other.next(m => m.t === 'error', forbiddenAt)).code, 'not_allowed');
   host.send({ t: 'admin', action: 'listProfiles', search: 'integration_user' });
   const users = await host.next(m => m.t === 'adminProfiles');
-  assert.ok(users.users.some(user => user.id === 'guestintegration'));
+  assert.ok(users.users.some(user => user.id === 'guestintegration' && user.coins===999 && Number.isSafeInteger(user.wins)));
   host.send({ t: 'admin', action: 'getProfile', id: 'guestintegration' });
   const full = await host.next(m => m.t === 'adminProfile' && m.id === 'guestintegration');
   assert.equal(full.profile.coins, 999);
   assert.ok(!('password_hash' in full) && !('recovery_hash' in full));
   const editAt = host.inbox.length;
   host.send({ t: 'admin', action: 'saveProfile', id: 'guestintegration', revision: full.revision,
-    profile: { ...full.profile, coins: 12345, ownedBacks:['none','secret_helmet'], equippedBack:'secret_helmet', petTiers: { piggy: { 1: 2, 2: 3, 3: 1 } }, cards: { shield: 4 }, wins: 11 } });
+    profile: { ...full.profile, coins: 12345, ownedBacks:['none','secret_helmet'], equippedBack:'secret_helmet', tradeHistory:[{at:Date.now()-20000,partner:'PastPartner',outgoing:{items:[{kind:'card',id:'time_tax',qty:1}]},incoming:{items:[]}}], petTiers: { piggy: { 1: 2, 2: 3, 3: 1 } }, cards: { shield: 4 }, wins: 11 } });
   const edited = await host.next(m => m.t === 'adminProfile' && m.saved, editAt);
   assert.equal(edited.profile.coins, 12345);assert.ok(edited.profile.ownedBacks.includes('secret_helmet'));assert.deepEqual((await account('verify','GET',null,fresh.token)).secretBacks,['secret_helmet']);
   assert.equal(edited.profile.petTiers.piggy[2], 3);
@@ -177,6 +177,11 @@ try {
   assert.equal(adjusted.profile.coins, 54321);
   await host.next(m => m.t === 'adminProfile' && m.saved, onlineEditAt);
   assert.equal((await account('me', 'GET', null, fresh.token)).profile.coins, 54321);
+  const tradesAt=host.inbox.length;host.send({t:'admin',action:'listTrades'});
+  const globalTrades=await host.next(m=>m.t==='adminTrades',tradesAt);assert.ok(globalTrades.trades.some(t=>t.people.some(p=>p.id==='guestintegration')&&t.source==='saved'));
+  const userTradesAt=host.inbox.length;host.send({t:'admin',action:'listTrades',id:'guestintegration'});
+  const userTrades=await host.next(m=>m.t==='adminTrades'&&m.id==='guestintegration',userTradesAt);assert.equal(userTrades.trades.length,1);
+  console.log('ok global and per-account saved trade histories behind admin access');
   console.log('ok admin-only full profiles, offline persistent edits, conflict protection and cross-room profile delivery');
   host.send({ t: 'admin', action: 'setWins', id: seller.id, name: seller.id, wins: 7 });
   await host.next(m => m.t === 'winsSetResult' && m.id === seller.id);

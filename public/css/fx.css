@@ -246,3 +246,10 @@
 .hatch-name { font: 700 40px / 1 var(--font); }
 .hatch .pill { padding: .2em .8em; font-size: 16px; }
 .hatch-ability { margin: 0 0 4px; font: 600 16px / 1.3 var(--font); color: #4a5563; }
+
+.purchase-pop{position:absolute;left:50%;top:29%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;width:max-content;max-width:calc(100vw - 30px);padding:14px 22px;border:4px solid #282435;border-radius:20px;background:linear-gradient(145deg,#fffacb,#ffe475 60%,#ffba52);box-shadow:0 6px 0 #282435,0 0 35px #ffd56b80;color:#302541;animation:purchase-pop-in .45s cubic-bezier(.2,1.6,.4,1) both;pointer-events:none}
+.purchase-pop>div{display:flex;flex-direction:column;gap:5px;min-width:0}.purchase-pop strong{font-size:22px;line-height:1.1}.purchase-pop span{font-size:15px}.purchase-pop .purchase-pop-star{font-size:45px;color:#fff;text-shadow:0 2px 0 #d98b23;animation:purchase-star .6s ease both}.purchase-pop.out{opacity:0;transition:opacity .3s}
+@keyframes purchase-pop-in{from{opacity:0;transform:translateX(-50%) translateY(18px) scale(.7)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+@keyframes purchase-star{from{transform:rotate(-80deg) scale(.4)}to{transform:rotate(0) scale(1)}}
+@media(max-width:600px){.purchase-pop{top:27%;padding:12px 14px;gap:10px}.purchase-pop strong{font-size:18px}.purchase-pop span{font-size:13px}.purchase-pop .purchase-pop-star{font-size:35px}}
+@media(prefers-reduced-motion:reduce){.purchase-pop,.purchase-pop .purchase-pop-star{animation:none}}

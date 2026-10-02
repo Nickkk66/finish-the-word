@@ -52,7 +52,7 @@ export function cloudProfile(value, fixedId) {
     cards: Object.fromEntries(CARDS.map(card => [card.id, count(value.cards?.[card.id])])),
     longestWord: /^[a-z]{1,30}$/.test(value.longestWord || '') ? value.longestWord : '',
     receipts: Array.isArray(value.receipts) ? value.receipts.filter(v => typeof v === 'string' && v.length <= 160).slice(-512) : [],
-    tradeHistory: Array.isArray(value.tradeHistory) ? value.tradeHistory.filter(v => v && Number.isSafeInteger(v.at) && typeof v.partner === 'string').slice(-20).map(v => ({ at: v.at, partner: v.partner.slice(0, 16), outgoing: tradeOffer(v.outgoing), incoming: tradeOffer(v.incoming) })) : [],
+    tradeHistory: Array.isArray(value.tradeHistory) ? value.tradeHistory.filter(v => v && Number.isSafeInteger(v.at) && typeof v.partner === 'string').slice(-20).map(v => ({ at: v.at, ...(typeof v.tradeId==='string'?{tradeId:v.tradeId}:{}), ...(typeof v.partnerId==='string'?{partnerId:v.partnerId}:{}), partner: v.partner.slice(0, 16), outgoing: tradeOffer(v.outgoing), incoming: tradeOffer(v.incoming) })) : [],
     settings: { sound: settings.sound !== false, prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket', playerListStyle: ['classic', 'compact', 'portrait', 'ribbon'].includes(settings.playerListStyle) ? settings.playerListStyle : 'classic', view: settings.view === 'first' ? 'first' : 'third', quality: settings.quality === 'low' ? 'low' : 'high' },
   };
   for (const key of ['coins', 'wins', 'winsRevision', 'gamesPlayed', 'wordsTyped', 'xp', 'bestWpm', 'bestCombo', 'bestObbyMs', 'lastFreeClaim']) {
@@ -94,6 +94,10 @@ export class Accounts {
     this.sql = ctx.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY, salt TEXT NOT NULL, password_hash TEXT NOT NULL, profile TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at INTEGER NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS trade_audit (id TEXT PRIMARY KEY, at INTEGER NOT NULL, room TEXT NOT NULL, first_id TEXT NOT NULL, second_id TEXT NOT NULL, record TEXT NOT NULL)');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS trade_audit_time ON trade_audit(at DESC)');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS trade_audit_first ON trade_audit(first_id,at DESC)');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS trade_audit_second ON trade_audit(second_id,at DESC)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS sessions_user ON sessions(username)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS account_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, reset_at INTEGER NOT NULL)');
     // Existing accounts predate recovery codes. Their owners can generate one while signed in.
@@ -123,13 +127,42 @@ export class Accounts {
   async handle(request) {
     const url=new URL(request.url);
     // Internal service binding only: no public account route exposes these operations.
+    if (url.hostname === 'internal' && request.method === 'POST' && ['/trade-log','/admin-trades'].includes(url.pathname)) {
+      const body=await readBody(request);
+      if(url.pathname==='/trade-log'){
+        if(typeof body.id!=='string'||!Number.isSafeInteger(body.at)||!Array.isArray(body.people)||body.people.length!==2||body.people.some(p=>typeof p.id!=='string'||typeof p.name!=='string'))return failure('Invalid trade record.');
+        const record={id:body.id,at:body.at,room:String(body.room||''),people:body.people.map(p=>({id:p.id,name:p.name})),offers:Object.fromEntries(body.people.map(p=>[p.id,tradeOffer(body.offers?.[p.id])])),source:'server'};
+        this.sql.exec('INSERT OR IGNORE INTO trade_audit (id,at,room,first_id,second_id,record) VALUES (?,?,?,?,?,?)',record.id,record.at,record.room,record.people[0].id,record.people[1].id,JSON.stringify(record));
+        return json({ok:true});
+      }
+      const id=typeof body.id==='string'?body.id:'';
+      const trades=[...this.sql.exec(id?'SELECT record FROM trade_audit WHERE first_id=? OR second_id=? ORDER BY at DESC LIMIT 100':'SELECT record FROM trade_audit ORDER BY at DESC LIMIT 100',...(id?[id,id]:[]))].map(row=>JSON.parse(row.record));
+      // Preserve the saved history from before the server audit was introduced.
+      const profiles=[...this.sql.exec('SELECT profile FROM accounts')].map(row=>JSON.parse(row.profile));
+      const seen=new Set(trades.map(t=>t.id)),legacy=[];
+      for(const profile of profiles){
+        for(const entry of profile.tradeHistory||[]){
+          const partner=profiles.find(p=>p.id===entry.partnerId||p.name===entry.partner);
+          if(id&&profile.id!==id&&partner?.id!==id)continue;
+          if(entry.tradeId&&seen.has(entry.tradeId))continue;
+          if(trades.some(t=>t.people.some(p=>p.id===profile.id)&&t.people.some(p=>p.name===entry.partner)&&Math.abs(t.at-entry.at)<10000))continue;
+          const people=[{id:profile.id,name:profile.name},{id:entry.partnerId||partner?.id||null,name:entry.partner}];
+          const key=entry.tradeId||'saved:'+JSON.stringify([...people.map(p=>p.name)].sort())+':'+Math.floor(entry.at/10000)+':'+JSON.stringify([entry.outgoing,entry.incoming].map(v=>JSON.stringify(v)).sort());
+          if(seen.has(key))continue;seen.add(key);
+          legacy.push({id:key,at:entry.at,room:null,people,offers:{[profile.id]:entry.outgoing,[people[1].id||'unknown']:entry.incoming},source:'saved'});
+        }
+      }
+      return json({id:id||null,trades:[...trades,...legacy].sort((a,b)=>b.at-a.at).slice(0,100)});
+    }
     if (url.hostname === 'internal' && url.pathname === '/admin-profiles' && request.method === 'POST') {
       const body = await readBody(request);
       if (body.action === 'list') {
         const search = String(body.search || '').slice(0, 64).toLowerCase();
-        const users = [...this.sql.exec('SELECT username,profile,created_at FROM accounts ORDER BY created_at DESC')]
-          .map(a => ({ username: a.username, id: JSON.parse(a.profile).id, name: JSON.parse(a.profile).name, createdAt: a.created_at }))
-          .filter(a => !search || [a.username, a.id, a.name].some(v => v.toLowerCase().includes(search))).slice(0, 100);
+        const sort=['coins','wins','name','createdAt'].includes(body.sort)?body.sort:'coins',direction=body.direction==='asc'?1:-1;
+        const users = [...this.sql.exec('SELECT username,profile,created_at FROM accounts')]
+          .map(a=>{const p=JSON.parse(a.profile);return {username:a.username,id:p.id,name:p.name,coins:p.coins||0,wins:p.wins||0,createdAt:a.created_at};})
+          .filter(a=>!search||[a.username,a.id,a.name].some(v=>v.toLowerCase().includes(search)))
+          .sort((a,b)=>direction*(sort==='name'?a.name.localeCompare(b.name):a[sort]-b[sort])||a.name.localeCompare(b.name)).slice(0,100);
         return json({ users });
       }
       const handle = this.one('SELECT * FROM handles WHERE owner=?', body.id);

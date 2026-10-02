@@ -143,7 +143,7 @@ test('Word Tide answer purchases validate alive round, balance, replay and cance
  r.send(a,{t:'hint',turnId:m.turnId,requestId:'poor',balance:0});assert.equal(a.last('hint').ok,false);
  r.send(a,{t:'hint',turnId:m.turnId,requestId:'paid',balance:1000});const receipt=a.last('hint');
  assert.equal(receipt.ok,true);assert.ok(validateTideAnswer(m.tide.category.id,receipt.word));assert.equal(receipt.cost,TIDE.hintPrice);
- assert.equal(b.all('hint').length,0);r.send(a,{t:'hint',turnId:m.turnId,requestId:'paid',balance:1000});assert.deepEqual(a.last('hint'),receipt);
+ assert.equal(b.all('hint').length,0);assert.equal(a.all('purchaseNotice').length,1);assert.equal(b.all('purchaseNotice').length,1);assert.equal(b.last('purchaseNotice').cost,TIDE.hintPrice);assert.ok(!('word' in b.last('purchaseNotice')));assert.match(b.last('chat').text,/purchased a Word Tide answer/);r.send(a,{t:'hint',turnId:m.turnId,requestId:'paid',balance:1000});assert.deepEqual(a.last('hint'),receipt);assert.equal(b.all('purchaseNotice').length,1);
  r.send(a,{t:'hint',turnId:m.turnId,requestId:'again',balance:1000});assert.equal(a.last('hint').reason,'already_bought');
  answer(r,a,receipt.word);assert.equal(a.last('tideAnswerResult').ok,true);
  r.send(a,{t:'host',action:'endMatch'});assert.equal(a.last('matchRefund').coins,TIDE.hintPrice);

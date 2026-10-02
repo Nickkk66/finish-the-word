@@ -212,7 +212,8 @@ test('admin room shutdown closes sockets, refunds an active game and resets the 
 });
 
 test('trade moves chairs, tiered pets and cards exactly once after both accept', () => {
-  const room = createRoom();
+  const records=[];
+  const room = createRoom({onTradeRecorded:record=>records.push(record)});
   const a = room.join('alice', { inventory: { coins: 1000, ownedChairs: ['wooden', 'glass'], petTiers: { doggy: { 1: 2 } }, cards: { skip: 3 } } });
   const b = room.join('bob', { inventory: { coins: 300, ownedBacks: ['none', 'cape'], cards: { time_tax: 2 } } });
   room.engine.players.get('alice').accountCreatedAt = room.clock.now() - 86400001;
@@ -232,6 +233,7 @@ test('trade moves chairs, tiered pets and cards exactly once after both accept',
   room.clock.advance(3000);
   assert.equal(a.all('tradeComplete').length, 1);
   assert.equal(b.all('tradeComplete').length, 1);
+  assert.equal(records.length,1);assert.equal(records[0].room,'TEST1');assert.deepEqual(records[0].people.map(p=>p.id),['alice','bob']);assert.deepEqual(records[0].offers.alice,aliceOffer);
   assert.equal('coins' in room.engine.players.get('alice').tradeInventory,false);
   assert.equal('coins' in room.engine.players.get('bob').tradeInventory,false);
   assert.deepEqual(room.engine.players.get('alice').tradeInventory.chairs, []);
@@ -855,4 +857,11 @@ test('answer payment receipt survives a lost reply, turn change and reconnect be
   const payments=again.sent.filter(msg=>msg.t==='hint'||msg.t==='matchRefund');
   assert.equal(payments[0].receipt,purchase.receipt);
   assert.equal(payments[1].coins,purchase.cost);
+});
+
+
+test('only unlocked admins can request global or account trade history',async()=>{
+ const calls=[],r=createRoom({onAdminTrades:async query=>{calls.push(query);return{id:query.id||null,trades:[]};}}),a=r.join('alice');
+ r.send(a,{t:'admin',action:'listTrades'});assert.equal(a.last('error').code,'not_allowed');assert.equal(calls.length,0);
+ r.engine.players.get('alice').isAdmin=true;r.send(a,{t:'admin',action:'listTrades',id:'bob'});await Promise.resolve();await Promise.resolve();assert.deepEqual(calls,[{id:'bob'}]);assert.equal(a.last('adminTrades').id,'bob');
 });

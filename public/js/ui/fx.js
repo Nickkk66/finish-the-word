@@ -84,3 +84,10 @@ export function rewardPop(text, anchor) {
   layer.append(el);
   setTimeout(() => el.remove(), 1900);
 }
+
+/** Room-wide purchase celebration; never blocks the answer input. */
+export function purchasePop(name,cost){
+ const el=h('div',{class:'purchase-pop',role:'status'},h('span',{class:'purchase-pop-star','aria-hidden':'true'},'✦'),h('div',{},h('strong',{},'ANSWER PURCHASED!'),h('span',{},`${name} spent ${Number(cost).toLocaleString()} coins`)));
+ for(const old of layer.querySelectorAll('.purchase-pop'))old.remove();
+ layer.append(el);removeLater(el,2800);
+}

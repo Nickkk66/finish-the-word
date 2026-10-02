@@ -7,15 +7,15 @@ try {
   await page.wait('window.__ftw?.world');
   await page.clickText('Create Private');
   await page.wait('window.__ftw.state.inRoom');
-  await page.eval("window.__ftw.actions.unlock('local-ui-test-only')");
+  await page.eval("window.__ftw.actions.unlock('local-browser-review')");
   await page.wait('window.__ftw.state.isAdmin');
   await page.click('[aria-label="Settings"]');
-  await page.clickText('Open admin tools');
+  await page.clickText('Open admin tools');await page.click('[data-admin-section=accounts]');
   await page.eval("window.__ftw.actions.admin('getProfile',{id:window.__ftw.profile.id})");
-  await page.wait('!!document.querySelector(\'[aria-label="Money (coins)"]\')');
+  await page.wait('!!document.querySelector(\'[aria-label="Coins"]\')');
   assert.ok(await page.eval('document.querySelectorAll(".admin-profile-editor input[type=number]").length > 40'));
   await page.eval(`(() => {
-    const money=document.querySelector('[aria-label="Money (coins)"]'); money.value=2468;
+    const money=document.querySelector('[aria-label="Coins"]'); money.value=2468;
     const pet=document.querySelector('[aria-label="Piggy · Tier 2"]'); pet.value=3;
   })()`);
   await page.clickText('Save profile changes');

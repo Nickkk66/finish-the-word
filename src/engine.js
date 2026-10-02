@@ -96,7 +96,7 @@ const clearTurn = (m) =>
   Object.assign(m, { chooserId: null, options: null, typerId: null, prefix: null, mistakes: 0, maxMistakes: BASE_MISTAKES });
 
 export class GameEngine {
-  constructor({ code, dict, botDict, botDicts = {}, now, setTimeout, clearTimeout, random, adminCode = '', crypto = globalThis.crypto, onWin = () => {}, onListing = () => {}, onVerifyAccount = async () => null, onVerifyHandle = null, onListRooms = async () => ({ rooms: [], leaders: [] }), onShutdownRoom = async () => {}, onAdminEdit = async () => {}, onAdminProfile = async () => ({ guest: true }), onSetWins = async () => ({ wins: 0, revision: 0 }), onSellWins = async () => ({ ok: false }), onCheckTrophies = () => ({ ok: true }), onRemoveLeaderboard = () => {}, onGlobalAnnouncement = () => {}, onError = (err) => console.error('[engine]', err) }) {
+  constructor({ code, dict, botDict, botDicts = {}, now, setTimeout, clearTimeout, random, adminCode = '', crypto = globalThis.crypto, onWin = () => {}, onListing = () => {}, onVerifyAccount = async () => null, onVerifyHandle = null, onListRooms = async () => ({ rooms: [], leaders: [] }), onShutdownRoom = async () => {}, onAdminEdit = async () => {}, onAdminProfile = async () => ({ guest: true }), onTradeRecorded = () => {}, onAdminTrades = async () => ({trades:[]}), onSetWins = async () => ({ wins: 0, revision: 0 }), onSellWins = async () => ({ ok: false }), onCheckTrophies = () => ({ ok: true }), onRemoveLeaderboard = () => {}, onGlobalAnnouncement = () => {}, onError = (err) => console.error('[engine]', err) }) {
     this.code = code;
     this.dict = dict;
     this.botDict = botDict;
@@ -121,6 +121,7 @@ export class GameEngine {
     this.onShutdownRoom = onShutdownRoom;
     this.onAdminEdit = onAdminEdit;
     this.onAdminProfile = onAdminProfile;
+    this.onTradeRecorded=onTradeRecorded;this.onAdminTrades=onAdminTrades;
     this.turnSerial = 0;
     this.matchSerial = 0;
     this.now = now;
@@ -654,10 +655,11 @@ export class GameEngine {
       player.tradeInventory = transferInventory(player.tradeInventory, trade.offers[player.id], trade.offers[other.id]);
       this.trades.delete(player.id);
       const result = { t: 'tradeComplete', id: trade.id, receipt: `trade:${trade.id}:${player.id}`,
-        partner: other.name, outgoing: trade.offers[player.id], incoming: trade.offers[other.id] };
+        partner: other.name, partnerId:other.id, at:this.now(), outgoing: trade.offers[player.id], incoming: trade.offers[other.id] };
       this.remember(player, result.receipt, result);
       this.send(player, result);
     }
+    this.onTradeRecorded({id:trade.id,at:this.now(),room:this.code,people:[a,b].map(p=>({id:p.id,name:p.name})),offers:structuredClone(trade.offers)});
   }
 
   onHost(player, msg) {
@@ -945,6 +947,7 @@ export class GameEngine {
     if (!this.allow(player, 'admin')) return;
     if (!player.isAdmin) return this.denied(player);
     switch (msg.action) {
+      case 'listTrades': return this.onAdminTrades({id:msg.id}).then(result=>{if(player.connected)this.send(player,{t:'adminTrades',...result});}).catch(()=>this.send(player,{t:'error',code:'trade_history_failed',message:'Could not load trade history.'}));
       case 'listProfiles':
       case 'getProfile':
       case 'saveProfile': {

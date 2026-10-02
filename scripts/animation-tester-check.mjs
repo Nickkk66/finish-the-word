@@ -8,7 +8,7 @@ try {
   await p.clickText('Create Private');await p.wait('window.__ftw.state.inRoom');
   await p.send({t:'unlock',code:'local-browser-review'});await p.wait('window.__ftw.state.isAdmin');
   const before=await p.eval('JSON.stringify(window.__ftw.state.match)');
-  await p.click('[aria-label="Settings"]');await p.clickText('Open admin tools');await p.clickText('Test animations');
+  await p.click('[aria-label="Settings"]');await p.clickText('Open admin tools');await p.click('[data-admin-section=general]');await p.clickText('Test animations');
  await p.wait('!document.querySelector(".animation-tester").hidden');
   async function seek(mode,t){await p.eval(`(()=>{const m=document.querySelector('[aria-label="Animation to test"]');m.value=${JSON.stringify(mode)};m.dispatchEvent(new Event('change'));const s=document.querySelector('[aria-label="Animation time"]');s.value=${t};s.dispatchEvent(new Event('input'));})()`);await delay(180);}
   await seek('intro',3.25);await p.shot('forceful-launch');
@@ -24,7 +24,7 @@ try {
   assert.equal(await p.eval('JSON.stringify(window.__ftw.state.match)'),before,'previews must not change real match');
   assert.equal(await p.eval('[...document.querySelectorAll(".tide-label")].some(e=>e.textContent.includes("YOU"))'),false);
   await p.clickText('Restore game','.animation-tester button');await p.wait('!window.__ftw.state.animationPreview');
-  await p.click('[aria-label="Settings"]');await p.clickText('Open admin tools');await p.click('[aria-label="Show animation tester"]');
+  await p.click('[aria-label="Settings"]');await p.clickText('Open admin tools');await p.click('[data-admin-section=general]');await p.click('[aria-label="Show animation tester"]');
   assert.equal(await p.eval('document.querySelector(".animation-tester").hidden'),true);
   assert.deepEqual(p.errors,[]);
  }

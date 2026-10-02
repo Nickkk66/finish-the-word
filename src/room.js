@@ -99,6 +99,8 @@ export class GameRoom extends DurableObject {
         if (!result.ok) throw new Error('Could not check Last Sip trophies.');
         return result.json();
       },
+      onTradeRecorded: record=>this.ctx.waitUntil(this.internal('ACCOUNTS','/trade-log',record).then(response=>{if(!response.ok)throw new Error('Trade audit write failed');})),
+      onAdminTrades: async data=>{const response=await this.internal('ACCOUNTS','/admin-trades',data);if(!response.ok)throw new Error('Trade history unavailable');return response.json();},
       onAdminProfile: async (action, data) => {
         const response = await this.internal('ACCOUNTS', '/admin-profiles', { ...data, action });
         const result = await response.json();

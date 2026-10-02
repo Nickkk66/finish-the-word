@@ -1,6 +1,7 @@
 import { createAnimationTester } from './ui/animation-tester.js';
 import { TIDE, TIDE_PHASES } from './shared/word-tide.js';
 import { createPresenceCheck } from './ui/presence.js';
+import { adminPanel } from './ui/panels/admin.js';
 import { createSpectator } from './ui/spectator.js';
 import { createTideHud } from './ui/word-tide.js';
 import { isRouletteMode, fireDamage } from './shared/roulette.js';
@@ -39,7 +40,7 @@ import { createCardTray } from './ui/card-tray.js';
 import { cardsPanel } from './ui/panels/cards.js';
 import { profilePanel } from './ui/panels/profile.js';
 import { tradePanel } from './ui/panels/trade.js';
-import { initFx, toast, banner, confetti, countdownPop, rewardPop } from './ui/fx.js';
+import { initFx, toast, banner, confetti, countdownPop, rewardPop, purchasePop } from './ui/fx.js';
 import { initOverlays, setBusy, showError, confirmDialog, cancelConfirmation, closeOverlay } from './ui/overlays.js';
 import { playHatch } from './ui/hatch.js';
 import { cardArt } from './ui/art.js';
@@ -139,6 +140,8 @@ const actions = {
     state.betPending = { requestId: crypto.randomUUID(), amount, balance: profile.coins };
     net.send({ t: 'bet', ...state.betPending }); refreshRoom();
   },
+  openAdminTools(){if(state.isAdmin){state.adminSection='home';panels.open(PANELS.admin);}},
+  openAdminTrades(id,name){if(!state.isAdmin)return;state.adminTradeFilter=id||'';state.adminTradeName=name||'';panels.adminTrades(id,name);},
   openAccount() { panels.open(PANELS.account); },
   refreshPanels() { panels.refresh(); },
   closePanels() { panels.close(); cancelConfirmation(); },
@@ -336,6 +339,7 @@ const PANELS = {
   free: freePanel(panelCtx),
   profile: profilePanel(panelCtx),
   settings: settingsPanel(panelCtx),
+  admin: adminPanel(panelCtx),
   gameSettings: gameSettingsPanel(panelCtx),
   cards: cardsPanel(panelCtx),
   trade: tradePanel(panelCtx),
@@ -1205,8 +1209,9 @@ net.on('unlock', ({ ok, token }) => {
     refreshRoom();
   } else { state.unlockFailed = true; panels.refresh(); }
 });
+net.on('adminTrades',result=>{state.adminTrades=result;panels.refresh();});
 net.on('adminProfiles', ({ users }) => { state.adminProfiles = users || []; panels.refresh(); });
-net.on('adminProfile', data => { state.adminProfile = data; panels.refresh(); if (data.saved) toast('Profile saved.', 'good'); });
+net.on('adminProfile', data => { state.adminProfile = data; panels.refresh(); if (data.saved){toast('Profile saved.', 'good');actions.admin('listProfiles',state.adminAccountQuery||{});} });
 net.on('profileAdjusted', async data => {
   await account.applyAdminProfile(data);
   syncLoadout(); panels.refresh(); toast('An admin updated your profile.', 'info');
@@ -1225,6 +1230,8 @@ net.on('modResult', ({ action, id, name }) => {
   if (action === 'unban') state.bannedPlayers.delete(id);
   panels.refresh();
 });
+const seenPurchases=new Set();
+net.on('purchaseNotice',msg=>{if(seenPurchases.has(msg.receipt))return;seenPurchases.add(msg.receipt);if(seenPurchases.size>100)seenPurchases.delete(seenPurchases.values().next().value);purchasePop(msg.name,msg.cost);sfx.pick();});
 net.on('announce', ({ text }) => banner(text, { tone: 'win', ms: 5000 }));
 let latestGlobalNotice = 0;
 try { latestGlobalNotice = Number(sessionStorage.getItem('ftw_global_notice_id')) || 0; } catch {}

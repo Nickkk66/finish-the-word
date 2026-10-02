@@ -73,7 +73,7 @@ function normalize(raw) {
     cards: Object.fromEntries(CARDS.map((card) => [card.id, count(p.cards?.[card.id])])),
     xp: count(p.xp), bestWpm: count(p.bestWpm), bestCombo: count(p.bestCombo), bestObbyMs: count(p.bestObbyMs),
     receipts: Array.isArray(p.receipts) ? p.receipts.filter((v) => typeof v === 'string').slice(-512) : [],
-    tradeHistory: Array.isArray(p.tradeHistory) ? p.tradeHistory.filter(v => v && (v.status == null || v.status === 'completed') && typeof v.partner === 'string' && Number.isSafeInteger(v.at) && v.outgoing && v.incoming).slice(-20).map(v => ({ status: 'completed', at: v.at, partner: v.partner.slice(0, 16), outgoing: tradeOffer(v.outgoing), incoming: tradeOffer(v.incoming) })) : [],
+    tradeHistory: Array.isArray(p.tradeHistory) ? p.tradeHistory.filter(v => v && (v.status == null || v.status === 'completed') && typeof v.partner === 'string' && Number.isSafeInteger(v.at) && v.outgoing && v.incoming).slice(-20).map(v => ({ status: 'completed', ...(typeof v.tradeId==='string'?{tradeId:v.tradeId}:{}), ...(typeof v.partnerId==='string'?{partnerId:v.partnerId}:{}), at: v.at, partner: v.partner.slice(0, 16), outgoing: tradeOffer(v.outgoing), incoming: tradeOffer(v.incoming) })) : [],
     settings: {
       sound: settings.sound !== false,
       prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket',
@@ -299,7 +299,7 @@ export function grantCard(id, receipt) {
   if (!CARDS.some(v => v.id === id) || !claimReceipt(`grant-card:${receipt}`)) return false;
   profile.cards[id] = (profile.cards[id] || 0) + 1; commit(); return true;
 }
-export function completeTrade({ outgoing, incoming, receipt, partner }) {
+export function completeTrade({ outgoing, incoming, receipt, partner, partnerId, id, at }) {
   if (!receipt || profile.receipts.includes(receipt)) return false;
   const before = tradeInventory(profile), giving = tradeOffer(outgoing), getting = tradeOffer(incoming);
   const after = transferInventory(before, giving, getting);
@@ -316,7 +316,7 @@ export function completeTrade({ outgoing, incoming, receipt, partner }) {
   if (!profile.pets[profile.equippedPet]) { profile.equippedPet = null; profile.equippedPetTier = 1; }
   else if (!profile.petTiers[profile.equippedPet]?.[profile.equippedPetTier]) profile.equippedPetTier = [1, 2, 3].find(tier => profile.petTiers[profile.equippedPet][tier]) || 1;
   for (const card of CARDS) profile.cards[card.id] = after.cards[card.id] || 0;
-  profile.tradeHistory.push({ status: 'completed', at: Date.now(), partner: String(partner || 'Player').slice(0, 16), outgoing: giving, incoming: getting });
+  profile.tradeHistory.push({ status: 'completed', tradeId:id,partnerId,at:at||Date.now(), partner: String(partner || 'Player').slice(0, 16), outgoing: giving, incoming: getting });
   profile.tradeHistory = profile.tradeHistory.slice(-20);
   claimReceipt(receipt);
   commit();

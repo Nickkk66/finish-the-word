@@ -52,6 +52,7 @@ export function createPanelHost(root) {
     refresh() {
       current?.instance.update?.();
     },
+    adminTrades(id,name){current?.instance.showTrades?.(id,name);},
     isOpen: (id) => current?.def.id === id,
   };
 }
