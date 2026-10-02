@@ -32,14 +32,14 @@ try {
     for(let i=0;i<80;i++){musician.update(1/60,i/60);guitar.userData.update?.(i/60,1/60,false,12);}
     const show=new THREE.Scene();show.background=new THREE.Color('#e7ecf7');show.add(musician.root,new THREE.HemisphereLight('#ffffff','#8197bc',3));
     const front=new THREE.PerspectiveCamera(38,210/315,.1,100);front.position.set(4,6,12);front.lookAt(0,3,0);renderer.render(show,front);
-    const playing={elbow:musician.guitarElbow.visible,mouth:musician.singMouth.visible,notes:musician.musicNotes.visible,guitarZ:guitar.children[0].position.z,guitarTurn:guitar.children[0].rotation.y,legDelta:Math.abs(firstLeg-secondLeg)};
+    const playing={elbow:musician.guitarElbow.visible,mouth:musician.singing,notes:musician.musicNotes.visible,guitarZ:guitar.children[0].position.z,guitarTurn:guitar.children[0].rotation.y,legDelta:Math.abs(firstLeg-secondLeg)};
     const playingCell=document.createElement('div');playingCell.style.cssText='background:white;text-align:center';const playingImage=new Image();playingImage.src=renderer.domElement.toDataURL('image/png');playingImage.style.width='100%';playingCell.append(playingImage,document.createTextNode('playing guitar'));root.append(playingCell);
     const thumbnails=await Promise.all(ids.map(id=>window.__ftw.world.renderThumbnail('back',id,96)));
     renderer.dispose();return {output,playing,thumbnails:thumbnails.map(url=>url.startsWith('data:image/png;base64,'))};
   })()`);
   assert.ok(result.output.every(v=>v.loaded&&v.meshCount&&v.size.every(Number.isFinite)),JSON.stringify(result.output));
   assert.ok(result.output.find(v=>v.id==='jetpack').hover>1,JSON.stringify(result.output));
-  assert.ok(result.playing.elbow && result.playing.mouth && result.playing.notes && result.playing.guitarZ > .3 && result.playing.guitarTurn > 3 && result.playing.legDelta < .001,JSON.stringify(result.playing));
+  assert.ok(result.playing.elbow && result.playing.mouth && result.playing.notes && result.playing.guitarZ > .3 && result.playing.guitarTurn < .01 && result.playing.legDelta < .001,JSON.stringify(result.playing));
   assert.ok(result.thumbnails.every(Boolean),'all back accessory thumbnails render');
   assert.deepEqual(p.errors,[]);
   console.log(await p.shot('gallery'));

@@ -5,7 +5,7 @@ import { createLogo } from './logo.js';
 import { createAvatarPreview } from './avatar.js';
 import { createAvatarEditor } from './avatarEditor.js';
 import { icons } from './icons.js';
-import { profile, cleanName, setName, setLook } from '../profile.js';
+import { profile, cleanName, setLook } from '../profile.js';
 import { NAME_MAX, ROOM_CODE_REGEX, MAX_PLAYERS } from '../shared/constants.js';
 import { apiUrl } from '../net.js';
 
@@ -36,16 +36,16 @@ export function createMenu({ invitedCode, actions }) {
   });
 
   const nameInput = h('input', {
-    class: 'field name-input', type: 'text', maxlength: NAME_MAX, placeholder: 'Your name', value: profile.name,
-    autocomplete: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'done', 'aria-label': 'Your name',
+    class: 'field name-input', type: 'text', maxlength: NAME_MAX, placeholder: 'Your handle', value: profile.name,
+    autocomplete: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'done', 'aria-label': 'Your handle',
   });
   nameInput.addEventListener('input', () => {
     const clean = cleanName(nameInput.value);
     if (clean !== nameInput.value) nameInput.value = clean;
   });
-  const commitName = () => {
-    setName(nameInput.value);
-    nameInput.value = profile.name;
+  const commitName = async () => {
+    const value=nameInput.value;nameInput.disabled=true;
+    try{return await actions.rename(value);}finally{nameInput.disabled=false;nameInput.value=profile.name;}
   };
   nameInput.addEventListener('change', commitName);
   nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameInput.blur(); });
@@ -94,10 +94,10 @@ export function createMenu({ invitedCode, actions }) {
   let busy = false;
   async function play(code) {
     if (busy) return;
-    commitName();
     busy = true;
     for (const b of buttons) b.disabled = true;
     try {
+      if(!(await commitName()))return;
       if (code === 'public') await actions.quickplay();
       else await actions.play(code);
     } finally {
@@ -116,7 +116,7 @@ export function createMenu({ invitedCode, actions }) {
       h('div', { class: 'menu-cards' },
         h('section', { class: 'card play-card' },
           h('h2', { class: 'card-title stroke' }, 'Play'),
-          h('label', { class: 'field-label' }, 'Your name', nameInput),
+          h('label', { class: 'field-label' }, 'Your handle', nameInput),
           invite,
           invite ? h('div', { class: 'or' }, 'or') : null,
           publicBtn, createBtn,

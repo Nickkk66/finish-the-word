@@ -7,6 +7,7 @@ export const RARITIES = {
   Rare:      { color: '#3aa0ff', order: 2 },
   Epic:      { color: '#b45cff', order: 3 },
   Legendary: { color: '#ffb300', order: 4 },
+  Secret: { color: '#e79bff', order: 5 },
 };
 
 // ---- Avatar customization ----------------------------------------------------
@@ -74,28 +75,71 @@ export const PETS = [
   // Starter Block pool
   { id: 'doggy',   name: 'Doggy',   rarity: 'Common',    emoji: '🐶', ability: { type: 'time', value: 1 },     model: { kind: 'dog',     body: '#d9a066', accent: '#8a5a2b' } },
   { id: 'kitty',   name: 'Kitty',   rarity: 'Common',    emoji: '🐱', ability: { type: 'mistakes', value: 1 }, model: { kind: 'cat',     body: '#f4a340', accent: '#ffffff' } },
-  { id: 'bunny',   name: 'Bunny',   rarity: 'Uncommon',  emoji: '🐰', ability: { type: 'time', value: 2 },     model: { kind: 'bunny',   body: '#f5f5f5', accent: '#ff9ec7' } },
-  { id: 'froggy',  name: 'Froggy',  rarity: 'Uncommon',  emoji: '🐸', ability: { type: 'mistakes', value: 2 }, model: { kind: 'frog',    body: '#6cc24a', accent: '#f7e26b' } },
-  { id: 'piggy',   name: 'Piggy',   rarity: 'Uncommon',  emoji: '🐷', ability: { type: 'sabotage', value: 1 }, model: { kind: 'pig',     body: '#ffb3c7', accent: '#e57399' } },
-  { id: 'foxy',    name: 'Foxy',    rarity: 'Rare',      emoji: '🦊', ability: { type: 'time', value: 3 },     model: { kind: 'fox',     body: '#ff7a1a', accent: '#ffffff' } },
-  // Secret Block pool
+  { id: 'bunny',   name: 'Bunny',   rarity: 'Uncommon',  emoji: '🐰', ability: { type: 'time', value: 1 },     model: { kind: 'bunny',   body: '#f5f5f5', accent: '#ff9ec7' } },
+  { id: 'froggy',  name: 'Froggy',  rarity: 'Uncommon',  emoji: '🐸', ability: { type: 'mistakes', value: 1 }, model: { kind: 'frog',    body: '#6cc24a', accent: '#f7e26b' } },
+  { id: 'piggy',   name: 'Piggy',   rarity: 'Uncommon',  emoji: '🐷', ability: { type: 'time', value: 3 }, model: { kind: 'pig',     body: '#ffb3c7', accent: '#e57399' } },
+  { id: 'foxy',    name: 'Foxy',    rarity: 'Rare',      emoji: '🦊', ability: { type: 'sabotage', value: 1 },     model: { kind: 'fox',     body: '#ff7a1a', accent: '#ffffff' } },
+  // Mystic Block pool
   { id: 'bear',    name: 'Grizzly', rarity: 'Rare',      emoji: '🐻', ability: { type: 'sabotage', value: 2 }, model: { kind: 'bear',    body: '#7b4a2a', accent: '#d9b38c' } },
   { id: 'penguin', name: 'Pengu',   rarity: 'Rare',      emoji: '🐧', ability: { type: 'time', value: 3 },     model: { kind: 'penguin', body: '#1f2937', accent: '#ffffff' } },
-  { id: 'owl',     name: 'Hoot',    rarity: 'Epic',      emoji: '🦉', ability: { type: 'time', value: 4 },     model: { kind: 'owl',     body: '#9c6b3c', accent: '#ffd166' } },
-  { id: 'unicorn', name: 'Sparkle', rarity: 'Epic',      emoji: '🦄', ability: { type: 'shield', value: 1 },   model: { kind: 'unicorn', body: '#ffffff', accent: '#c77dff' } },
+  { id: 'owl',     name: 'Hoot',    rarity: 'Epic',      emoji: '🦉', ability: { type: 'time', value: 3 },     model: { kind: 'owl',     body: '#9c6b3c', accent: '#ffd166' } },
+  { id: 'unicorn', name: 'Sparkle', rarity: 'Rare',      emoji: '🦄', ability: { type: 'shield', value: 1 },   model: { kind: 'unicorn', body: '#ffffff', accent: '#c77dff' } },
   { id: 'dragon',  name: 'Blaze',   rarity: 'Legendary', emoji: '🐲', ability: { type: 'dragon', value: 3, chance: .5 }, model: { kind: 'dragon',  body: '#e63946', accent: '#ffd60a' } },
-  { id: 'robot',   name: 'Tick-Tock', rarity: 'Legendary', emoji: '🤖', ability: { type: 'time', value: 5 },   model: { kind: 'robot',   body: '#9fb4c7', accent: '#38bdf8' } },
+  { id: 'robot',   name: 'Tick-Tock', rarity: 'Legendary', emoji: '🤖', ability: { type: 'time', value: 4 },   model: { kind: 'robot',   body: '#9fb4c7', accent: '#38bdf8' } },
 ];
+PETS.push(
+  {id:'shellback',name:'Shellback',rarity:'Rare',emoji:'🐢',ability:{type:'timeFloor',value:8},model:{kind:'turtle',body:'#6b994a',accent:'#395d32'}},
+  {id:'frostbite',name:'Frostbite',rarity:'Epic',emoji:'🐧',ability:{type:'dragonGuard',value:1},model:{kind:'penguin',body:'#73c8ed',accent:'#f0fbff'}},
+  {id:'badger',name:'Ironhide',rarity:'Rare',emoji:'🦏',ability:{type:'penaltyResist',value:1},model:{kind:'rhino',body:'#8b93a1',accent:'#e6dfc8'}},
+  {id:'moth',name:'Moon Moth',rarity:'Epic',emoji:'🦋',ability:{type:'mistakeGuard',value:1},model:{kind:'moth',body:'#77759e',accent:'#cfc7ff'}}
+);
+// Abilities are locked at match start. Merging changes appearance, not power.
+const SIP_ABILITIES = {
+  doggy: { type: 'poisonResist', value: .05 }, kitty: { type: 'extraPass', value: 1 },
+  bunny: { type: 'sipTime', value: 1 }, froggy: { type: 'poisonResist', value: .10 },
+  piggy: { type: 'prizeBonus', value: .05 }, foxy: { type: 'poisonResist', value: .15 },
+  bear: { type: 'prizeBonus', value: .10 }, penguin: { type: 'sipTime', value: 3 },
+  owl: { type: 'sipTime', value: 3 }, unicorn: { type: 'antidote', value: 1 },
+  dragon: { type: 'poisonResist', value: .25 }, robot: { type: 'poisonResist', value: .30 },
+  shellback:{type:'poisonResist',value:.10},frostbite:{type:'antidote',value:1},badger:{type:'extraPass',value:1},moth:{type:'sipTime',value:2},
+};
+const TIDE_BONUSES = { doggy: 1, kitty: 2, bunny: 2, froggy: 3, piggy: 1, foxy: 2, bear: 2, penguin: 3, owl: 5, dragon: 4, robot: 4, shellback:2,frostbite:3,badger:2,moth:3 };
+for (const pet of PETS) pet.abilities = {
+  classic: pet.ability,
+  roulette: SIP_ABILITIES[pet.id],
+  word_tide: pet.id === 'unicorn' ? { type: 'tideShield', value: 1 } : { type: 'tideGuard', value: TIDE_BONUSES[pet.id] * .05 },
+};
 export const PETS_BY_ID = Object.fromEntries(PETS.map((p) => [p.id, p]));
+
+export function petAbility(petId, mode) {
+  const key = mode === 'roulette' || mode === 'roulette_deadly' ? 'roulette' : mode === 'word_tide' ? mode : 'classic';
+  return PETS_BY_ID[petId]?.abilities[key] || null;
+}
+
+export function petAbilityRows(pet) {
+  return [['CLASSIC', pet.abilities.classic], ['THE LAST SIP', pet.abilities.roulette], ['WORD TIDE', pet.abilities.word_tide]]
+    .map(([mode, ability]) => ({ mode, text: abilityText(ability) }));
+}
 
 export function abilityText(ability) {
   if (!ability) return 'No ability';
   switch (ability.type) {
+    case 'timeFloor': return `Timer penalties cannot reduce your turn below ${ability.value}s`;
+    case 'dragonGuard': return 'Block the first Blaze trigger / match';
+    case 'penaltyResist': return 'Timer penalties reduced by 1s';
+    case 'mistakeGuard': return 'Block the first mistake-reduction card / match';
     case 'time': return `+${ability.value}s on your turns`;
-    case 'mistakes': return `+${ability.value} extra mistake${ability.value > 1 ? 's' : ''} per turn`;
-    case 'shield': return 'Blocks the first heart you lose each match';
-    case 'sabotage': return `Next player gets ${ability.value}s less after your word`;
-    case 'dragon': return '50% chance the next player gets just 3 seconds';
+    case 'mistakes': return `+${ability.value} guesses / turn`;
+    case 'shield': return 'Save 1 heart / match';
+    case 'sabotage': return `Next player: −${ability.value}s`;
+    case 'dragon': return '50%: next player gets 3s';
+    case 'poisonResist': return `−${Math.round(ability.value * 100)}% poison risk`;
+    case 'extraPass': return `+${ability.value} pass / match`;
+    case 'sipTime': return `+${ability.value}s to decide`;
+    case 'prizeBonus': return `+${Math.round(ability.value * 100)}% winner pot`;
+    case 'antidote': return 'Block 1 poison / match';
+    case 'tideShield': return 'Save 1 heart / match';
+    case 'tideGuard': return `${Math.round(ability.value * 100)}%: protect a heart`;
     default: return '';
   }
 }
@@ -105,8 +149,10 @@ export function abilityText(ability) {
 export const BLOCKS = [
   { id: 'starter', name: 'Starter Block', price: 300,  color: '#ffd43b',
     odds: { doggy: 35, kitty: 30, bunny: 15, froggy: 10, piggy: 7, foxy: 3 } },
-  { id: 'secret',  name: 'Secret Block',  price: 1500, color: '#9b5de5',
-    odds: { bear: 34, penguin: 25, owl: 20, unicorn: 15, dragon: 3, robot: 3 } },
+  { id: 'secret',  name: 'Mystic Block',  price: 1500, color: '#9b5de5',
+    odds: { bear: 28, penguin: 22, owl: 20, unicorn: 3, dragon: 3, robot: 3, shellback:8, frostbite:4, badger:6, moth:3 } },
+  { id: 'mythic', name: 'Mythic Block', price: 3000, color: '#ff8357',
+    odds: { bear: 14, penguin: 14, owl: 16, unicorn: 3, dragon: 8, robot: 8, shellback:12, frostbite:10, badger:8, moth:7 } },
 ];
 
 export function rollBlock(block, random = Math.random) {
@@ -145,20 +191,34 @@ export const BACK_BLING = [
   { id: 'rainbow', name: 'Rainbow Cape', rarity: 'Epic', price: 25000 },
   { id: 'dragon', name: 'Dragon Wings', rarity: 'Legendary', price: 15000 },
   { id: 'halo', name: 'Golden Halo', rarity: 'Legendary', price: 25000 },
+  { id: 'secret_crown', name: 'Secret Crown', rarity: 'Secret', secret: true, retired: true, price: null },
+  { id: 'secret_scythe', name: 'Phantom Scythe', rarity: 'Secret', secret: true, retired: true, price: null },
+  { id: 'secret_goggles_shield', name: 'Alpine Ski Goggles', rarity: 'Secret', secret: true, price: null, mount: 'head' },
+  { id: 'secret_goggles_split', name: 'Storm Ski Goggles', rarity: 'Secret', secret: true, price: null, mount: 'head' },
+  { id: 'secret_goggles_racer', name: 'Ridge Ski Goggles', rarity: 'Secret', secret: true, price: null, mount: 'head' },
+  { id: 'secret_helmet', name: 'Bug Hunter Horns', rarity: 'Secret', secret: true, price: null },
 ];
+export const SECRET_BACK_IDS = new Set(BACK_BLING.filter(item => item.secret).map(item => item.id));
 export const BACK_IDS = new Set(BACK_BLING.map((v) => v.id));
 
 // Consumables are separate from pets. Ownership follows the casual local profile economy;
 // the room validates timing/targets and spends registered counts, never client-supplied effects.
 export const CARDS = [
-  { id: 'skip', name: 'Free Pass', rarity: 'Common', effect: 'skip', description: "Skip your own or another player's next turn. No heart lost!", color: '#59d89c' },
+  { id: 'skip', name: 'Free Pass', rarity: 'Epic', effect: 'skip', description: "Skip your own or another player's next turn. No heart lost!", color: '#59d89c' },
   { id: 'time_tax', name: 'Time Tax', rarity: 'Uncommon', effect: 'time', value: 2, description: "Give the player you choose 2 fewer seconds on their next turn.", color: '#53baff' },
-  { id: 'pressure', name: 'Narrow Margin', rarity: 'Rare', effect: 'mistakes', value: 2, description: 'The player you choose gets 2 fewer allowed mistakes on their next turn (at least 1).', color: '#a489ff' },
-  { id: 'heart', name: 'Heartbreaker', rarity: 'Legendary', effect: 'heart', value: 1, description: "Remove someone else's heart. A pet shield can block it.", color: '#ff668c' },
+  { id: 'pressure', name: 'Narrow Margin', rarity: 'Rare', effect: 'mistakes', value: 2, description: 'The player you choose gets 2 fewer allowed mistakes on every remaining turn this match (at least 1).', color: '#a489ff' },
+  { id: 'heart', name: 'Heartbreaker', rarity: 'Legendary', effect: 'heart', value: 1, description: "50% chance to remove a heart. A pet shield can block a hit.", color: '#ff668c' },
 ];
+CARDS.push(
+  {id:'slow_burn',name:'Slow Burn',rarity:'Rare',effect:'burn',value:1,description:'−1 second on each of the next two turns. Copies stack; minimum 6 seconds.',color:'#ff995b'},
+  {id:'lifeline',name:'Lifeline',rarity:'Epic',effect:'heal',description:'50% chance to restore one heart. Cannot revive or exceed starting hearts.',color:'#84e7b4'},
+  {id:'arcane_ward',name:'Nope',rarity:'Legendary',effect:'ward',description:'Arm on anyone alive. Automatically blocks the next hostile card. Cannot disarm; unused copy returns at match end.',color:'#bf89ff'},
+  {id:'mirrored_shield',name:'Mirrored Shield',rarity:'Legendary',effect:'reflect',description:'Arm on anyone alive. Reflect the next hostile card to its sender once. Cannot disarm; unused copy returns at match end.',color:'#86d9ef'},
+  {id:'card_jam',name:'Card Jam',rarity:'Rare',effect:'jam',description:'Target cannot play or arm new cards until their next word turn ends. Armed defenses still work.',color:'#e899cf'}
+);
 export const CARDS_BY_ID = Object.fromEntries(CARDS.map((v) => [v.id, v]));
 export const CARD_IDS = new Set(CARDS.map((v) => v.id));
 export const CARD_BOXES = [
-  { id: 'card_crate', name: 'Card Crate', price: 500, color: '#19b5aa', odds: { skip: 60, time_tax: 9.9, pressure: 30, heart: .1 }, x: -26, z: 26 },
-  { id: 'royal_cards', name: 'Royal Card Crate', price: 1500, color: '#e7a928', odds: { skip: 25, time_tax: 25, pressure: 45, heart: 5 }, x: -34, z: 20 },
+  { id: 'card_crate', name: 'Card Crate', price: 500, color: '#19b5aa', odds: { time_tax: 50, pressure: 25, slow_burn:15, card_jam:10 }, x: -26, z: 26 },
+  { id: 'royal_cards', name: 'Royal Card Crate', price: 1500, color: '#e7a928', odds: { skip: 4, time_tax: 26, pressure: 30, heart: 5, slow_burn:15, lifeline:8, arcane_ward:3, mirrored_shield:2, card_jam:7 }, x: -34, z: 20 },
 ];

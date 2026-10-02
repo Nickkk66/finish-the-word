@@ -1,3 +1,4 @@
+import {TIDE,tideSubmerged} from '../public/js/shared/word-tide.js';
 import assert from 'node:assert/strict';
 import {browser,delay} from './browser.mjs';
 import {TIDE_BANK} from '../src/tide-bank.js';
@@ -15,9 +16,16 @@ try {
  assert.equal((await a.state()).match.participants.length,2);
  assert.equal(await a.eval('window.__ftw.state.players.get(window.__ftw.state.you).seat'),-1);
  await a.wait('window.__ftw.state.match.phase === "tideIntro"');
+ assert.equal(await a.eval('window.__ftw.world.debugSnapshot().tide.visibleRocks'),0);
  await delay(5000);await a.shot('tsunami');await c.shot('tsunami');
  await delay(5000);await a.shot('wreckage');
- await a.wait('window.__ftw.state.match.phase === "tideAnswer"',20000);
+ await delay(6000);
+ for(const page of [a,c]) {
+  const riders=await page.eval('window.__ftw.world.debugSnapshot().tide.riders');
+  assert.ok(riders.length===2&&riders.every(r=>r.airborne));
+  assert.equal(await page.eval('window.__ftw.world.debugSnapshot().tide.parachutes'),2);
+ }
+ await a.wait('window.__ftw.state.match.phase === "tideAnswer"',30000);
  await a.shot('answer');await c.shot('answer');
  assert.equal(await a.eval('window.__ftw.world.debugSnapshot().tide.ruptured'),true);
  await a.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:1000,y:450,button:'right',clickCount:1});
@@ -26,19 +34,44 @@ try {
  await a.wait('Math.abs(window.__ftw.world.debugSnapshot().tide.orbitYaw)>.1');
  assert.equal(await a.eval('window.__ftw.world.debugSnapshot().tide.chairs'),2);
  assert.equal(await a.eval('window.__ftw.world.debugSnapshot().playerPositions.every(p=>p.tideSeated)'),true);
+ for(const p of [a,c]) {
+  assert.equal(await p.eval('document.querySelectorAll(".tide-label .tide-head-heart .icon").length'),10);
+  assert.equal(await p.eval('document.querySelector(".tide-hud").textContent.includes("stays secret")'),false);
+  assert.equal(await p.eval('document.querySelector(".tide-hud").textContent.includes("More letters")'),false);
+ }
+ await a.eval(`{document.querySelector('.tide-input').value='definitelynotacategoryanswer';document.querySelector('.tide-form').requestSubmit();}`);
+ await a.wait('document.querySelector(".tide-form").classList.contains("invalid")');
+ assert.notEqual(await a.eval('document.querySelector(".tide-submit").textContent'), '✓');
+ await a.shot('invalid-ring');
+ await a.eval("document.querySelector('.tide-input').dispatchEvent(new Event('input'))");
  let st=await a.state();const answer=TIDE_BANK.find(cat=>cat.id===st.match.tide.category.id).answers.sort((a,b)=>b.length-a.length)[0];
  await a.eval(`{const e=document.querySelector('.tide-input');e.value=${JSON.stringify(answer)};document.querySelector('.tide-form').requestSubmit();}`);
- await a.wait('document.querySelector(".tide-saved").textContent.includes("blocks saved")');
+ await a.wait('document.querySelector(".tide-submit").textContent==="✓"');
  assert.equal(await c.eval('window.__ftw.state.match.tide.towers["'+st.you+'"].answer'),'');
  assert.equal(await a.eval('window.__ftw.world.debugSnapshot().tide.blocks'),0);
  await a.wait('window.__ftw.state.match.phase === "tideReveal"',25000);await delay(1400);await a.shot('letters');await c.shot('letters');
- await a.wait('window.__ftw.state.match.phase === "tideResolve"');await a.shot('flood');
- assert.equal((await c.state()).match.participants.find(p=>p.id!==st.you).hearts,4);
+ assert.equal(await a.eval('window.__ftw.world.debugSnapshot().tide.riders.every(r=>Math.abs(r.seatContact)<.02)'),true);
+ await a.wait('window.__ftw.state.match.phase === "tideFlood"');await a.shot('flood');
+ assert.equal((await c.state()).match.participants.find(p=>p.id!==st.you).hearts,5);
+ await a.wait('window.__ftw.state.match.phase === "tideResolve"');
+ assert.equal((await c.state()).match.participants.find(p=>p.id!==st.you).hearts,tideSubmerged(2,st.match.tide.rise)?4:5);
+ if(tideSubmerged(2,st.match.tide.rise)){await c.wait('document.querySelector(".tide-damage-flash").classList.contains("tide-damage-active")');assert.ok(await c.eval('document.querySelector(".tide-head-heart.breaking")'));await c.shot('heart-loss');}
  await a.wait('window.__ftw.state.match.phase === "tideAnswer"');
+ const hintBalance=await a.eval('window.__ftw.profile.coins');
+ await a.eval("import('/js/profile.js').then(p=>p.grantCoins(1000,'tide-hint-check'))");
+ const hintRect=await a.eval('(()=>{const r=document.querySelector(".tide-bottom .turn-tools button").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');
+ await a.cdp('Input.dispatchMouseEvent',{type:'mousePressed',...hintRect,button:'left',clickCount:1});
+ await a.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...hintRect,button:'left',clickCount:1});
+ await a.wait('window.__ftw.state.hintWord && document.querySelector(".tide-submit").textContent==="✓"');
+ assert.equal(await a.eval('window.__ftw.profile.coins'),hintBalance+1000-TIDE.hintPrice);
  await c.nav(`${base}/?debug=1&room=${code}`);await c.wait('window.__ftw?.world');await c.clickText('Join');await c.wait('window.__ftw.state.inRoom');await c.wait('window.__ftw.world.debugSnapshot().tide.active');
  assert.equal((await c.state()).match.round,2);
- await c.send({t:'stand'});await a.wait('window.__ftw.state.match.phase === "ended"');await delay(1500);await a.shot('winner');await delay(10000);await a.shot('retreat');await a.wait('!window.__ftw.world.debugSnapshot().tide.active',20000);
- await a.send({t:'host',action:'endMatch'});await a.wait('!window.__ftw.world.debugSnapshot().tide.active');
+ await c.click('.tide-give-up');await c.clickText('Stand up','.overlay.confirm button');await a.wait('window.__ftw.state.match.phase === "ended"');await delay(1500);await a.shot('winner');await delay(19000);await a.shot('retreat');await a.wait('!window.__ftw.world.debugSnapshot().tide.active',30000);
+ await a.send({t:'host',action:'start'});await a.wait('window.__ftw.state.match.phase === "tideIntro"');
+ await a.send({t:'host',action:'endMatch'});await a.wait('window.__ftw.state.match.cancelled && window.__ftw.state.match.phase === "ended"');
+ assert.equal(await a.eval('window.__ftw.world.debugSnapshot().tide.ending'),true);
+ assert.equal(await a.eval('window.__ftw.world.debugSnapshot().tide.wrecks.events.length'),0);
+ await a.shot('owner-retreat');await a.wait('!window.__ftw.world.debugSnapshot().tide.active',30000);
  await a.send({t:'stand'});await c.send({t:'stand'});
  await a.send({t:'host',action:'settings',settings:{mode:'classic'}});await a.wait('window.__ftw.state.settings.mode === "classic"');
  await a.shot('restored');

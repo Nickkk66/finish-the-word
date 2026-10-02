@@ -1,9 +1,19 @@
+import { isRouletteMode } from '../shared/roulette.js';
 import { TIDE_PHASES } from '../shared/word-tide.js';
 // Roblox-style player list (top-right): name, host crown, BOT tag, hearts / OUT, wins, turn highlight.
 
 import { h } from './dom.js';
 import { icons } from './icons.js';
+import { createAvatarPreview } from './avatar.js';
+import { profile } from '../profile.js';
 import { MAX_PLAYERS } from '../shared/constants.js';
+
+function portrait(look) {
+  const { el } = createAvatarPreview(look);
+  el.setAttribute('viewBox', '38 0 65 63');
+  el.setAttribute('aria-hidden', 'true');
+  return el;
+}
 
 const LIVE_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', 'roulette', 'rouletteReveal', 'ended', ...TIDE_PHASES]);
 
@@ -12,7 +22,7 @@ export function createPlayerList() {
   const head = h('button', { type: 'button', class: 'plist-head', 'aria-expanded': 'true' },
     h('span', { class: 'plist-title' }, 'Players'), count, h('span', { class: 'plist-wins-head', title: 'Wins' }, '🏆'));
   const rows = h('div', { class: 'plist-rows' });
-  const el = h('div', { class: 'plist' }, head, rows);
+  const el = h('div', { class: 'plist', 'data-style': profile.settings.playerListStyle }, head, rows);
 
   // Collapsed by default on small screens (tap the header to toggle).
   const compact = matchMedia('(max-width: 720px), (max-height: 520px)').matches;
@@ -26,6 +36,7 @@ export function createPlayerList() {
   let key = '';
 
   function update(state) {
+    el.dataset.style = profile.settings.playerListStyle;
     const m = state.match;
     const live = m && LIVE_PHASES.has(m.phase);
     const parts = new Map(live ? m.participants.map((p, i) => [p.id, { ...p, order: i }]) : []);
@@ -44,12 +55,14 @@ export function createPlayerList() {
       return {
         id: p.id,
         name: p.name,
+        look: p.look,
         bot: p.isBot,
         admin: p.isAdmin,
         host: p.id === state.hostId,
         me: p.id === state.you,
         offline: !p.connected,
         seated: p.seat >= 0,
+        sipping: isRouletteMode(m?.mode || state.settings.mode) && (!!part && part.alive || !!p.rouletteBet),
         wins: p.wins,
         turn: p.id === turnId,
         hearts: part ? part.hearts : null,
@@ -63,22 +76,24 @@ export function createPlayerList() {
     key = nextKey;
 
     count.textContent = `${players.length}/${MAX_PLAYERS}`;
-    rows.replaceChildren(...rowData.map((r) => {
+    rows.replaceChildren(h('div', { class: 'plist-columns', 'aria-hidden': 'true' }, h('span', {}, 'PLAYER'), h('span', {}, 'STATUS'), h('span', {}, 'WINS')), ...rowData.map((r) => {
       let status = null;
       if (r.out) status = h('span', { class: 'pl-out' }, 'OUT');
       else if (r.hearts != null) {
         status = h('span', { class: 'pl-hearts', title: `${r.hearts} hearts${r.shield ? ' + pet shield' : ''}` },
           r.shield ? h('span', { class: 'pl-shield' }, '🛡️') : null,
           Array.from({ length: r.maxHearts }, (_, i) => h('span', { class: `pl-heart${i < r.hearts ? '' : ' lost'}` }, icons.heart())));
-      } else if (r.seated) status = h('span', { class: 'pl-seat', title: 'Seated' }, '🪑');
+      } else if (r.seated) status = h('span', { class: 'pl-seat', title: 'Seated · waiting to play', 'aria-label': 'Seated · waiting to play' }, '🪑');
+      else status = h('span', { class: 'pl-waiting', title: 'Not playing', 'aria-label': 'Not playing' }, '—');
       return h('div', { class: `plist-row${r.me ? ' me' : ''}${r.turn ? ' turn' : ''}${r.out ? ' out' : ''}${r.offline ? ' offline' : ''}` },
         h('span', { class: 'pl-name' },
+          h('span', { class: 'pl-player-mark', 'aria-hidden': 'true' }, portrait(r.look)),
           r.host ? h('span', { class: 'pl-crown', title: 'Host' }, '👑') : null,
           h('span', { class: 'pl-text' }, r.name),
           r.admin ? h('span', { class: 'pl-tag admin' }, '✦ ADMIN') : null,
           r.bot ? h('span', { class: 'pl-tag bot' }, 'BOT') : null,
           r.offline ? h('span', { class: 'pl-tag off', title: 'Reconnecting' }, '···') : null),
-        h('span', { class: 'pl-status' }, status),
+        h('span', { class: 'pl-status' }, r.sipping ? h('span', {class:'pl-seat',title:'Playing The Last Sip','aria-label':'Playing The Last Sip'}, '🪑') : null, status),
         h('span', { class: 'pl-wins' }, String(r.wins)));
     }));
   }

@@ -95,9 +95,21 @@ export const TIDE_BANK = rows.map(([id, prompt, referenceLength, words]) => ({ i
 // Spacing and hyphen variants share a lookup without changing earned letter counts.
 const lookup = new Map(TIDE_BANK.map(c => [c.id, new Map(c.answers.map(word => [normalizeTideAnswer(word).replace(/ /g,''), word]))]));
 lookup.get('headwear').set('vail', 'veil');
+// Animal plurals are accepted; each accepted spelling builds its own letters.
+const animalCategories = ['ocean', 'mammal', 'bird', 'insect', 'pet', 'farm', 'reptile', 'coldanimal', 'dinosaur'];
+const irregularPlurals = { mouse: 'mice', goose: 'geese', ox: 'oxen', wolf: 'wolves', calf: 'calves' };
+for (const id of animalCategories) {
+ const category = TIDE_BANK.find(c => c.id === id);
+ for (const word of category.answers) {
+  const parts = word.split(' '), noun = parts.pop();
+  const plural = irregularPlurals[noun] || (/[^aeiou]y$/.test(noun) ? noun.slice(0, -1) + 'ies' : /(s|x|z|ch|sh)$/.test(noun) ? noun + 'es' : noun + 's');
+  const key = [...parts, plural].join('');
+  if (!lookup.get(id).has(key)) lookup.get(id).set(key, word);
+ }
+}
 export function validateTideAnswer(categoryId, value) {
  const key = normalizeTideAnswer(value), word = lookup.get(categoryId)?.get(key.replace(/ /g,''));
  if (!word) return null;
- const letters = word.replace(/[^a-z]/g, '').toUpperCase();
- return letters.length <= TIDE.maxLetters ? { word, letters, length: letters.length } : null;
+ const letters = key.replace(/[^a-z]/g, '').toUpperCase();
+ return letters.length <= TIDE.maxLetters ? { word: key, letters, length: letters.length } : null;
 }

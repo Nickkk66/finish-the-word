@@ -1,0 +1,98 @@
+# Active handoff — October 1, 2026
+
+## Latest user steering (implemented and deployed; previous requests remain below)
+- User rejects Island/Arcade/Glass roster looks; prefers current classic. Restore classic by default and create 3 structurally DIFFERENT roster proposals rather than recolors, preserving status data.
+- Combine secret accessories, player-list review, pets/cards/balance/emote feedback into ONE review page.
+- Accessory request misunderstood: user wants THREE black SKI GOGGLE 3D models to choose among, not crown/scythe/horns. Keep Viking horn helmet for bug tester/hunter/finder admin gifts. Goggles must be wearable actual geometry, not face texture. Secret admin-only gating persists.
+- Feedback JSON read from /Users/nicholasgaston/Downloads/finish-the-word-feedback.json. User asked how to answer optional question; told they can reply in ordinary chat “proposals first” or “apply live”; async question re-issued. No answer yet. Continue goggles/rosters/review independently; default update proposals first if optional answer absent after reasonable time, clearly state assumption. Do not discard feedback.
+- Feedback: magical auto-block standby card, cannot unarm, consumes only on incoming card; repeatable per match, can protect anyone. Separate very rare Mirrored Shield reflects hostile card to sender with no recursion. Reject Extra Beat/Safety Net/Second Chance/Clean Slate/Mirror/Anchor. Slow Burn stacks; Lifeline 50% heart recovery; Heartbreaker 50% remove heart; Narrow Margin -2 allowed mistakes for all future turns of target. Bunny +1s Classic/Sip; Froggy +1 mistake; Piggy +3s own turn; Foxy -1s next player +10% Tide guard; Hoot +3s Classic/Sip +25% Tide guard; Unicorn auto first poison protection, rare; Robot Sip percentage effect instead of timer; Frostbite should be penguin, replace badger/Bulwark animal.
+- Found CC0 source ski goggles: https://3dassets.dev/assets/ski-resort-and-snow-park-ski-goggles-54d4a696, model https://cdn.3dassets.dev/assets/26014/v1/model.glb downloaded public/assets/back-models/ski_goggles_source.glb. Lens/frame/strap separate meshes. Source license CC0 verified. Need create/finalize 3 black distinct model shapes, fit head, render/animation inspect.
+- Deployment authorization persists: test and deploy all approved updates to Cloudflare main site. Google Sites still blocked by unanswered Chrome JS Apple Events setting.
+
+Preserve all local work; do not discard preexisting changes. User authorized deployment of all updates to the main Cloudflare site: https://finish-the-word.nickkk66.workers.dev. No subagents requested.
+
+## Completed and previously deployed
+- Remove money trading; admin full online/offline saved profile view/edit (money, pets, cards, accessories, stats).
+- Trade-history quick icon popup; pet-only/item trading countdown and cancel acceptance.
+- Guitar geometry/strings/contact and singing fixes, animation tests and close visual review.
+- Word Tide green answer frame; visible drowning corpses/piranhas/shark animation.
+- Genuine halo/wings bloom; $300/$1500/$3000 blocks; Royal-only Heartbreaker and rarer Free Pass.
+- Crate reveal purchase lock until Nice/Equip; book pet dictionary.
+- Offline balance-review.html with old/proposed pets, counters to Blaze, 12-card proposals, shop victory emote proposals, UI previews, feedback export/import.
+- Swearing accepted as gameplay answers; chat retains its separate filtering.
+
+## Implemented pending deployment / final checks
+- Gambling refusal explanations (age, trophy, coins, guest); Last Sip chair participant marker.
+- Purple falling meteor trail, chat warning 10 seconds before fall, purple fire lowered via Y only.
+- Every meteor damages each second: -50 coins, under 50 halves balance (integer rounded down after debit).
+- Secret Crown, Phantom Scythe, Viking Helmet from licensed free GLBs; admin-only grants; cannot buy/trade/forge. Gallery secret-accessories.html.
+- Card target arrow disabled, original code retained.
+- Flat realistic central rule cards only for Double Trouble and Death Wish.
+- Last Sip pooled payouts begin at 80% of entry money, grow at completed circuits, cap at 90% including all pet/card bonuses; house keeps at least 10%; cancellations/practice refund fully. Prevents infinite paired-account profit.
+- Tough black goggles.
+- Unit tests 176 passed; integration passed; browser/animation/secret model render checks passed. Latest tiny fire changes should receive final test run.
+
+## New request added in latest turn — must complete
+1. Chat small emoji/emote button must share chat input colors/appearance.
+2. Create THREE new player-list visual styles fitting the game; retain hearts, seated/not playing and Last Sip participant information. Provide comparison HTML and usable selector.
+3. Free 15-minute reward must accumulate only time IN a connected game; sessions add up (5 minutes now + 10 later), no offline waiting credit. Persist progress across sessions/account saves.
+4. Purple flames lower AGAIN before deploying, Y only, no dampening.
+5. At most THREE purple meteors simultaneously. Current special meteor lifecycle only retains one; preserve/enforce ceiling (no need to spawn three).
+6. Pet hatch/reward display must show actual model thumbnail, no random pet emoji.
+7. Maintain this handoff whenever context compacts; record outstanding work and new queued prompts.
+
+## Google Sites publication task (still outstanding)
+User explicitly requested host Google Site under 5starr.edt@gmail.com, Chrome profile nickygswaggmoneybagg. Google Sites can embed Cloudflare game; backend still requires Cloudflare. Default title Finish the Word, slug finish-the-word-5starr unless user steers.
+Chrome AppleScript DOM automation blocked: Allow JavaScript from Apple Events is OFF. Async request already asked user to enable Chrome View → Developer → Allow JavaScript from Apple Events and reply enabled. User has NOT replied enabled. Do not flip setting yourself; do not claim account verified or Site published. Setup artifact docs/GOOGLE-SITES-SETUP.md. No available Google Sites connector. OpenAI Sites plugin is unrelated.
+
+## Tool/run state
+Workspace /Users/nicholasgaston/Projects/FinishTheWord. Permission never/full access: never set sandbox_permissions. Dev server was running port 8788 inspector 9231, ADMIN_CODE local-browser-review. Logs /tmp/ftw-oct-dev.log, /tmp/ftw-oct-integration.log. Browser scripts use scripts/browser.mjs. Run npm test and relevant integration/browser checks, then npm run deploy and verify published updated artifacts with curl -fSL (HTML extension redirects). Earlier deployment version 68bf4bf5-1b3e-41b8-b1c2-470a2330a1c5; latest changes not deployed at start of this turn.
+
+## Latest implementation / verification update
+- New request implemented: chat matching surface and monochrome SVG smile; Island/Arcade/Glass selectable rosters and offline public/player-list-review.html; saved connected-only freePlayMs (cloud + local) across sessions; hatch pet model thumbnail.
+- Purple fire and halo Y now -1.25 (was -0.7); falling trails batched with MAX_PURPLE_METEORS=3, reserving one slot for the singleton special meteor; landed ordinary rocks use their orange crater fire.
+- 178 unit tests passed; full integration passed. Browser chat/roster/reward/hatch checks passed before thumbnail framing refinement; final rerun needed. New live scripts/meteor-debit-check.mjs passed actual 1-second coin values 149→99→49→24→12→6→3→1→0 and stopping on exit.
+- Pet thumbnail framing now ignores invisible animation particles. Browser scripts should assign unique test names before creating rooms to avoid persistent handle collisions (409).
+- Still pending final browser render check, deployment, production asset verification. Google Sites remains blocked by unanswered Chrome setting requirement.
+
+## Final verification before deploy
+178/178 unit tests passed, integration verifies persisted 5-minute reward progress, browser chat/roster/reward/hatch and October mode/secret/meteor cap checks passed. Actual damage receipt timing and halving passed. Hatch art CSS corrected to center full-size model image. Remaining: finish last integration process, deploy and verify Cloudflare artifacts; Google Sites remains blocked by Chrome setting.
+
+## Deployment complete
+`npm run deploy` succeeded: https://finish-the-word.nickkk66.workers.dev, version 53cef31e-b5b7-4224-a315-138edafeba70. Health returned ok; byte-for-byte verified profile/reward code, shared/world meteors, chat, roster, hatch, CSS, all three review HTML pages and three secret GLBs.
+New review: /player-list-review, existing /balance-review and /secret-accessories. Settings → Player list selects Island/Arcade/Glass. All 178 unit tests and final integration passed; final browser roster/hatch review, meteor cap sampling and live per-second debit check passed. No pending game code/tests/deployment. Google Sites NOT published or account verified; exact pending Chrome setting question still unanswered.
+
+## Latest progress — goggles/unified review/roster revision
+- Three new black GLBs built (Shield/Split/Racer) with custom distinct geometry and modified CC0 source strap; real head mounting in PlayerEntity.setBack. 90-frame rotation/attachment checks passed, front/side screenshots inspected. Existing helmet renamed Bug Hunter Horns; crown/scythe retired from unowned shop, ownership preserved.
+- Classic restored as default, old Island/Arcade/Glass preferences migrate to classic. New structurally different Compact/Tiles/Scoreboard selectable; status information preserved. Four comparison previews in unified review.
+- Unified public/review.html built from docs/review-template.html + docs/review-feedback.json + docs/review-visuals.json via scripts/build-review.py. Old /balance-review,/secret-accessories,/player-list-review HTML now redirect there. All 6 goggle screenshots baked into offline-capable review. Imported feedback notes preloaded, balance proposals revised, Arcane Ward/Mirrored Shield described, six rejected ideas removed, four open slots keep 12-card plan. No live pet/card changes yet (optional question unanswered; default proposals first stated).
+- 179 unit tests passed. scripts/goggles-rosters-check.mjs passed models/head motion/classic/alternative layouts. scripts/unified-review-check.mjs passed desktop/mobile/no errors, persistence and legacy redirects. Pending final integration/remaining browser checks, deployment, production verification. Previous deployed version 53cef31e-b5b7-4224-a315-138edafeba70 predates these changes.
+
+## Revision deployed — October 1, 2026
+Cloudflare deployment succeeded, version **54bb4df1-1d84-4ef3-bcd8-79ad5ac33041**. All 179 unit tests, integration, head attachment/motion, roster-status and unified review tests passed. All review/game/model files verified byte-for-byte against production; health ok. Single public link: https://finish-the-word.nickkk66.workers.dev/review . Old routes redirect into hash tabs. Goggles Shield/Split/Racer are actual head-mounted black secret accessories; Bug Hunter Horns retained for admin gifts; classic roster default. Balance JSON updates remain proposals; optional “proposals first” vs “apply live” question unanswered. User can answer by typing normally in chat, no shortcut. No pending code/deploy for this revision. Google Sites publication remains outstanding due to Chrome setting.
+
+## Active latest revision — proposals first confirmed
+User explicitly chose proposals first. Wants actual ski goggles, rejects VR-like shapes; keep Classic/Slim and replace other layouts; higher proposed Mirrored/automatic blocker chances, rename Arcane Ward, Legendary label, card ideas 9–12. New curved shallow Alpine/Storm/Ridge GLBs generated; portrait/bubble roster implementations added; proposal generator drafts Spellbreak 3%, Mirrored Shield 2%, Legendary, plus Echo Cast/Letter Lock/Double Take/Card Jam. Browser sizing check needs investigation, fresh screenshots/review rebuild/tests/deploy still pending. Live balances remain unchanged. Google Sites outstanding as above.
+
+Latest verification: Goggles rebuilt with tessellated curved lenses (fixed facial clipping), shallow hollow rims, narrower bands; actual front/side render inspected. 90-frame head attachment passed, Classic/Slim preserved, Portrait/Bubbles previews inspected. 179 unit tests passed, unified review desktop/mobile/notes/import/export/redirect checks passed, chat/roster/reward/hatch regression passed. Full integration currently running; deployment follows. No live card/balance changes.
+
+## Latest revision deployed
+October 1 Cloudflare version **630db008-3de6-47d7-81d4-fd4ce981ff21** deployed. 179 unit tests, full disposable-worker integration, goggle head-motion/render inspection, roster/reward/hatch regression, unified review desktop/mobile checks passed. Production unified review browser check passed. User chose proposals first: Spellbreak name recommendation, Hexguard/Mystic Barrier/Nullify/Enchanted Shield/Charmbreaker/Aegis alternatives; Spellbreak 3%, Mirrored Shield 2%, both Legendary; slots 9–12 Echo Cast, Letter Lock, Double Take, Card Jam. These remain proposals, live balances unchanged. Actual goggles now Alpine/Storm/Ridge curved shallow single lenses; Classic/Slim retained, Portrait/Bubbles new. Unified review URL unchanged. Google Sites still outstanding due to Chrome JavaScript setting, no publication/account verification.
+
+## New user request — apply approved changes, October 1 evening
+Apply all approved pets/cards but NO victory emotes. Rename Secret Block (Mystic chosen), lower all three goggles (head Y .70 vs .84). Classic/Slim should be in game and previewable in admin tools. Spellbreak renamed Nope; reject Echo Cast, Letter Lock, Double Take; keep Card Jam (9 live cards total, no replacement inventions). Friend complains 5k bet could only win 4.5k; prevent alt money farming. Implement matched stakes at smallest entry with excess refunded at settlement; pool remains funded 80→90%, and roulette no longer grants sellable trophies (otherwise five wins sell for 1k and bypass house edge). Work in progress: catalog+engine+UI code applied, existing tests being updated for intended behavior, add meaningful defense/house/counter tests, render new pets/goggles/admin preview, regenerate unified review without emotes, tests/integration/deploy/production verification pending. Previous deployed version630db008. Google Sites still outstanding.
+
+Goggle final mount Y is .77 (lower than prior .84; .70 covered mouth, corrected after inspection). 189/189 unit tests pass including 10 new defense/card/counter/matched-stake tests. New pet models rendered/inspected; admin Classic/Slim live switching verified. Review generator now filters rejected cards and victory emotes and shows only Classic/Slim. Final browser assertions being adjusted for rendered Legendary label and asynchronous matched-pool UI. Integration running; not yet deployed.
+
+Final checks: 190/190 unit tests pass, full integration pass, goggles head motion and front/side inspection pass, new counter-pet models inspected, actual admin Classic/Slim switching and nine live cards browser verified, matched Last Sip UI and unified review desktop/mobile/feedback controls passed. HEIC supplied by user viewed; shows old 25 vs 5000 stake setup and old house-cap copy. New matched wager behavior handles that exact setup. Final revision ready to deploy; no victory emotes added. Return receipts for unused armed defenses also survive owner leaving and reconnecting (new test).
+
+## Approved revision deployed
+Cloudflare main site updated: **6dc19e08-144e-4418-966d-59c4b31b2273**. Production health ok and 12 changed public assets byte-identical. All approved pet/card changes live, nine cards total, Nope 3% and Mirrored Shield 2% Royal Legendary. No victory emotes. Mystic Block preserves secret ID. Goggles local head Y=.77. Settings/admin personal preview switches Classic/Slim; former layout CSS/code retained but regular selector only approved two. Matched Last Sip 25 vs5000: only25 each at risk,4975 excess returns; equal5000 each pool max9000. No sellable trophies awarded from Last Sip, winner UI remains. Funded prize ceiling intentionally remains at90% of joint matched pool to prevent alt inflation. Unit190pass/integration/browser checks pass; unified review production browser check final log /tmp/ftw-production-review.log. Google Sites still not published for previously noted Chrome permission limitation.
+
+## Latest queued polish request — in progress
+User requests Mythic spinning/glitter, Mystic (formerly Secret) spinning without glitter; verify16pets/9cards; sharper crate renders; remove Double Trouble; fix profile bottom overflow; improve admin pet-tier editing with icons; restore OG Cool sunglasses; commit all changes once done. Implemented block animation separation,512px multisampled card-crate thumbs, bounded scrolling profile-summary,16pet icon tiles with three tier steppers/search/owned filter and existing validation/save, Double Trouble removed from catalogs/settings/rules/table card, original Cool SVG/texture restored from HEAD while preserving singing changes. Unit test update for classic prefix randomization pending run; browser checks reached admin steppers but script selector escaping needs correction. No deployment/commit yet. Existing191?190unit suite beforethisrevision; full prior changes are already Cloudflare6dc19e08.
+
+Polish verification: 191 unit tests passed; browser confirms Mystic spin/no glitter, Mythic spin/glitter,512px crate icons,9cards/16pets, profile containment desktop/mobile, admin16 icon cards/tier steppers/search. Screenshots inspected. Integration initial failure was probabilistic Heartbreaker test assuming100%hit; adjusted test to force actor forfeit after consumed card event, making leaderboard check independent of50%roll. Rerun passed card/replay/leaderboard stage and is completing timed obby/persistence checks. Pending deploy, production verification, commit ALL queued changes on main as user requested. No GitHub push requested by latest message; prior authorization targets Cloudflare site.
+
+## Latest polish deployed and ready for commit
+Cloudflare version **e1b50fd6-9efa-4ad5-b461-7762f44cce3e** live on main site. Health ok;11updated production assets verified byte-for-byte.191unit tests, integration, desktop/mobile/profile/admin/crate/block animation browser checks passed. All latest requests done: Mythic spins/glistens; Mystic spins without glistening;16pets/9cards remain live;512px multisampled crate renders;Double Trouble removed; profile summary contained; admin pet editor model icons/tier steppers/search/owned-only; OG split Cool sunglasses restored. User screenshots showed old12pet/4card loaded tab: refresh required to load deployed modules. All session updates committed on main as explicitly requested; working tree clean. See git log for the latest commit. Google Sites remains outstanding under prior Chrome JS-setting limitation.

@@ -5,13 +5,14 @@
 // Model space: faces +Z, feet at y = 0. Legs 0..2, torso 2..4, head ~4..5.25.
 
 import * as THREE from 'three';
+import { guitarPose, GUITAR_CONTACTS } from '../shared/guitar-motion.js';
 import { LAYOUT } from '../shared/constants.js';
 import { sipLift } from '../shared/roulette.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { HAIR_STYLES, sanitizeLook } from '../shared/catalog.js';
 import { colorMaterial, greyHex } from './materials.js';
-import { faceTexture, reactionFaceTexture } from './textures.js';
+import { faceTexture, reactionFaceTexture, singingFaceTexture } from './textures.js';
 import { TAU, clamp, damp, easeInOutCubic, lerp } from './math.js';
 
 export const WALK_SPEED = 16;
@@ -212,7 +213,8 @@ function faceMaterial(index) {
   let m = faceMaterials.get(index);
   if (!m) {
     m = new THREE.MeshLambertMaterial({
-      map: typeof index==='string'?reactionFaceTexture(index):faceTexture(index),
+      map: typeof index === 'string' && index.startsWith('sing:') ? singingFaceTexture(Number(index.split(':')[1]), Number(index.split(':')[2]))
+        : typeof index === 'string' ? reactionFaceTexture(index) : faceTexture(index),
       transparent: true,
       alphaTest: 0.02,
       polygonOffset: true,
@@ -277,9 +279,15 @@ export class Avatar {
     this.rArm = pivot(1.5, 3.5, 0, this.rArmMesh);
     this.lLeg = pivot(-0.5, 2, 0, this.lLegMesh);
     this.rLeg = pivot(0.5, 2, 0, this.rLegMesh);
-    this.guitarElbow = new THREE.Group(); this.guitarElbow.position.set(0, -.72, 0); this.rArm.add(this.guitarElbow);
-    this.guitarForearm = part(G.limb, 0, -.5, .08); this.guitarForearm.scale.set(.82, .52, .82);
+    this.guitarElbow = new THREE.Group(); this.guitarElbow.position.set(0, -1, 0); this.rArm.add(this.guitarElbow);
+    this.guitarForearm = part(G.limb, 0, -.55, 0); this.guitarForearm.scale.set(.62, .55, .62);
     this.guitarElbow.add(this.guitarForearm); this.guitarElbow.visible = false;
+    this.guitarLeftElbow = this.guitarElbow.clone(); this.lArm.add(this.guitarLeftElbow);
+    this.guitarLeftForearm = this.guitarLeftElbow.children[0];
+    this.guitarWeight = 0;
+    this.guitarPoseMatrix = new THREE.Matrix4();
+    this.guitarPoseRotation = new THREE.Quaternion();
+    this.guitarContact = new THREE.Vector3();
 
     this.head = new THREE.Group(); // pivot at the neck
     this.head.position.set(0, 4, 0);
@@ -289,8 +297,6 @@ export class Avatar {
     this.face.position.copy(this.headMesh.position);
     this.hair = part(G.hair.Bacon, 0, HEAD_SIZE / 2, 0);
     this.head.add(this.headMesh, this.face, this.hair);
-    this.singMouth = new THREE.Mesh(new THREE.SphereGeometry(.14, 12, 8), new THREE.MeshBasicMaterial({ color: '#361022', depthTest: false }));
-    this.singMouth.scale.set(1, 1.3, .14); this.singMouth.position.set(0, .43, .655); this.singMouth.renderOrder = 8; this.singMouth.visible = false; this.head.add(this.singMouth);
     this.musicNotes = new THREE.Group(); this.musicNotes.visible = false; this.rig.add(this.musicNotes);
     for (let i = 0; i < 3; i++) {
       const note = new THREE.Sprite(new THREE.SpriteMaterial({ map: noteTexture(), transparent: true, depthWrite: false }));
@@ -340,7 +346,7 @@ export class Avatar {
     this.headMesh.material = skin;
     this.lArmMesh.material = skin;
     this.rArmMesh.material = skin;
-    this.guitarForearm.material = skin;
+    this.guitarForearm.material = this.guitarLeftForearm.material = skin;
     this.torso.material = colorMaterial(c(this.look.shirt));
     this.lLegMesh.material = this.rLegMesh.material = colorMaterial(c(this.look.pants));
     this.hair.material = colorMaterial(c(this.look.hair));
@@ -433,19 +439,27 @@ export class Avatar {
       o[BX] = thrusting ? .32 + Math.min(.14, this.speed * .007) : this.seated ? -.05 : .08;
       if (thrusting) { o[LAX] = -.38; o[RAX] = -.38; o[LAZ] = .18; o[RAZ] = .18; }
     }
-    const strumming = this.guitar && !this.seated && this.loco === WALK && this.speed > 1 && !this.out;
-    this.singMouth.visible = this.musicNotes.visible = strumming;
-    this.guitarElbow.visible = strumming;
-    this.rArmMesh.scale.y = strumming ? .52 : 1;
-    this.rArmMesh.position.y = strumming ? -.25 : -.5;
+    const strumming = this.guitar && !this.seated && this.loco === WALK && this.speed > 1 && !this.out && !this.rouletteSleeping && this.flightT < 0;
+    this.guitarWeight = damp(this.guitarWeight, strumming ? 1 : 0, 8, dt);
+    this.singing = strumming;
+    const k = this.guitarWeight;
+    this.musicNotes.visible = strumming;
+    this.guitarElbow.visible = this.guitarLeftElbow.visible = k > .01;
+    for (const mesh of [this.rArmMesh, this.lArmMesh]) {
+      mesh.scale.set(lerp(1, .84, k), lerp(1, .55, k), lerp(1, .84, k));
+      mesh.position.y = lerp(-.5, -.45, k);
+    }
     if (strumming) {
-      o[LAX] = -1.1; o[LAZ] = .42;
-      o[RAX] = -.95 + Math.sin(t * 13) * .15; o[RAZ] = -.48;
-      this.guitarElbow.rotation.x = -1.2 + Math.sin(t * 13) * .4;
+      const syllable = Math.floor((t * 3.2 % 1) * 6);
+      this.face.material = faceMaterial(`sing:${this.look.face}:${syllable}`);
+      this.faceExpression = 'singing';
+      o[HX] = lerp(o[HX], -.05 + Math.sin(t * 4.5) * .045, k);
+      o[HZ] = lerp(o[HZ], Math.sin(t * 4.5) * .025, k);
       this.musicNotes.children.forEach((note, i) => {
-        const age = (t * .65 + i / 3) % 1;
-        note.position.set(.7 + age * .8 + i * .12, 4.1 + age * 2, .8);
-        note.material.opacity = Math.min(1, (1 - age) * 2);
+        const age = (t * .5 + i / 3) % 1;
+        note.position.set(1.05 + age * .5, 4.4 + age * 1.3, .35);
+        note.material.opacity = Math.sin(age * Math.PI) * .8 * k;
+        note.scale.setScalar(.28 + age * .12);
       });
     }
     const lift = this.sipStarted == null ? 0 : sipLift((performance.now()-this.sipStarted)/1000);
@@ -464,6 +478,30 @@ export class Avatar {
       this.wDizzy = Math.max(this.wDizzy,k);
     }
     this.applyPose(dt, t, o);
+    if (k > .01) this.applyGuitarHands(t, k);
+  }
+
+  applyGuitarHands(time, blend) {
+    const pose = guitarPose(time, blend);
+    this.guitarPoseRotation.setFromEuler(new THREE.Euler(0, pose.yaw, pose.roll));
+    this.guitarPoseMatrix.compose(new THREE.Vector3(pose.x, 3 + pose.y, pose.z), this.guitarPoseRotation, new THREE.Vector3(1, 1, 1));
+    const solve = (arm, elbow, landmark, sign, strum = 0) => {
+      const wrist = this.guitarContact.fromArray(landmark).clone();
+      wrist.x += strum * .09; wrist.y += strum * .12; wrist.z += .12;
+      wrist.applyMatrix4(this.guitarPoseMatrix);
+      const toward = wrist.sub(arm.position), distance = Math.min(2.099, toward.length());
+      toward.normalize();
+      const bend = new THREE.Vector3(sign, -.4, 0);
+      bend.addScaledVector(toward, -bend.dot(toward)).normalize();
+      const along = (1 + distance * distance - 1.1 * 1.1) / (2 * Math.max(distance, .01));
+      const upper = toward.clone().multiplyScalar(along).addScaledVector(bend, Math.sqrt(Math.max(0, 1 - along * along)));
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), upper.clone().normalize());
+      arm.quaternion.slerp(q, blend);
+      const lower = toward.multiplyScalar(distance).sub(upper).applyQuaternion(q.clone().invert()).normalize();
+      elbow.quaternion.identity().slerp(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), lower), blend);
+    };
+    solve(this.lArm, this.guitarLeftElbow, GUITAR_CONTACTS.neck, -1);
+    solve(this.rArm, this.guitarElbow, GUITAR_CONTACTS.strum, 1, pose.strum);
   }
 
   statePose(state, t, o) {
@@ -670,8 +708,6 @@ export class Avatar {
 
   dispose() {
     this.root.removeFromParent();
-    this.singMouth.geometry.dispose();
-    this.singMouth.material.dispose();
     for (const note of this.musicNotes.children) note.material.dispose();
   }
 }

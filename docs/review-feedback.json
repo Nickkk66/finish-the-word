@@ -1,0 +1,331 @@
+{
+  "version": 1,
+  "date": "2026-10-02T02:38:06.549Z",
+  "notes": {
+    "general": "add a card that would be instead of anchor, safety net, whatever, and it blocks the next card, whatever is thrown at you. it can be one that can be used on standby, and can be used as many times per match and can be used on anyone. it should bascially be i can trigger it, and cant untrigger it, and if anyone throws anything at me, it automatically uses the card without consent after i have it ready. it shouldnt be like a 'queued' card thing because it should be just like ready to be auto done. name it something magical like idk. but add another card called Mirrored Shield, that just reflects what that person used on you, right back to them. the first one would be like a nope. both of these cards should be very rare\nLatest: proposals first. Redesign goggles as ski goggles, not VR headsets. Keep Classic and Slim; replace the other roster designs. Offer card ideas for slots 9–12.\nLatest approved: apply all approved pets/cards, remove Echo Cast, Letter Lock and Double Take, exclude victory emotes; lower goggles, Mystic Block name; Classic/Slim preview in admin; matched Last Sip stakes with excess refunds and no sellable trophies.",
+    "pet-doggy": "",
+    "pet-kitty": "",
+    "pet-bunny": "instead of +2s do +1s for both. ",
+    "pet-froggy": "+1 guess a turn instead",
+    "pet-piggy": "+3s on your turns instead of nextp layer -1s",
+    "pet-foxy": "next player -1s instead of +3s on your turn\n10% protect a heart instead of 15",
+    "pet-bear": "",
+    "pet-penguin": "",
+    "pet-owl": "+3s on your turn, +3s to decide, +25% protect a heart",
+    "pet-unicorn": "have it auto block 1 posion a match  and auto the rest and this should be rare",
+    "pet-dragon": "",
+    "pet-robot": "the last sip should be a percentage because adding seconds to decide on the last sip doesnt help much. that should be mostly for worse pets.",
+    "pet-shellback": "",
+    "pet-frostbite": "instead of a ottor, do a penguin",
+    "pet-badger": "use diff thing instead of bulwark, thats weird. idk what that animal is. ",
+    "pet-moth": "",
+    "card-skip": "",
+    "card-time_tax": "",
+    "card-pressure": "how about not just gettign 2 fewer allowed mistakes on their next tunr, but instead for the rest of their turns, all of them on that player.",
+    "card-heart": "current should be 50% chance to remove someones heart. ",
+    "card-extra_beat": "no, dont use this",
+    "card-safety_net": "no dont use this, id rather use one card that can block anything",
+    "card-second_chance": "no, its redundant",
+    "card-clean_slate": "no, idk why this wold be good",
+    "card-slow_burn": "add stacking to this",
+    "card-mirror": "no dont use this",
+    "card-lifeline": "yes 50% to get your heart back instead though",
+    "card-anchor": "no dont use this",
+    "emote-star": "",
+    "emote-bow": "",
+    "emote-dance": "",
+    "emote-spin": "",
+    "emote-guitar": "",
+    "emote-wings": "",
+    "card-arcane_ward": "Approved live name: Nope. Legendary; Royal odds 3%. Automatic protection, no consent or manual disarm.",
+    "card-mirrored_shield": "Legendary rarity; a slightly higher drop chance.",
+    "roster-classic": "Keep this classic player list.",
+    "roster-compact": "Keep this slim layout."
+  },
+  "catalog": {
+    "pets": [
+      {
+        "id": "pet-doggy",
+        "name": "Doggy",
+        "icon": "🐶",
+        "status": "Current pet",
+        "old": "CLASSIC: +1s on your turns\nTHE LAST SIP: −5% poison risk\nWORD TIDE: 5%: protect a heart",
+        "proposal": "Keep current bonuses: useful starter without strong sabotage."
+      },
+      {
+        "id": "pet-kitty",
+        "name": "Kitty",
+        "icon": "🐱",
+        "status": "Current pet",
+        "old": "CLASSIC: +1 guesses / turn\nTHE LAST SIP: +1 pass / match\nWORD TIDE: 10%: protect a heart",
+        "proposal": "Keep +1 mistake; reduce Tide guard to 5% so Bunny has a distinct role."
+      },
+      {
+        "id": "pet-bunny",
+        "name": "Bunny",
+        "icon": "🐰",
+        "status": "Current pet",
+        "old": "CLASSIC: +2s on your turns\nTHE LAST SIP: +2s to decide\nWORD TIDE: 10%: protect a heart",
+        "proposal": "Keep +2 seconds; Tide guard stays 10%."
+      },
+      {
+        "id": "pet-froggy",
+        "name": "Froggy",
+        "icon": "🐸",
+        "status": "Current pet",
+        "old": "CLASSIC: +2 guesses / turn\nTHE LAST SIP: −10% poison risk\nWORD TIDE: 15%: protect a heart",
+        "proposal": "Reduce Classic to +1 mistake; keep 10% poison resistance and 15% Tide guard."
+      },
+      {
+        "id": "pet-piggy",
+        "name": "Piggy",
+        "icon": "🐷",
+        "status": "Current pet",
+        "old": "CLASSIC: Next player: −1s\nTHE LAST SIP: +5% winner pot\nWORD TIDE: 5%: protect a heart",
+        "proposal": "Keep -1 second sabotage, but do not stack with another sabotage effect."
+      },
+      {
+        "id": "pet-foxy",
+        "name": "Foxy",
+        "icon": "🦊",
+        "status": "Current pet",
+        "old": "CLASSIC: +3s on your turns\nTHE LAST SIP: −15% poison risk\nWORD TIDE: 15%: protect a heart",
+        "proposal": "Keep +3 seconds and 15% poison resistance; reduce Tide guard to 10%."
+      },
+      {
+        "id": "pet-bear",
+        "name": "Grizzly",
+        "icon": "🐻",
+        "status": "Current pet",
+        "old": "CLASSIC: Next player: −2s\nTHE LAST SIP: +10% winner pot\nWORD TIDE: 10%: protect a heart",
+        "proposal": "Reduce sabotage to -1 second, or keep -2 with a 50% trigger. Never shorten below 6 seconds."
+      },
+      {
+        "id": "pet-penguin",
+        "name": "Pengu",
+        "icon": "🐧",
+        "status": "Current pet",
+        "old": "CLASSIC: +3s on your turns\nTHE LAST SIP: +3s to decide\nWORD TIDE: 15%: protect a heart",
+        "proposal": "Keep +3 seconds; add a distinct defensive identity rather than matching Foxy."
+      },
+      {
+        "id": "pet-owl",
+        "name": "Hoot",
+        "icon": "🦉",
+        "status": "Current pet",
+        "old": "CLASSIC: +4s on your turns\nTHE LAST SIP: +4s to decide\nWORD TIDE: 20%: protect a heart",
+        "proposal": "Reduce Classic and Sip bonus to +3 seconds; keep 20% Tide guard."
+      },
+      {
+        "id": "pet-unicorn",
+        "name": "Sparkle",
+        "icon": "🦄",
+        "status": "Current pet",
+        "old": "CLASSIC: Save 1 heart / match\nTHE LAST SIP: Block 1 poison / match\nWORD TIDE: Save 1 heart / match",
+        "proposal": "Keep one shield per match. Show whether it is spent; never refill by re-equipping."
+      },
+      {
+        "id": "pet-dragon",
+        "name": "Blaze",
+        "icon": "🐲",
+        "status": "Current pet",
+        "old": "CLASSIC: 50%: next player gets 3s\nTHE LAST SIP: −25% poison risk\nWORD TIDE: 20%: protect a heart",
+        "proposal": "Reduce Blaze trigger from 50% to 30%; reduce forced timer from 3 to 6 seconds. Shellback and Frostbite can counter it."
+      },
+      {
+        "id": "pet-robot",
+        "name": "Tick-Tock",
+        "icon": "🤖",
+        "status": "Current pet",
+        "old": "CLASSIC: +5s on your turns\nTHE LAST SIP: +5s to decide\nWORD TIDE: 25%: protect a heart",
+        "proposal": "Reduce +5 seconds to +4 seconds; Tide guard from 25% to 20%."
+      },
+      {
+        "id": "pet-shellback",
+        "name": "Shellback",
+        "icon": "🐢",
+        "status": "Proposed counter pet",
+        "old": "Not in the live game.",
+        "proposal": "Classic: incoming timer reductions cannot shorten a turn below 8 seconds, including Blaze. Roulette: 10% poison resistance. Tide: 10% guard. Defensive only; no time bonus."
+      },
+      {
+        "id": "pet-frostbite",
+        "name": "Frostbite",
+        "icon": "🦦",
+        "status": "Proposed counter pet",
+        "old": "Not in the live game.",
+        "proposal": "Classic: cancel the first Blaze proc each match. Roulette: one antidote against the first lethal poison. Tide: 15% guard. Counter is consumed and shown to everyone."
+      },
+      {
+        "id": "pet-badger",
+        "name": "Bulwark",
+        "icon": "🦡",
+        "status": "Proposed counter pet",
+        "old": "Not in the live game.",
+        "proposal": "Classic: reduce Piggy, Grizzly and Time Tax penalties by 1 second. Does not block Blaze. Roulette: +1 pass. Tide: 10% guard."
+      },
+      {
+        "id": "pet-moth",
+        "name": "Moon Moth",
+        "icon": "🦋",
+        "status": "Proposed counter pet",
+        "old": "Not in the live game.",
+        "proposal": "Classic: block the first mistake-reduction card. Roulette: +2 sip seconds. Tide: 15% guard. Does not block direct heart damage."
+      }
+    ],
+    "cards": [
+      {
+        "id": "card-skip",
+        "name": "Free Pass",
+        "icon": "🃏",
+        "status": "Current card",
+        "old": "Skip your own or another player's next turn. No heart lost!",
+        "proposal": "Royal only, 4% chance. No heart lost; one card action per turn."
+      },
+      {
+        "id": "card-time_tax",
+        "name": "Time Tax",
+        "icon": "🃏",
+        "status": "Current card",
+        "old": "Give the player you choose 2 fewer seconds on their next turn.",
+        "proposal": "Keep effect; enforce one card action per turn."
+      },
+      {
+        "id": "card-pressure",
+        "name": "Narrow Margin",
+        "icon": "🃏",
+        "status": "Current card",
+        "old": "The player you choose gets 2 fewer allowed mistakes on their next turn (at least 1).",
+        "proposal": "Keep effect; enforce one card action per turn."
+      },
+      {
+        "id": "card-heart",
+        "name": "Heartbreaker",
+        "icon": "🃏",
+        "status": "Current card",
+        "old": "Remove someone else's heart. A pet shield can block it.",
+        "proposal": "Royal only, 5% chance. Keep one heart damage and shield counter."
+      },
+      {
+        "id": "card-extra_beat",
+        "name": "Extra Beat",
+        "icon": "🃏",
+        "status": "Proposed card",
+        "old": "Not in the live game.",
+        "proposal": "Add 3 seconds to your own next turn; cap total extra time at 5 seconds. Standard crate."
+      },
+      {
+        "id": "card-safety_net",
+        "name": "Safety Net",
+        "icon": "🃏",
+        "status": "Proposed card",
+        "old": "Not in the live game.",
+        "proposal": "Block the next heart loss once; expires after one round. Cannot stack with another shield. Royal."
+      },
+      {
+        "id": "card-second_chance",
+        "name": "Second Chance",
+        "icon": "🃏",
+        "status": "Proposed card",
+        "old": "Not in the live game.",
+        "proposal": "Add one allowed mistake on your next turn; expires when that turn ends. Standard."
+      },
+      {
+        "id": "card-clean_slate",
+        "name": "Clean Slate",
+        "icon": "🃏",
+        "status": "Proposed card",
+        "old": "Not in the live game.",
+        "proposal": "Clear queued time and mistake penalties on yourself before the next turn begins. Royal."
+      },
+      {
+        "id": "card-slow_burn",
+        "name": "Slow Burn",
+        "icon": "🃏",
+        "status": "Proposed card",
+        "old": "Not in the live game.",
+        "proposal": "Remove 1 second from the target’s next two turns; 6-second floor; no stacking. Standard."
+      },
+      {
+        "id": "card-mirror",
+        "name": "Mirror",
+        "icon": "🃏",
+        "status": "Proposed card",
+        "old": "Not in the live game.",
+        "proposal": "Reflect the next hostile card once; reflected effects cannot reflect again. Royal."
+      },
+      {
+        "id": "card-lifeline",
+        "name": "Lifeline",
+        "icon": "🃏",
+        "status": "Proposed card",
+        "old": "Not in the live game.",
+        "proposal": "Restore one heart to yourself, up to the starting maximum; cannot revive eliminated players. Royal."
+      },
+      {
+        "id": "card-anchor",
+        "name": "Anchor",
+        "icon": "🃏",
+        "status": "Proposed card",
+        "old": "Not in the live game.",
+        "proposal": "Block the next hostile Free Pass once; self-used Free Pass remains allowed. Standard."
+      }
+    ],
+    "emotes": [
+      {
+        "id": "emote-star",
+        "name": "Star Jump",
+        "icon": "🏆",
+        "status": "Proposed victory emote · $300",
+        "old": "Not in the live shop.",
+        "proposal": "A celebratory jump with both hands high.",
+        "animation": "star"
+      },
+      {
+        "id": "emote-bow",
+        "name": "Champion Bow",
+        "icon": "🏆",
+        "status": "Proposed victory emote · $500",
+        "old": "Not in the live shop.",
+        "proposal": "A bow, then a proud wave.",
+        "animation": "bow"
+      },
+      {
+        "id": "emote-dance",
+        "name": "Victory Shuffle",
+        "icon": "🏆",
+        "status": "Proposed victory emote · $750",
+        "old": "Not in the live shop.",
+        "proposal": "Two side steps and alternating arm swings.",
+        "animation": "dance"
+      },
+      {
+        "id": "emote-spin",
+        "name": "Spotlight Spin",
+        "icon": "🏆",
+        "status": "Proposed victory emote · $1000",
+        "old": "Not in the live shop.",
+        "proposal": "One controlled spin and a final hands-up pose.",
+        "animation": "spin"
+      },
+      {
+        "id": "emote-guitar",
+        "name": "Encore",
+        "icon": "🏆",
+        "status": "Proposed victory emote · $1500",
+        "old": "Not in the live shop.",
+        "proposal": "A short guitar strum with singing face and musical notes.",
+        "animation": "guitar"
+      },
+      {
+        "id": "emote-wings",
+        "name": "Sky Salute",
+        "icon": "🏆",
+        "status": "Proposed victory emote · $2000",
+        "old": "Not in the live shop.",
+        "proposal": "A small hop, wing flare if equipped, and a salute.",
+        "animation": "wings"
+      }
+    ]
+  }
+}

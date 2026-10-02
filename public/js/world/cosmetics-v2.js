@@ -151,6 +151,7 @@ export function buildTable(tableId) {
 export function buildBackBling(backId, capeColor = null) {
   const id = BACK_IDS.has(backId) ? backId : 'none';
   const k = kit(`back:${id}`), { group, mesh, box, cylinder, ring } = k;
+  if (id.startsWith('secret_goggles_')) group.userData.attachToHead = true;
   if (id === 'none') return group;
   if (id === 'backpack') {
     box(1.35, 1.6, .6, '#258ccc', [0, -.05, -.88]);

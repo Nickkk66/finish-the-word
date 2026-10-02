@@ -1,3 +1,4 @@
+import { createAccessoryBloom } from './bloom.js';
 import { createWordTideScene } from './word-tide.js';
 import { LIGHTHOUSE_SEATS, TOTAL_WORLD_SEATS, lighthouseSeat } from '../shared/lighthouse.js';
 import { createCardPlay } from './card-play.js';
@@ -8,6 +9,7 @@ import { LAYOUT, SEAT_COUNT, OBBY } from '../shared/constants.js';
 import { BLOCKS, CHAIRS, CARD_BOXES, RARITIES } from '../shared/catalog.js';
 import { createTerrain } from './terrain.js';
 import { createProps } from './props.js';
+import { createModeCard } from './mode-card.js';
 import { createTable } from './table.js';
 import { createLobby } from './lobby.js';
 import { PlayerEntity } from './player.js';
@@ -51,6 +53,7 @@ export async function createWorld({ container, labelLayer }) {
   await loadFonts();
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  const accessoryBloom = createAccessoryBloom(renderer);
   renderer.shadowMap.enabled = true;
   renderer.localClippingEnabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -67,6 +70,7 @@ export async function createWorld({ container, labelLayer }) {
   const beforeScenery = new Set(scene.children);
   const props = createProps(scene);
   const table = createTable(scene);
+  const modeCard = createModeCard(scene);
   const lobby = createLobby(scene);
   const colliders = [...props.colliders, ...table.colliders, ...lobby.colliders];
   const effects = new Effects(scene);
@@ -316,6 +320,7 @@ export async function createWorld({ container, labelLayer }) {
     viewW = container.clientWidth || window.innerWidth;
     viewH = container.clientHeight || window.innerHeight;
     renderer.setSize(viewW, viewH, false);
+    const drawing = renderer.getDrawingBufferSize(new THREE.Vector2()); accessoryBloom.size(drawing.x, drawing.y);
     camera.aspect = viewW / viewH;
     camera.fov = camera.aspect < 0.8 ? 70 : 60;
     camera.updateProjectionMatrix();
@@ -389,6 +394,7 @@ export async function createWorld({ container, labelLayer }) {
     input.orbitX = input.orbitY = input.zoomDelta = 0;
 
     tide.update(time,dt,now);
+    for(const label of labels.labels)if(label.el.classList.contains('w-sign')||label.el.classList.contains('w-stack'))label.visible=!tide.active();
     for (const e of players.values()) e.tick(dt, time, now);
     cardPlay.update(now);
     for (const [id, target] of cardTargets) {
@@ -442,7 +448,7 @@ export async function createWorld({ container, labelLayer }) {
     labels.update(camera, viewW, viewH);
     emitMove(now, me);
 
-    renderer.render(scene, camera);
+    accessoryBloom.render(scene, camera);
     thumbnails.tick();
   }
 
@@ -593,7 +599,7 @@ export async function createWorld({ container, labelLayer }) {
     setTable(id) { table.setTable(id); },
     setMatch(match) { activeMatch=match; },
     setTide(match) { tide.set(match,localId); },
-    setRoulette(on, match, entry, mode) { cardPlay.setVisible(!on && !activeMatch?.tide); terrain.setNight(on); lobby.setRoulette(on,mode); roulette.set(on, match, players, entry); },
+    setRoulette(on, match, entry, mode) { modeCard.set(mode); cardPlay.setVisible(!on && !activeMatch?.tide); terrain.setNight(on); lobby.setRoulette(on,mode); roulette.set(on, match, players, entry, mode); },
     setMeteor(drop,collected) { roulette.setMeteor(drop,collected); },
     knockOutRoulette(id) { roulette.knockout(id); },
     renderThumbnail: thumbnails.render,
@@ -671,7 +677,7 @@ export async function createWorld({ container, labelLayer }) {
     },
     debugSnapshot() {
       return { zone, firstPerson, localPosition: local()?.pos.toArray() ?? null, checkpoint: { ...checkpoint },
-        scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), tide: tide.debug(), night: terrain.nightAmount(),
+        modeCard:modeCard.debug(), scenery:{...lobby.debug(),...props.debug()}, cardPlay:cardPlay.debug(), lighthouse: lighthouse.debug(), roulette: roulette.debug(), tide: tide.debug(), night: terrain.nightAmount(),
         obbyElapsedMs: zone === 'obby' ? performance.now() - obbyStarted : 0,
         drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
         cardTargets: [...cardTargets.keys()], hatchAnimations: [...players.values()].filter(e => e.avatar.cheerT > 0).map(e => e.id), travelLocked, portalAnimations: [...players.values()].filter(e => e.portal).map(e => e.id), playerPositions:[...players.values()].map(e=>({id:e.id,seat:e.seat,backScale:e.back?.scale.toArray(),tideSeated:!!e.tidePose&&e.avatar.seated,render:e.render.toArray(),yaw:e.renderYaw,sleeping:!!e.avatar.rouletteSleeping,faceExpression:e.avatar.faceExpression,skipRemaining:e.avatar.skipT||0,sleepWeight:e.avatar.sleepWeight||0,headBottom:e.avatar.rouletteSleeping?new THREE.Box3().setFromObject(e.avatar.headMesh).min.y:null})),

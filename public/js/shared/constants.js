@@ -1,7 +1,7 @@
 // Shared constants used by BOTH the server (src/) and the browser client (public/js/).
 // Keep this file dependency-free (plain ES module, no DOM / no Node APIs).
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 9;
 
 // ---- Rooms -------------------------------------------------------------------
 export const MAX_PLAYERS = 40;           // players in the shared lobby
@@ -50,12 +50,11 @@ export const MODES = [
   { id: 'classic', name: 'Classic', description: 'The original word chain.', hearts: 2, turnSeconds: 15 },
   { id: 'blitz', name: 'Blitz', description: 'Eight seconds, getting faster.', hearts: 1, turnSeconds: 8 },
   { id: 'long', name: 'Long Words', description: 'Five letters minimum, then longer.', hearts: 2, turnSeconds: 20 },
-  { id: 'double', name: 'Double Trouble', description: 'Carry the last two letters.', hearts: 2, turnSeconds: 15 },
   { id: 'sudden', name: 'Sudden Death', description: 'One heart. One mistake.', hearts: 1, turnSeconds: 15 },
   { id: 'random', name: 'Random Letter', description: 'Any letter in the last word can be next.', hearts: 2, turnSeconds: 15 },
   { id: 'chaos', name: 'Chaos', description: 'A new twist every round.', hearts: 2, turnSeconds: 15 },
   { id: 'roulette', name: 'The Last Sip', description: 'The cursed cup. Drink or pass. Last awake wins.', hearts: 1, turnSeconds: 10 },
-  { id: 'roulette_deadly', name: 'Death Wish', description: '50% starting poison risk. Prize grows ×1.25 each turn.', hearts: 1, turnSeconds: 10 },
+  { id: 'roulette_deadly', name: 'Death Wish', description: '50% starting poison risk. Last awake wins. 10% house edge.', hearts: 1, turnSeconds: 10 },
   { id: 'word_tide', name: 'Word Tide', description: 'Longer answers. Higher towers. Survive the tropical flood.', hearts: 5, turnSeconds: 20 },
   { id: 'custom', name: 'Custom', description: 'Your own room rules.', hearts: 2, turnSeconds: 15 },
 ];

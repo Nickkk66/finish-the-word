@@ -1,3 +1,4 @@
+import { applyTideWreckPose } from './tide-wreck.js';
 import { lighthouseSeat, lighthouseSeatPosition } from '../shared/lighthouse.js';
 // One player in the world: avatar, head labels, pet, seat hops and (for remote players)
 // snapshot interpolation of network moves.
@@ -87,8 +88,13 @@ export class PlayerEntity {
     this.avatar.guitar = id === 'guitar';
     if (id && id !== 'none') {
       this.back = buildBackBling(id, capeColor);
-      this.back.position.set(0, 3, 0);
-      this.avatar.rig.add(this.back);
+      if (this.back.userData.attachToHead) {
+        this.back.position.set(0, .77, 0);
+        this.avatar.head.add(this.back);
+      } else {
+        this.back.position.set(0, 3, 0);
+        this.avatar.rig.add(this.back);
+      }
     }
   }
 
@@ -271,14 +277,34 @@ export class PlayerEntity {
       const dx=this.portal.to.x-this.portal.from.x,dz=this.portal.to.z-this.portal.from.z;
       if(Math.hypot(dx,dz)>.05){this.renderYaw=Math.atan2(dx,dz);this.anim=k<1?'walk':'idle';this.speed=k<1?4:0;}
     }
-    if (this.tidePose) { r.set(this.tidePose.x,this.tidePose.y,this.tidePose.z); this.renderYaw=this.tidePose.yaw; this.avatar.setSeated(!this.tidePose.celebrate); }
+    if (this.tidePose) { r.set(this.tidePose.x,this.tidePose.y,this.tidePose.z); this.renderYaw=this.tidePose.yaw; this.avatar.setSeated(this.tidePose.seated??!this.tidePose.celebrate); }
     const root = this.avatar.root;
     root.position.copy(r);
-    root.rotation.y = this.renderYaw;
+    root.rotation.set(this.tidePose?.pitch||0,this.renderYaw,this.tidePose?.tilt||0,this.tidePose?'YXZ':'XYZ');
     this.avatar.setLocomotion(this.tidePose ? 'idle' : this.seat >= 0 ? 'idle' : this.anim, this.tidePose ? 0 : this.speed);
     this.avatar.update(dt, t);
+    if (this.tidePose?.airborne && !this.tideWreckPose) {
+      const p=this.tidePose,a=this.avatar,k=p.seatBlend||0;
+      a.body.position.set(0,.5*k,0);a.spin.rotation.set(0,0,0);
+      const flutter=Math.sin(p.flightAge*11)*(.22+.28*(p.fallingBlend||0))*(1-(p.canopyBlend||0));
+      a.lArm.rotation.set((-2.65+flutter)*(1-k)-1.2*k,0,-.18*(1-k)+.07*k);
+      a.rArm.rotation.set((-2.65-flutter)*(1-k)-1.2*k,0,.18*(1-k)-.07*k);
+      a.lLeg.rotation.set((-.25+flutter)*(1-k)-1.5*k,0,-.04*k);
+      a.rLeg.rotation.set((.18-flutter)*(1-k)-1.5*k,0,.04*k);
+    }
+    applyTideWreckPose(this.avatar,this.tideWreckPose);
+    if(this.tidePose?.airborne && this.tidePose.seatBlend>0 && !this.tideWreckPose){
+      root.updateWorldMatrix(true,true);
+      const bottom=Math.min(new THREE.Box3().setFromObject(this.avatar.lLegMesh).min.y,new THREE.Box3().setFromObject(this.avatar.rLegMesh).min.y);
+      r.y+=(this.tidePose.seatY+this.tidePose.landingAltitude-bottom)*this.tidePose.seatBlend;root.position.y=r.y;
+    }
+    if (this.tidePose?.seatY != null && !this.tideWreckPose && !this.tidePose.celebrate && !this.tidePose.airborne) {
+      root.updateWorldMatrix(true,true);
+      const bottom=Math.min(new THREE.Box3().setFromObject(this.avatar.lLegMesh).min.y,new THREE.Box3().setFromObject(this.avatar.rLegMesh).min.y);
+      r.y += this.tidePose.seatY-bottom;root.position.y=r.y;
+    }
     if (this.tidePose?.celebrate) { this.avatar.lArm.rotation.z = -2.5; this.avatar.rArm.rotation.z = 2.5; }
-    this.back?.userData.update?.(t, dt, !!this.tidePose || this.seat >= 0, this.tidePose ? 0 : this.speed, !this.status.out && !this.avatar.rouletteSleeping);
+    this.back?.userData.update?.(t, dt, !!this.tidePose || this.seat >= 0, this.tidePose ? 0 : this.speed, !this.status.out && !this.avatar.rouletteSleeping, this.avatar.guitarWeight);
     if (this.back?.userData.halo) this.back.userData.halo.position.y = this.data.look?.hairStyle === 2 ? 3.85 : 3.35;
     if (this.back && !this.back.userData.update) this.back.scale.setScalar(1);
     if (this.aura?.visible) { this.aura.position.copy(r); this.aura.rotation.y = t * 1.5; this.aura.position.y += Math.sin(t * 4) * .2; }

@@ -133,6 +133,9 @@ export function createNet() {
       if (ev.code === CLOSE_REPLACED) setState('closed', 'replaced');
       else if (ev.code === 4001) setState('closed', 'kicked');
       else if (ev.code === 4002) setState('closed', 'banned');
+      else if (ev.code === 4003) setState('closed', 'inactive');
+      else if(ev.code===4005)setState('closed','automated_activity');
+      else if (ev.code === 4004) setState('closed', 'room_shutdown');
       else if (ev.code === CLOSE_REJECTED) setState('closed', 'rejected');
       else scheduleRetry();
     };

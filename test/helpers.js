@@ -98,6 +98,8 @@ export function createRoom({ seed = 1, ...options } = {}) {
     onError: (err) => errors.push(err),
     ...options,
   });
+  // Stable upper-bound idle delay in gameplay fixtures; presence tests exercise randomness separately.
+  engine.presenceDelay=()=>300000;
   const conns = {};
   const send = (conn, msg) => engine.receive(conn, JSON.stringify(msg));
   const join = (id, extra = {}) => {

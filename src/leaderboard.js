@@ -5,6 +5,7 @@ export class Leaderboard extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS wins (player_id TEXT PRIMARY KEY, name TEXT NOT NULL, wins INTEGER NOT NULL, updated_at INTEGER NOT NULL)');
+    try{ctx.storage.sql.exec('ALTER TABLE wins ADD COLUMN handle_revision INTEGER NOT NULL DEFAULT 0');}catch{}
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS wins_sync (player_id TEXT PRIMARY KEY, wins INTEGER NOT NULL, revision INTEGER NOT NULL)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS win_sales (player_id TEXT NOT NULL, request_id TEXT NOT NULL, wins INTEGER NOT NULL, revision INTEGER NOT NULL, PRIMARY KEY(player_id,request_id))');
   }
@@ -27,15 +28,17 @@ export class Leaderboard extends DurableObject {
     if (request.method !== 'POST') return new Response('Not found', { status: 404 });
     const data = await request.json();
     if (path === '/eligible') {
-      if (!Array.isArray(data.playerIds) || data.playerIds.length < 2 || data.playerIds.length > 8
+      if (!Array.isArray(data.playerIds) || data.playerIds.length < 1 || data.playerIds.length > 8
         || new Set(data.playerIds).size !== data.playerIds.length || data.playerIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id))) return new Response('Bad entry', { status: 400 });
       const enough = data.playerIds.every(id => ([...sql.exec('SELECT wins FROM wins WHERE player_id=?', id)][0]?.wins || 0) >= 1);
-      return Response.json(enough ? { ok: true } : { ok: false, error: 'Each player needs at least one recorded win for paid Last Sip.' });
+      return Response.json(enough ? { ok: true } : { ok: false, error: 'Each player needs 1 recorded trophy to play The Last Sip. The trophy is kept.' });
     }
     if (typeof data.playerId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(data.playerId)) return new Response('Bad id', { status: 400 });
-    if (path === '/win') {
+    if(path==='/rename'){
+      sql.exec('UPDATE wins SET name=?,handle_revision=? WHERE player_id=? AND handle_revision<=?',data.name,data.revision||0,data.playerId,data.revision||0);
+    } else if (path === '/win') {
       const name = sanitizeName(data.name) || 'Player';
-      sql.exec('INSERT INTO wins (player_id,name,wins,updated_at) VALUES (?,?,1,?) ON CONFLICT(player_id) DO UPDATE SET name=excluded.name,wins=wins.wins+1,updated_at=excluded.updated_at', data.playerId, name, Date.now());
+      sql.exec('INSERT INTO wins (player_id,name,wins,updated_at,handle_revision) VALUES (?,?,1,?,?) ON CONFLICT(player_id) DO UPDATE SET name=CASE WHEN excluded.handle_revision>=wins.handle_revision THEN excluded.name ELSE wins.name END,handle_revision=MAX(wins.handle_revision,excluded.handle_revision),wins=wins.wins+1,updated_at=excluded.updated_at', data.playerId, name, Date.now(), data.revision||0);
       const synced = [...sql.exec('SELECT revision FROM wins_sync WHERE player_id=?', data.playerId)][0];
       if (synced) sql.exec('UPDATE wins_sync SET wins=(SELECT wins FROM wins WHERE player_id=?),revision=revision+1 WHERE player_id=?', data.playerId, data.playerId);
     } else if (path === '/sell') {

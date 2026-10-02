@@ -16,13 +16,13 @@ export function freePanel({ actions }) {
       body.append(h('div', { class: 'free-wrap' },
         h('div', { class: 'free-gift' }, icons.gift()),
         h('div', { class: 'free-amount stroke' }, `+${FREE_COINS} 💵`),
-        h('p', { class: 'free-text' }, `Come back every ${FREE_COOLDOWN_MS / 60000} minutes for more free coins!`),
+        h('p', { class: 'free-text' }, `Spend ${FREE_COOLDOWN_MS / 60000} minutes in-game to earn free coins. Your time adds up across sessions!`),
         btn));
 
       function update() {
         const wait = freeReadyIn();
         btn.disabled = wait > 0;
-        btn.textContent = wait > 0 ? `Next in ${formatDuration(wait)}` : 'Claim!';
+        btn.textContent = wait > 0 ? `${formatDuration(wait)} of play left` : 'Claim!';
         btn.classList.toggle('pulse', wait === 0);
       }
       const timer = setInterval(update, 1000);

@@ -1,7 +1,7 @@
 import { CHAIRS, BACK_BLING, PETS_BY_ID, CARDS_BY_ID } from './catalog.js';
 
 const chairIds = new Set(CHAIRS.map(item => item.id).filter(id => id !== 'wooden'));
-const backIds = new Set(BACK_BLING.map(item => item.id).filter(id => id !== 'none'));
+const backIds = new Set(BACK_BLING.filter(item=>!item.secret&&item.id!=='none').map(item=>item.id));
 const amount = value => Number.isSafeInteger(value) && value > 0 ? Math.min(value, 1000000) : 0;
 
 export function tradeInventory(raw = {}) {
@@ -16,7 +16,6 @@ export function tradeInventory(raw = {}) {
     if (qty) cards[id] = qty;
   }
   return {
-    coins: Math.min(amount(raw.coins), 1000000000),
     chairs: [...new Set((Array.isArray(raw.ownedChairs) ? raw.ownedChairs : raw.chairs || []).filter(id => chairIds.has(id)))],
     backs: [...new Set((Array.isArray(raw.ownedBacks) ? raw.ownedBacks : raw.backs || []).filter(id => backIds.has(id)))],
     pets, cards,
@@ -35,11 +34,11 @@ export function tradeOffer(raw = {}) {
     seen.add(key);
     items.push({ kind, id, ...(kind === 'pet' ? { tier } : {}), qty: kind === 'chair' || kind === 'back' ? 1 : Math.min(amount(entry.qty), 100) });
   }
-  return { coins: Math.min(amount(raw.coins), 1000000000), items: items.filter(item => item.qty) };
+  return { items: items.filter(item => item.qty) };
 }
 
 export function offerAvailable(inventory, offer) {
-  if (!inventory || offer.coins > inventory.coins) return false;
+  if (!inventory || offer.coins) return false;
   return offer.items.every(item => {
     if (item.kind === 'chair') return inventory.chairs.includes(item.id);
     if (item.kind === 'back') return inventory.backs.includes(item.id);
@@ -49,7 +48,7 @@ export function offerAvailable(inventory, offer) {
 }
 
 export function transferInventory(inventory, outgoing, incoming) {
-  const next = { coins: Math.max(0, inventory.coins - outgoing.coins + incoming.coins),
+  const next = {
     chairs: [...inventory.chairs], backs: [...inventory.backs], pets: { ...inventory.pets }, cards: { ...inventory.cards } };
   for (const [offer, sign] of [[outgoing, -1], [incoming, 1]]) for (const item of offer.items) {
     if (item.kind === 'chair' || item.kind === 'back') {

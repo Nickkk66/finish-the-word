@@ -1,3 +1,4 @@
+import { createAdminProfileEditor } from '../admin-profile.js';
 import { isRouletteMode, rouletteRules } from '../../shared/roulette.js';
 import { h, replay } from '../dom.js';
 import { icons } from '../icons.js';
@@ -22,6 +23,7 @@ export function settingsPanel({ state, actions }) {
       const sound = segmented([['On', true], ['Off', false]], actions.setSound);
       const quality = segmented([['High', 'high'], ['Low', 'low']], actions.setQuality);
       const prefill = segmented([['On', true], ['Off', false]], (v) => actions.preference('prefillPrefix', v));
+      const playerList = segmented([['Classic', 'classic'], ['Slim', 'compact']], v => actions.preference('playerListStyle', v));
       const view = segmented([['Third person', 'third'], ['First person', 'first']], actions.setView);
       const notice = h('p', { class: 'host-notice' });
       const version = h('button', { type: 'button', class: 'version-entry' });
@@ -39,7 +41,7 @@ export function settingsPanel({ state, actions }) {
         if (e.key === 'Escape') { secret.value = ''; secret.hidden = true; }
         if (e.key === 'Enter') { actions.unlock(secret.value); secret.value = ''; secret.hidden = true; }
       });
-      body.append(h('div', { class: 'set-group' }, row('Sound', sound.el), row('Graphics', quality.el)),
+      body.append(h('div', { class: 'set-group' }, row('Sound', sound.el), row('Graphics', quality.el), row('Player list', playerList.el)),
         h('h3', { class: 'section-title stroke' }, 'Controls'),
         h('div', { class: 'set-group' }, row('Camera · P to switch', view.el), row('Pre-fill required letters', prefill.el)),
         h('div', { class: 'set-group' }, row('Save across devices', button('Account', () => actions.openAccount()))),
@@ -48,12 +50,15 @@ export function settingsPanel({ state, actions }) {
       let lastRoomRequest = 0;
       const roomsView = h('div', { class: 'admin-room-list' });
       const leadersView = h('div', { class: 'admin-room-players' });
+      const profileEditor = createAdminProfileEditor({ state, actions });
       let winTarget, winName, targetControl, selectedRoom = null;
       function selectAdminPlayer(person, roomCode = null) {
+        state.adminProfile = null;
+        actions.admin('getProfile', { id: person.id, roomCode: roomCode || state.adminRooms.find(room => room.players?.some(p => p.id === person.id))?.code });
         selectedRoom = roomCode || (state.players.has(person.id) ? state.code : state.adminRooms.find(room => room.players?.some(p => p.id === person.id))?.code || null);
         if (winTarget) { winTarget.value = person.id; winName.value = person.name; }
         if (targetControl && [...targetControl.options].some(option => option.value === person.id)) targetControl.value = person.id;
-        admin.querySelector('.admin-target-note')?.replaceChildren(document.createTextNode(selectedRoom ? `Editing ${person.name}${selectedRoom !== state.code ? ` in ${selectedRoom}` : ''}.` : `${person.name} is offline. You can set their wins here.`));
+        admin.querySelector('.admin-target-note')?.replaceChildren(document.createTextNode(selectedRoom ? `Editing ${person.name}${selectedRoom !== state.code ? ` in ${selectedRoom}` : ''}.` : `${person.name} is offline. Load their saved profile to edit it.`));
       }
       function renderRooms() {
         const rows = state.adminRooms.map(room => {
@@ -71,7 +76,7 @@ export function settingsPanel({ state, actions }) {
           : [h('p', { class: 'panel-note' }, 'No leaderboard entries yet.')]));
       }
       function update() {
-        sound.set(profile.settings.sound); quality.set(profile.settings.quality); prefill.set(profile.settings.prefillPrefix); view.set(profile.settings.view === 'first' ? 'first' : 'third');
+        playerList.set(profile.settings.playerListStyle); sound.set(profile.settings.sound); quality.set(profile.settings.quality); prefill.set(profile.settings.prefillPrefix); view.set(profile.settings.view === 'first' ? 'first' : 'third');
         const host = state.hostId === state.you || state.isAdmin;
         notice.textContent = host ? 'Change match rules in Game Settings.' : 'Only the host can change game rules. Your personal settings above are always yours to change.';
         notice.classList.toggle('restricted', !host);
@@ -83,6 +88,7 @@ export function settingsPanel({ state, actions }) {
         if (!state.isAdmin || !adminExpanded) return;
         if (Date.now() - lastRoomRequest > 15000) { lastRoomRequest = Date.now(); actions.admin('listRooms'); }
         renderRooms();
+        profileEditor.update();
         const key = [...state.players.values()].map((p) => `${p.id}:${p.name}`).join('|');
         if (key === adminKey && admin.childElementCount) return;
         adminKey = key;
@@ -92,16 +98,17 @@ export function settingsPanel({ state, actions }) {
         winTarget = h('input', { class: 'field', value: target.value || '', placeholder: 'Player ID', 'aria-label': 'Player ID for wins' });
         winName = h('input', { class: 'field', value: state.players.get(target.value)?.name || '', placeholder: 'Player name', 'aria-label': 'Player name for wins' });
         const winAmount = h('input', { class: 'field', type: 'number', min: 0, max: 1000000000, step: 1, value: 0, 'aria-label': 'Wins to set' });
-        target.addEventListener('change', () => { winTarget.value = target.value; winName.value = state.players.get(target.value)?.name || ''; selectedRoom = state.code; });
+        target.addEventListener('change', () => { winTarget.value = target.value; winName.value = state.players.get(target.value)?.name || ''; selectedRoom = state.code; selectAdminPlayer(state.players.get(target.value), state.code); });
         const amount = h('input', { class: 'field', type: 'number', min: -1000000000, max: 1000000000, value: 100, 'aria-label': 'Coin amount, negative to remove' });
         const card = h('select', { class: 'field', 'aria-label': 'Card to add' }, CARDS.map(v => h('option', { value: v.id }, v.name)));
         const freeMerge = h('input', { type: 'checkbox', checked: !!state.adminFreeMerge, onChange: e => { state.adminFreeMerge = e.target.checked; actions.refreshPanels(); } });
         const announcement = h('input', { class: 'field', maxlength: 120, placeholder: 'Announcement', 'aria-label': 'Announcement' });
+        const animationToggle=h('input',{type:'checkbox',checked:!!state.showAnimationTester,'aria-label':'Show animation tester',onChange:e=>actions.toggleAnimationTester(e.target.checked)});
         const tag = h('input', { type: 'checkbox', 'aria-label': 'Show admin tag', onChange: (e) => actions.admin('tag', { on: e.target.checked }) });
-        admin.replaceChildren(h('h3', { class: 'section-title stroke' }, 'Admin'),
+        admin.replaceChildren(row('Preview player list in game', h('div', {class:'seg'}, button('Classic',()=>actions.preference('playerListStyle','classic')),button('Slim roster',()=>actions.preference('playerListStyle','compact')))),button('Test animations',actions.testAnimations,'purple'),row('Show / hide animation tester',animationToggle),h('h3', { class: 'section-title stroke' }, 'Admin'),
           h('div', { class: 'host-tools' }, button('Take host', () => actions.admin('takeHost')), button('Force start', () => actions.admin('forceStart')),
             button('End match', () => actions.admin('endMatch'), 'red'), button('Reset room', () => actions.admin('reset'), 'red')),
-          h('div', { class: 'set-group' }, row('Player', target), h('p', { class: 'admin-target-note panel-note' }, 'Choose a player here or click one below.'), row('Coin amount (+/−)', amount),
+          profileEditor.el, h('div', { class: 'set-group' }, row('Player', target), h('p', { class: 'admin-target-note panel-note' }, 'Choose a player here or click one below.'), row('Coin amount (+/−)', amount),
             h('div', { class: 'host-tools' }, button('Set coins', () => { if(selectedRoom) actions.admin('coins', { id: winTarget.value, roomCode: selectedRoom, operation: 'set', amount: Number(amount.value) }); }),
               button('Add / remove coins', () => { if(selectedRoom) actions.admin('coins', { id: winTarget.value, roomCode: selectedRoom, operation: 'add', amount: Number(amount.value) }); }),
               button('Teleport to player', () => actions.teleportToPlayer(target.value))),
@@ -127,7 +134,7 @@ export function gameSettingsPanel({ state, actions }) {
   return { id: 'gameSettings', title: 'Game Settings', color: 'orange', icon: icons.gear,
     mount(body) {
       const mode = button('Choose mode', async () => {
-        const visibleModes = MODES.filter(v => ['classic', 'double', 'roulette', 'roulette_deadly', 'word_tide'].includes(v.id));
+        const visibleModes = MODES.filter(v => ['classic', 'roulette', 'roulette_deadly', 'word_tide'].includes(v.id));
         const sortedModes=[...visibleModes.filter(v=>!isRouletteMode(v.id)),...visibleModes.filter(v=>isRouletteMode(v.id))];
         const id = await choiceDialog('Choose a mode', sortedModes.map(v => ({ label: v.name, description: v.description, value: v.id, group: v.id === 'word_tide' ? 'Word Tide' : isRouletteMode(v.id) ? 'Roulette' : 'Finish the Word' })));
         if (isRouletteMode(id)) {
@@ -160,7 +167,7 @@ export function gameSettingsPanel({ state, actions }) {
         notice.textContent = allowed ? 'Changes apply to the next match.' : 'Only the host can change these game settings.';
         notice.classList.toggle('restricted', !allowed);
         mode.textContent = `Mode: ${MODES.find(v => v.id === state.settings.mode)?.name || 'Classic'} ▾`; mode.disabled = !allowed;
-        hearts.set(state.settings.hearts, !allowed || isRoulette); turn.set(state.settings.turnSeconds, !allowed || isRoulette); pets.set(state.settings.petAbilities, !allowed || isRoulette);
+        hearts.set(state.settings.hearts, !allowed || isRoulette); turn.set(state.settings.turnSeconds, !allowed || isRoulette); pets.set(state.settings.petAbilities, !allowed);
         swearing.set(!!state.settings.allowSwearing, !allowed);
         bot.set(state.settings.botLevel, !allowed); visibility.textContent = state.public ? 'Main public room' : 'Private invite room'; tools.hidden = !allowed;
         players.replaceChildren(...[...state.players.values()].map((p) => h('div', { class: 'moderation-row' }, h('span', null, `${p.name}${p.isBot ? ' · BOT' : ''}`),

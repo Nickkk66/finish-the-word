@@ -304,10 +304,10 @@ function drawHowTo(canvas, rouletteMode = null) {
   const lines = roulette ? [
     'Sit down. Place at least 25 coins.',
     'Drink or pass. You have 10 seconds.',
-    `Prize +${Math.round((rules.prizeGrowth-1)*100)}% each circuit (max 2×); risk +${Math.round(rules.riskStep*100)}% each circuit.`,
+    'Equal stakes. Extra coins return to you.',
     'One pass per player per match.',
-    'Last awake takes the whole prize.',
-    'Fire takes 25 coins every 5 seconds!',
+    'Matched pool pays winners; 10%+ house fee.',
+    'Fire: −50/sec. Under 50? Lose half.',
   ] : [
     'Sit at the table to join a match',
     'Type a word that starts with the letter',

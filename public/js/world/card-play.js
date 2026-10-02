@@ -7,6 +7,7 @@ import { LAYOUT } from '../shared/constants.js';
 
 // Landed cards and arrows are instanced by art, so history adds no draw calls.
 export function createCardPlay(scene, players, labels) {
+  const SHOW_TARGET_ARROWS = false; // Retained for an optional future toggle.
   const geometry = new THREE.BoxGeometry(.94,.035,1.26), face = new THREE.PlaneGeometry(.9,1.2);
   const paper = new THREE.MeshLambertMaterial({color:'#fff3da'}), art = new Map();
   const usedSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><circle cx="64" cy="64" r="58" fill="#159659" stroke="white" stroke-width="7"/><path d="M31 63 54 84 98 39" fill="none" stroke="white" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -61,6 +62,7 @@ export function createCardPlay(scene, players, labels) {
         dummy.position.y+=.004;dummy.updateMatrix();checks.setMatrixAt(i,dummy.matrix);
         dummy.rotation.set(0,item.yaw,0);dummy.position.copy(item.to);dummy.position.x+=Math.sin(item.yaw)*.72*scale;dummy.position.z+=Math.cos(item.yaw)*.72*scale;dummy.position.y+=.035;dummy.updateMatrix();arrows.setMatrixAt(i,dummy.matrix);
       });
+      arrows.visible = SHOW_TARGET_ARROWS;
       for(const mesh of [body,stamp,checks,arrows]){mesh.frustumCulled=false;scene.add(mesh);batches.push(mesh);}
       hitMeshes.set(stamp,items);
     }
@@ -159,6 +161,6 @@ export function createCardPlay(scene, players, labels) {
       hoverLabel.visible=!!item && performance.now()-item.started>=6900;
       if(item){hoverLabel.el.textContent=CARDS_BY_ID[item.cardId].description;hoverLabel.anchor.copy(item.to).setY(y+1.2);}
     },
-    debug:()=>({active:!!event,style:event?.style,played,age:event?(performance.now()-event.started)/1000:null,draws:batches.length,landed:cards.filter(i=>i.landed).map(i=>({targetId:i.targetId,cardId:i.cardId,position:i.to.toArray(),artLoaded:!!art.get(i.cardId).map.image?.width})),position:event?.card?.position.toArray()}),
+    debug:()=>({arrowsEnabled:SHOW_TARGET_ARROWS,active:!!event,style:event?.style,played,age:event?(performance.now()-event.started)/1000:null,draws:batches.length,landed:cards.filter(i=>i.landed).map(i=>({targetId:i.targetId,cardId:i.cardId,position:i.to.toArray(),artLoaded:!!art.get(i.cardId).map.image?.width})),position:event?.card?.position.toArray()}),
   };
 }

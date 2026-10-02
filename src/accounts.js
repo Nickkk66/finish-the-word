@@ -1,6 +1,7 @@
 // Optional cloud saves. Gameplay economy remains the existing client-trusted model.
 // Passwords and session tokens are never stored in plaintext or returned in profiles.
-import { sanitizeLook, CHAIRS, BACK_BLING, PETS, CARDS } from '../public/js/shared/catalog.js';
+import { sanitizeLook, CHAIRS, BACK_BLING, PETS, CARDS, SECRET_BACK_IDS } from '../public/js/shared/catalog.js';
+import { handleMethods } from './handles.js';
 import { tradeOffer } from '../public/js/shared/trade.js';
 
 const ITERATIONS = 100000; // Workers Web Crypto PBKDF2 iteration ceiling.
@@ -52,12 +53,19 @@ export function cloudProfile(value, fixedId) {
     longestWord: /^[a-z]{1,30}$/.test(value.longestWord || '') ? value.longestWord : '',
     receipts: Array.isArray(value.receipts) ? value.receipts.filter(v => typeof v === 'string' && v.length <= 160).slice(-512) : [],
     tradeHistory: Array.isArray(value.tradeHistory) ? value.tradeHistory.filter(v => v && Number.isSafeInteger(v.at) && typeof v.partner === 'string').slice(-20).map(v => ({ at: v.at, partner: v.partner.slice(0, 16), outgoing: tradeOffer(v.outgoing), incoming: tradeOffer(v.incoming) })) : [],
-    settings: { sound: settings.sound !== false, prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket', view: settings.view === 'first' ? 'first' : 'third', quality: settings.quality === 'low' ? 'low' : 'high' },
+    settings: { sound: settings.sound !== false, prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket', playerListStyle: ['classic', 'compact', 'portrait', 'ribbon'].includes(settings.playerListStyle) ? settings.playerListStyle : 'classic', view: settings.view === 'first' ? 'first' : 'third', quality: settings.quality === 'low' ? 'low' : 'high' },
   };
   for (const key of ['coins', 'wins', 'winsRevision', 'gamesPlayed', 'wordsTyped', 'xp', 'bestWpm', 'bestCombo', 'bestObbyMs', 'lastFreeClaim']) {
     result[key] = key === 'lastFreeClaim' ? (Number.isSafeInteger(value[key]) && value[key] >= 0 ? value[key] : 0) : count(value[key]);
   }
+  result.freePlayMs = Math.min(900000, count(value.freePlayMs));
   return result;
+}
+
+export function restrictSecretBacks(profile, allowed = []) {
+  profile.ownedBacks = profile.ownedBacks.filter(id => !SECRET_BACK_IDS.has(id) || allowed.includes(id));
+  if(!profile.ownedBacks.includes(profile.equippedBack))profile.equippedBack='none';
+  return profile;
 }
 
 async function readBody(request) {
@@ -81,7 +89,8 @@ async function readBody(request) {
 }
 
 export class Accounts {
-  constructor(ctx) {
+  constructor(ctx, env) {
+    this.ctx=ctx;this.env=env;
     this.sql = ctx.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY, salt TEXT NOT NULL, password_hash TEXT NOT NULL, profile TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at INTEGER NOT NULL)');
@@ -89,6 +98,7 @@ export class Accounts {
     this.sql.exec('CREATE TABLE IF NOT EXISTS account_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, reset_at INTEGER NOT NULL)');
     // Existing accounts predate recovery codes. Their owners can generate one while signed in.
     try { this.sql.exec('ALTER TABLE accounts ADD COLUMN recovery_hash TEXT'); } catch { /* already migrated */ }
+    this.initHandles();
   }
   one(query, ...args) { return [...this.sql.exec(query, ...args)][0]; }
   rate(key, maximum, duration) {
@@ -111,7 +121,61 @@ export class Accounts {
     catch { return failure('The account request could not be completed.', 400); }
   }
   async handle(request) {
-    const path = new URL(request.url).pathname.replace('/api/account', '');
+    const url=new URL(request.url);
+    // Internal service binding only: no public account route exposes these operations.
+    if (url.hostname === 'internal' && url.pathname === '/admin-profiles' && request.method === 'POST') {
+      const body = await readBody(request);
+      if (body.action === 'list') {
+        const search = String(body.search || '').slice(0, 64).toLowerCase();
+        const users = [...this.sql.exec('SELECT username,profile,created_at FROM accounts ORDER BY created_at DESC')]
+          .map(a => ({ username: a.username, id: JSON.parse(a.profile).id, name: JSON.parse(a.profile).name, createdAt: a.created_at }))
+          .filter(a => !search || [a.username, a.id, a.name].some(v => v.toLowerCase().includes(search))).slice(0, 100);
+        return json({ users });
+      }
+      const handle = this.one('SELECT * FROM handles WHERE owner=?', body.id);
+      const account = handle?.account && this.one('SELECT * FROM accounts WHERE username=?', handle.account);
+      if (!account) {
+        if (handle && body.action === 'save') {
+          const name = cloudProfile(body.profile, body.id).name;
+          const taken = this.one('SELECT owner FROM handles WHERE handle=?', name.toLowerCase());
+          if (taken && taken.owner !== body.id) return failure('That handle is taken.', 409);
+          if (/^bot-/i.test(name)) return failure('That handle is reserved.');
+          this.sql.exec('UPDATE handles SET handle=?,name=?,revision=revision+1 WHERE owner=?', name.toLowerCase(), name, body.id);
+          await this.notifyHandle(this.one('SELECT * FROM handles WHERE owner=?', body.id));
+        }
+        return json({ guest: true });
+      }
+      if (body.action === 'get') return json({ profile: JSON.parse(account.profile), revision: account.revision, username: account.username, createdAt: account.created_at });
+      if (body.action !== 'save') return failure('Unknown operation.');
+      if (body.revision !== account.revision) return failure('This save changed. Reload the profile before editing.', 409);
+      const profile = cloudProfile(body.profile, body.id);
+      const name = profile.name;
+      const taken = this.one('SELECT owner FROM handles WHERE handle=?', name.toLowerCase());
+      if (taken && taken.owner !== body.id) return failure('That handle is taken.', 409);
+      if (/^bot-/i.test(name)) return failure('That handle is reserved.');
+      if (this.env?.LEADERBOARD) {
+        const response = await this.env.LEADERBOARD.get(this.env.LEADERBOARD.idFromName('global')).fetch('https://internal/set', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playerId: body.id, name, wins: profile.wins }) });
+        if (!response.ok) return failure('Could not update wins.');
+        profile.winsRevision = (await response.json()).revision;
+        // The leaderboard call yielded; protect against a newer client save.
+        const current = this.one('SELECT revision FROM accounts WHERE username=?', account.username);
+        if (current.revision !== account.revision) return failure('This save changed. Reload the profile before editing.', 409);
+        const reserved = this.one('SELECT owner FROM handles WHERE handle=?', name.toLowerCase());
+        if (reserved && reserved.owner !== body.id) return failure('That handle is taken.', 409);
+      }
+      this.sql.exec('UPDATE handles SET handle=?,name=?,revision=revision+1 WHERE owner=?', name.toLowerCase(), name, body.id);
+      this.sql.exec('UPDATE accounts SET profile=?,revision=revision+1 WHERE username=?', JSON.stringify(profile), account.username);
+      const result = { profile, revision: account.revision + 1, username: account.username, createdAt: account.created_at };
+      await this.notifyHandle(this.one('SELECT * FROM handles WHERE owner=?', body.id));
+      if (this.env?.ROOMS) {
+        await Promise.all([...this.sql.exec('SELECT room FROM handle_rooms WHERE owner=?', body.id)].map(({ room }) =>
+          this.env.ROOMS.get(this.env.ROOMS.idFromName(room)).fetch('https://internal/admin-edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'profile', data: { id: body.id, ...result } }) })));
+      }
+      return json(result);
+    }
+
+    if(url.pathname.startsWith('/api/handle/'))return this.handleRequest(request,url.pathname.replace('/api/handle',''),readBody);
+    const path = url.pathname.replace('/api/account', '');
     if (request.method === 'POST' && (path === '/register' || path === '/login' || path === '/reset')) {
       const ipHash = await digest(request.headers.get('CF-Connecting-IP') || 'local-development');
       if (!this.rate(`ip:${ipHash}`, 30, 15 * 60000)) return failure('Too many attempts. Try again in 15 minutes.', 429);
@@ -125,11 +189,14 @@ export class Accounts {
       if (path === '/register') {
         if (!this.rate(`signup:${ipHash}`, 6, 60 * 60000)) return failure('Too many new accounts. Try again later.', 429);
         if (account) return failure('That username is unavailable.', 409);
-        const profile = cloudProfile(body.profile);
+        const profile = restrictSecretBacks(cloudProfile(body.profile));
         const salt = random(16);
         const hash = await passwordHash(body.password, salt);
         recoveryCode = random(20);
         const recoveryHash = await digest(recoveryCode);
+        // Adopt the verified guest handle, or atomically reserve a new one.
+        if(this.one('SELECT username FROM accounts WHERE username=?',username))return failure('That login ID is unavailable.',409);
+        if(!(await this.registerHandle(profile,username,body.handleToken)))return failure('That handle is taken or belongs to another player.',409);
         // Unique key protects against two registrations racing across the password await.
         this.sql.exec('INSERT OR IGNORE INTO accounts (username,salt,password_hash,profile,revision,created_at,recovery_hash) VALUES (?,?,?,?,1,?,?)', username, salt, hash, JSON.stringify(profile), Date.now(), recoveryHash);
         account = this.one('SELECT * FROM accounts WHERE username=?', username);
@@ -160,7 +227,7 @@ export class Accounts {
     if (!session) return failure('Please log in again. Your local progress is still safe.', 401);
     if (path === '/verify' && request.method === 'GET') {
       const account = this.one('SELECT profile,created_at FROM accounts WHERE username=?', session.username);
-      return json({ id: JSON.parse(account.profile).id, createdAt: account.created_at });
+      return json({ id: JSON.parse(account.profile).id, createdAt: account.created_at, secretBacks:JSON.parse(account.profile).ownedBacks.filter(id=>SECRET_BACK_IDS.has(id)) });
     }
     if (path === '/logout' && request.method === 'POST') {
       this.sql.exec('DELETE FROM sessions WHERE token_hash=?', session.tokenHash);
@@ -181,10 +248,13 @@ export class Accounts {
       const body = await readBody(request);
       const account = this.one('SELECT profile,revision FROM accounts WHERE username=?', session.username);
       if (!Number.isSafeInteger(body.revision) || body.revision !== account.revision) return failure('Another device has a newer save. Load that cloud save or log out to keep playing locally.', 409);
-      const profile = cloudProfile(body.profile, JSON.parse(account.profile).id);
+      const profile = restrictSecretBacks(cloudProfile(body.profile, JSON.parse(account.profile).id), JSON.parse(account.profile).ownedBacks);
+      profile.name=this.one('SELECT name FROM handles WHERE account=?',session.username).name;
       this.sql.exec('UPDATE accounts SET profile=?,revision=revision+1 WHERE username=? AND revision=?', JSON.stringify(profile), session.username, body.revision);
       return json({ revision: account.revision + 1 });
     }
     return failure('Not found.', 404);
   }
 }
+
+Object.assign(Accounts.prototype,handleMethods);

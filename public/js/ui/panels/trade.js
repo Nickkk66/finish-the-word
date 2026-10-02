@@ -1,4 +1,5 @@
-import { h, fmt } from '../dom.js';
+import { h } from '../dom.js';
+import { noticeDialog } from '../overlays.js';
 import { icons } from '../icons.js';
 import { cardArt, modelArt } from '../art.js';
 import { CHAIRS, BACK_BLING, PETS, CARDS, CARDS_BY_ID } from '../../shared/catalog.js';
@@ -33,21 +34,25 @@ function portrait(look) {
 function history() {
   const list = h('div', { class: 'trade-history' });
   for (const entry of [...profile.tradeHistory].reverse()) {
-    const summary = offer => [offer.coins ? `${fmt(offer.coins)} coins` : '', ...(offer.items || []).map(item => `${tradeItemName(item)}${item.qty > 1 ? ` ×${item.qty}` : ''}`)].filter(Boolean).join(', ') || 'Nothing';
+    const summary = offer => [(offer.items || []).map(item => `${tradeItemName(item)}${item.qty > 1 ? ` ×${item.qty}` : ''}`)].flat().filter(Boolean).join(', ') || 'Nothing';
     list.append(h('div', { class: 'trade-history-row' }, h('strong', {}, entry.partner), h('small', {}, new Date(entry.at).toLocaleString()), h('span', {}, `Gave: ${summary(entry.outgoing)}`), h('span', {}, `Got: ${summary(entry.incoming)}`)));
   }
-  return h('details', { class: 'trade-history-wrap' }, h('summary', {}, `Trade history (${profile.tradeHistory.length})`), list.childElementCount ? list : h('p', {}, 'No completed trades yet.'));
+  return noticeDialog(`Trade history (${profile.tradeHistory.length})`, list.childElementCount ? list : h('p', { class: 'trade-history-empty' }, 'No completed trades yet.'));
 }
 
 export function tradePanel({ state, actions }) {
   return { id: 'trade', title: 'Trade', color: 'green', icon: icons.trade,
     mount(body) {
+      const countdown = h('p', { class: 'trade-countdown', role: 'status' });
+      function tick() { if (state.trade?.countdown) countdown.textContent = `Trade completes in ${Math.max(0, Math.ceil((state.trade.countdown - Date.now()) / 1000))}…`; }
+      const clock = setInterval(tick, 100);
       function update() {
-        body.replaceChildren();
+        body.replaceChildren(h('button', { type: 'button', class: 'trade-history-shortcut', title: 'Trade history',
+          'aria-label': 'Trade history', 'aria-haspopup': 'dialog', onClick: history }, icons.history()));
         const trade = state.trade;
         if (!state.inRoom) { body.append(h('p', {}, 'Join a room to trade.')); return; }
         const eligible = state.account?.status === 'saved' && Number.isSafeInteger(state.account.createdAt) && Date.now() - state.account.createdAt >= TRADE_ACCOUNT_AGE_MS;
-        if (!eligible && !trade) { body.append(h('p', { class: 'trade-note' }, state.account?.status !== 'saved' || !Number.isSafeInteger(state.account.createdAt) ? 'Sign in to trade. Your account must be at least 24 hours old.' : `Trading unlocks when your account is 24 hours old (${new Date(state.account.createdAt + TRADE_ACCOUNT_AGE_MS).toLocaleString()}).`), history()); return; }
+        if (!eligible && !trade) { body.append(h('p', { class: 'trade-note' }, state.account?.status !== 'saved' || !Number.isSafeInteger(state.account.createdAt) ? 'Sign in to trade. Your account must be at least 24 hours old.' : `Trading unlocks when your account is 24 hours old (${new Date(state.account.createdAt + TRADE_ACCOUNT_AGE_MS).toLocaleString()}).`)); return; }
         if (!trade) {
           body.append(h('p', { class: 'trade-note' }, 'Choose a player to trade with.'));
           const others = [...state.players.values()].filter(p => p.id !== state.you && !p.isBot && p.connected);
@@ -55,7 +60,7 @@ export function tradePanel({ state, actions }) {
           for (const player of others) requests.append(h('button', { type: 'button', class: 'trade-request', onClick: () => actions.tradeRequest(player.id) },
             h('span', { class: 'trade-request-avatar' }, portrait(player.look)),
             h('strong', {}, player.name), h('small', {}, 'Request trade')));
-          body.append(others.length ? requests : h('p', {}, 'No other players are available yet.'), history());
+          body.append(others.length ? requests : h('p', {}, 'No other players are available yet.'));
           return;
         }
         body.append(h('p', { class: 'trade-partner' }, `Trading with ${trade.peerName || 'another player'}`));
@@ -83,17 +88,13 @@ export function tradePanel({ state, actions }) {
           const tiles = h('div', { class: 'trade-icon-grid offer-grid trade-offer-grid' });
           for (const item of offer.items) tiles.append(itemTile(actions, item, item.qty, mine ? () => change(item, -1) : undefined, !mine || state.tradePending));
           if (!offer.items.length) tiles.append(h('span', { class: 'trade-empty' }, 'No items yet'));
-          box.append(tiles, h('div', { class: 'trade-offer-footer' }, h('span', {}, `💵 ${fmt(offer.coins)} coins`), h('span', {}, ready ? 'Accepted ✓' : 'Reviewing')));
+          box.append(tiles, h('div', { class: 'trade-offer-footer' }, h('span', {}, ready ? 'Accepted ✓' : 'Reviewing')));
           if (ready) box.append(h('div', { class: 'trade-accepted-mark', 'aria-label': 'Offer accepted' }, '✓'));
           return box;
         }
         body.append(h('div', { class: 'trade-offers' },
           offerBox('Your offer', own, trade.accepted, true),
           offerBox(`${trade.peerName || 'Their'} offer`, theirs, trade.peerAccepted, false)));
-        const coinInput = h('input', { type: 'number', min: 0, max: inventory.coins, step: 1, value: own.coins, 'aria-label': 'Coins to offer' });
-        coinInput.disabled = state.tradePending;
-        coinInput.addEventListener('change', () => actions.tradeOffer({ ...own, coins: Math.max(0, Math.min(inventory.coins, Math.floor(Number(coinInput.value) || 0))) }));
-        body.append(h('label', { class: 'trade-coins' }, 'Offer coins', coinInput, h('span', {}, `of ${fmt(inventory.coins)} owned`)));
         const entries = [
           ...CHAIRS.filter(v => inventory.chairs.includes(v.id)).map(v => ({ kind: 'chair', id: v.id })),
           ...BACK_BLING.filter(v => inventory.backs.includes(v.id)).map(v => ({ kind: 'back', id: v.id })),
@@ -108,13 +109,14 @@ export function tradePanel({ state, actions }) {
         }
         body.append(h('h3', { class: 'trade-collection-title' }, 'Your collection · tap an icon to add it'),
           entries.length ? collection : h('p', {}, 'You have no transferable items yet.'));
-        body.append(h('p', { class: 'trade-note' }, state.tradePending ? 'Updating offer…' : trade.countdown ? 'Both accepted. Completing trade…' : 'Changing either offer clears both acceptances.'));
+        body.append(h('p', { class: 'trade-note' }, state.tradePending ? 'Updating offer…' : trade.countdown ? 'Both accepted. You can still cancel your acceptance.' : 'Changing either offer clears both acceptances.'));
+        if (trade.countdown) { tick(); body.append(countdown); }
         body.append(h('div', { class: 'trade-actions' },
-          button(trade.accepted ? 'Accepted ✓' : 'Accept trade', () => actions.tradeAccept(trade.id), !!trade.accepted || state.tradePending),
+          trade.accepted ? button('Cancel accept', () => actions.tradeUnaccept(trade.id), false, 'orange') : button('Accept trade', () => actions.tradeAccept(trade.id), state.tradePending),
           button('Cancel', () => actions.tradeCancel(trade.id), false, 'grey')));
       }
       update();
-      return { update, unmount() { if (state.trade) actions.tradeCancel(state.trade.id); } };
+      return { update, unmount() { clearInterval(clock); if (state.trade) actions.tradeCancel(state.trade.id); } };
     },
   };
 }

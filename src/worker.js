@@ -15,7 +15,7 @@ export default {
     const { pathname } = new URL(request.url);
     if (pathname === '/api/health') return new Response('ok');
     if (pathname.startsWith('/api/') && request.method === 'OPTIONS') return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Max-Age': '86400' } });
-    if (pathname.startsWith('/api/account/')) {
+    if ((pathname.startsWith('/api/account/')||pathname.startsWith('/api/handle/'))) {
       const result = await env.ACCOUNTS.get(env.ACCOUNTS.idFromName('global')).fetch(request);
       return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff' } });
     }

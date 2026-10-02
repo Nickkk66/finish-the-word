@@ -39,13 +39,16 @@
 .trade-request-avatar .avatar-preview { width:100%; height:100%; display:block; }
 .trade-request strong { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .trade-request small { font-weight:700; }
-.trade-coins { display:flex; align-items:center; gap:9px; margin:12px 0; font:700 15px var(--font); }
-.trade-coins input { width:120px; max-width:50%; padding:6px; border:2px solid #718b76; border-radius:8px; font:600 16px var(--font); }
 .trade-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
 .trade-note { margin:10px 0 0; color:#425b4b; font:600 14px var(--font); }
-.trade-history-wrap { margin-top:13px; padding:8px 10px; border:2px solid #9ab4a4; border-radius:10px; background:#effff2; font:600 14px var(--font); }
-.trade-history-wrap summary { cursor:pointer; font-weight:700; }
-.trade-history { display:grid; gap:5px; margin-top:8px; max-height:175px; overflow:auto; }
+.trade-history-shortcut { float:right; display:grid; place-items:center; width:44px; height:44px; margin:0 0 8px 12px; padding:6px; border:3px solid var(--ink, #1b1b1b); border-radius:12px; background:#d9f7df; box-shadow:0 3px 0 #779782; cursor:pointer; }
+.trade-history-shortcut .icon { width:28px; height:28px; }
+.trade-history-shortcut:hover { background:#bff0ca; }
+.trade-history-shortcut:active { transform:translateY(2px); box-shadow:0 1px 0 #779782; }
+.trade-history-shortcut:focus-visible { outline:3px solid #177b37; outline-offset:3px; }
+.trade-history { display:grid; gap:8px; max-height:min(55vh, 400px); overflow:auto; text-align:left; }
+.trade-history-empty { margin:0; }
+.overlay.notice:has(.trade-history) .overlay-card { width:min(540px, 94vw); }
 .trade-history-row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:6px; border-radius:7px; background:#fff; }
 .trade-history-row span { grid-column:1/-1; font-size:12px; }
 @media(max-width:620px) { .trade-offers { gap:7px; } .trade-box { padding:7px; } .trade-icon-grid { grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:5px; } .trade-icon-grid.offer-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .trade-tile { min-height:76px; } .trade-tile img,.trade-tile svg { width:45px;height:45px; } .trade-collection { max-height:150px; } }
@@ -304,3 +307,103 @@
 .quick-card-style { display:flex; gap:6px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:8px; }
 
 @media (max-height:720px) and (min-width:721px) { .side { --u:.8; top:110px; gap:15px 10px; } .counters { --u:.8; bottom:25px; } }
+.pet-abilities { display: grid; gap: 7px; width: 100%; }
+.pet-ability-row { display: grid; gap: 2px; font-size: 14px; line-height: 1.25; }
+.pet-ability-row strong { font-size: 11px; letter-spacing: .04em; color: #7043b0; }
+.pet-ability-row span { overflow-wrap: anywhere; }
+.pet-stat-tooltip .pet-ability-row strong { font-size: 11px; color: #d8bcff; }
+.presence-overlay { position: fixed; inset: 0; z-index: 20000; background: #15233666; touch-action: none; }
+.presence-card { position: absolute; box-sizing: border-box; width: min(300px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 4px solid #202124; border-radius: 24px; background: #fff8e3; text-align: center; box-shadow: 0 8px 0 #202124, 0 12px 40px #0005; }
+.presence-card h2 { margin: 0 0 10px; color: white; }
+.presence-card p { margin: 0 0 12px; font-size: 16px; line-height: 1.3; color: #36445b; }
+.presence-clock { margin: 0 auto 14px; }
+.presence-confirm { width: 100%; }
+.presence-card.urgent .timer-ring { stroke: #ff4056; }
+
+.tide-shark-credit { position:absolute; bottom:calc(8px + env(safe-area-inset-bottom)); right:10px; font-size:10px; color:#e9fffa; pointer-events:auto; text-shadow:0 1px 3px #123; }
+
+/* The chat reserves its measured height so it cannot cover the sidebar. */
+.side { top:var(--sidebar-top, calc(250px + var(--sat))); transform:none; }
+.word-form.invalid .word-field { box-shadow:inset 0 4px 0 #00000012,0 5px 0 var(--ink),0 0 0 5px #ff3c56cc; }
+.word-form.answer-bounce { animation:answer-bounce .38s ease; }
+@keyframes answer-bounce { 0%,100% { transform:translateY(0); } 30% { transform:translateY(-9px); } 65% { transform:translateY(3px); } }
+@media(prefers-reduced-motion:reduce) { .word-form.answer-bounce { animation:none; } }
+
+/* On a portrait phone, leave the mode's question above the sidebar too. */
+@media(max-width:720px) and (min-height:521px) {
+ .side { top:max(var(--sidebar-top, 76px), calc(28dvh + var(--sat))); }
+}
+
+.animation-tester { position:absolute;z-index:60;right:14px;top:190px;width:min(290px,calc(100vw - 28px));display:grid;gap:9px;padding:13px;border:3px solid var(--ink);border-radius:15px;background:#fff1d8;color:#293647;font:600 14px var(--font);pointer-events:auto; }
+.animation-tester[hidden]{display:none}.animation-tester input{width:100%}.animation-tester .host-tools{display:flex;gap:8px}
+
+.pet-dictionary-button { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.pet-dictionary-button .icon { width:28px; height:28px; }
+.pet-dictionary[hidden] { display:none!important; }
+.trade-countdown { padding:10px; border:2px solid #208749; border-radius:12px; background:#dcffe8; text-align:center; font-size:22px; }
+
+/* Chat controls share the input surface, including idle/focus states. */
+.chat-entry { gap:0; background:rgba(16,22,32,.42); border-radius:0 0 10px 10px; overflow:hidden; transition:opacity .6s,background .2s; }
+.chat-entry .chat-input,.chat-entry .emote-button { color:#fff; background:transparent; border:0; border-radius:0; opacity:1; }
+.chat-entry .emote-button { display:grid; place-items:center; padding:0 10px; }
+.chat-entry:focus-within { background:rgba(16,22,32,.72); }
+.chat:not(.awake) .chat-entry:not(:focus-within) { opacity:.45; }
+.chat:not(.awake) .chat-entry .chat-input:not(:focus) { opacity:1; }
+.emote-button:hover { color:#d6f5ff; }
+.hatch-pet-art { width:min(200px,34dvh); height:min(200px,34dvh); margin:auto; animation:emoji-bounce 1.3s ease-in-out infinite; }
+.hatch-pet-art .model-thumb { width:100%; height:100%; max-width:none; max-height:none; object-fit:contain; filter:drop-shadow(0 6px 3px #0003); }
+
+
+/* Classic stays the default. Alternatives change row structure and density. */
+.pl-player-mark,.plist-columns { display:none; }
+.pl-waiting { font-size:16px; opacity:.5; }
+.plist[data-style="compact"] { width:256px; color:white; background:#14232bcc; border:0; border-radius:4px; box-shadow:0 4px 12px #0003; }
+.plist[data-style="compact"] .plist-head { padding:8px 10px; color:#d9f2ef; background:#0b191dcc; border-bottom:1px solid #ffffff25; text-shadow:none; font-size:13px; }
+.plist[data-style="compact"] .plist-rows { padding:0; }
+.plist[data-style="compact"] .plist-row { grid-template-columns:minmax(0,1fr) auto 24px; padding:5px 9px; min-height:29px; margin:0; border:0; border-top:1px solid #ffffff17; border-radius:0; background:transparent; color:#eff9ff; font-size:13px; }
+.plist[data-style="compact"] .plist-row.me { background:#ffe99b13; }
+.plist[data-style="compact"] .plist-row.me .pl-text { color:#ffe9a0; }
+.plist[data-style="compact"] .plist-row.turn { background:#65e3a521; box-shadow:inset 3px 0 #71eda8; }
+.plist[data-style="compact"] .pl-wins { padding:0; color:#c8dddd; background:transparent; font-size:12px; }
+
+.plist[data-style="portrait"] { width:270px; border:0; border-radius:0; background:none; box-shadow:none; overflow:visible; }
+.plist[data-style="portrait"] .plist-head { background:linear-gradient(#7deb8b,#39bd60); border:3px solid #253d33; border-radius:14px; margin-bottom:7px; padding:10px 12px; color:#163923; text-shadow:none; box-shadow:0 3px #253d3355; }
+.plist[data-style="portrait"] .plist-rows { padding:0 0 4px; }
+.plist[data-style="portrait"] .plist-row { position:relative; grid-template-columns:minmax(0,1fr) 31px; margin:7px 0; padding:8px 10px 8px 57px; min-height:61px; border:3px solid #31454b; border-radius:14px; background:#f6fdfff2; color:#253a43; gap:3px 6px; box-shadow:0 3px #20333b55; }
+.plist[data-style="portrait"] .pl-name { grid-column:1; font-size:14px; }
+.plist[data-style="portrait"] .pl-player-mark { display:grid; place-items:center; position:absolute; left:7px; top:8px; width:40px; height:40px; border:2px solid #374e58; border-radius:11px; background:#b2dce7; overflow:hidden; }
+.pl-player-mark .avatar-preview { width:100%;height:100%; }
+.plist[data-style="portrait"] .pl-status { grid-column:1; min-height:18px; }
+.plist[data-style="portrait"] .pl-wins { grid-column:2; grid-row:1/3; align-self:center; display:grid; place-items:center; min-height:30px; border:2px solid #cfab4b; border-radius:50%; padding:3px; background:#ffe9a0; color:#6c5112; }
+.plist[data-style="portrait"] .plist-row.me { border-color:#c5a544; background:#fff3c8; }
+.plist[data-style="portrait"] .plist-row.turn { border-color:#289550; background:#d8fbe0; box-shadow:0 3px #185c3580; }
+.plist[data-style="ribbon"] { width:263px; background:none; border:none; border-radius:0; box-shadow:none; overflow:visible; }
+.plist[data-style="ribbon"] .plist-head { border:0; background:none; color:#fff; text-shadow:0 2px 3px #173e41; padding:10px 4px; }
+.plist[data-style="ribbon"] .plist-rows { padding:2px 4px 6px 0; }
+.plist[data-style="ribbon"] .plist-row { position:relative; grid-template-columns:minmax(0,1fr) auto 26px; min-height:47px; margin:9px 4px 9px 35px; padding:8px 7px 8px 18px; border:2px solid #29516a; border-radius:16px 16px 16px 4px; background:#edf9ffef; color:#234052; gap:4px; box-shadow:2px 3px #133c5b77; }
+.plist[data-style="ribbon"] .pl-player-mark { position:absolute; left:-34px; top:3px; display:grid; place-items:center; width:43px; height:43px; border:3px solid #2b5875; border-radius:50%; background:#86b9d1; overflow:hidden; box-shadow:0 3px #173d5780; }
+.plist[data-style="ribbon"] .pl-name { font-size:12px; }
+.plist[data-style="ribbon"] .pl-heart { width:13px; height:13px; }
+.plist[data-style="ribbon"] .pl-wins { background:#d2e8f2; color:#24465c; padding:3px 0; }
+.plist[data-style="ribbon"] .plist-row.me { background:#fff5cf; border-color:#9f8739; }
+.plist[data-style="ribbon"] .plist-row.turn { background:#c8f3dd; border-color:#247b54; box-shadow:2px 3px #12583677; }
+@media(max-width:720px),(max-height:520px) { .plist[data-style="compact"] { width:230px; } .plist[data-style="portrait"] { width:235px; } .plist[data-style="ribbon"] { width:240px; } }
+
+/* Keep every profile stat inside its own scrollable card. */
+.profile-summary{overflow-y:auto;scrollbar-gutter:stable;min-width:0;}
+.profile-summary>*{flex-shrink:0;}
+.admin-pet-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0;}
+.admin-pet-toolbar .field{flex:1;min-width:140px;}
+.admin-pet-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:12px;}
+.admin-pet-card{border:3px solid var(--pet-color,#9b80cf);border-radius:18px;background:linear-gradient(145deg,#fff,#f0edff);padding:12px;min-width:0;box-shadow:0 4px #332b4930;}
+.admin-pet-heading{display:flex;align-items:center;gap:10px;}
+.admin-pet-heading .model-thumb{width:74px;height:74px;flex:none;}
+.admin-pet-heading strong{display:block;}
+.admin-pet-heading small{color:#596171;font-size:12px;}
+.admin-pet-tiers{display:flex;gap:8px;margin-top:12px;}
+.admin-pet-tier{flex:1;min-width:0;text-align:center;border:2px solid #bec5d7;border-radius:12px;padding:7px 4px;background:#fff;}
+.admin-pet-tier[data-tier="2"]{border-color:#70baff;background:#edf8ff;}
+.admin-pet-tier[data-tier="3"]{border-color:#e2bc45;background:#fff9de;}
+.admin-pet-tier .field{width:100%;padding:5px;text-align:center;margin:4px 0;font-size:17px;}
+.admin-pet-stepper{display:flex;gap:4px;justify-content:center;}
+.admin-pet-stepper .btn{flex:1;min-width:0;padding:3px 6px;}

@@ -70,7 +70,7 @@ export function sanitizeSettings(input, current) {
   if (!input || typeof input !== 'object') return next;
   const mode = MODES.find(m => m.id === input.mode);
   if (mode) Object.assign(next, { mode: mode.id, ...(mode.id !== 'custom' ? {
-    hearts: mode.hearts, turnSeconds: mode.turnSeconds, petAbilities: !isRouletteMode(mode.id) && mode.id !== 'word_tide', botLevel: 'normal', public: false,
+    hearts: mode.hearts, turnSeconds: mode.turnSeconds, petAbilities: true, botLevel: 'normal', public: false,
   } : {}) });
   if (mode?.id === 'custom') next.baseMode = current.mode === 'custom' ? current.baseMode || 'classic' : isRouletteMode(current.mode) ? 'classic' : current.mode;
   else if (mode) delete next.baseMode;
@@ -87,6 +87,6 @@ export function sanitizeSettings(input, current) {
       delete next.baseMode;
     }
   }
-  if (next.mode === 'word_tide') Object.assign(next, { hearts: 5, turnSeconds: 20, petAbilities: false });
+  if (next.mode === 'word_tide') Object.assign(next, { hearts: 5, turnSeconds: 20 });
   return next;
 }

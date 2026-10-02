@@ -34,17 +34,17 @@ const ANYWHERE_RE = new RegExp(ANYWHERE.join('|'));
 const LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't', '@': 'a', $: 's' };
 const TOKEN_RE = /[A-Za-z0-9@$]+/g;
 // Room owners may opt into ordinary swearing. Slurs, sexual content and abuse remain filtered.
-export const ALLOWED_SWEARS = new Set(['ass','arse','asshole','bastard','bollock','bugger','crap','crappy','damn','damned','dammit','goddamn','goddamned','fuck','fucking','fucked','fucker','shit','shitty','bullshit','piss','pissed','pissing','dick','dickhead','cock','twat','wank','wanker','wanking','dumbass','jackass']);
+export const ALLOWED_SWEARS = new Set(['ass','arse','asshole','bastard','bollock','bugger','crap','crappy','damn','damned','dammit','goddamn','goddamned','fuck','fucking','fucked','fucker','shit','shitty','bullshit','piss','pissed','pissing','dick','dickhead','cock','twat','wank','wanker','wanking','dumbass','jackass','bitch','bitches','bitching','bitchy','cunt','cunts','asshat','fatass','arsehole','bollocks','shits','fucks','fuckers','motherfucker','motherfuckers','motherfucking']);
 
 /** True if a single token (a word, possibly with leetspeak) is blocked. */
 export function isBlockedWord(token, allowSwearing = false) {
   const word = token.toLowerCase().replace(/[013457@$]/g, (c) => LEET[c]);
-  if (allowSwearing && ALLOWED_SWEARS.has(word)) return false;
   if (word === 'scunthorpe') return false;
   // Runs of 3+ equal letters are (almost) never real spelling, so also try them squeezed
   // to one and to two letters: "fuuuuck" -> "fuck", "asssss" -> "ass".
   const variants = [word, word.replace(/(.)\1{2,}/g, '$1'), word.replace(/(.)\1{2,}/g, '$1$1')];
-  return variants.some((w) => WHOLE_RE.test(w) || ANYWHERE_RE.test(w));
+  if (allowSwearing && variants.some(w => ALLOWED_SWEARS.has(w) || ALLOWED_SWEARS.has(w.replace(/[sz]$/, '')))) return false;
+  return variants.some(w => WHOLE_RE.test(w) || ANYWHERE_RE.test(w));
 }
 
 /** Roblox-style filter: every blocked token is replaced by '#' of the same length. */

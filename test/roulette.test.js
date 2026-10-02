@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import {roulettePayoutCap,fireDamage} from '../public/js/shared/roulette.js';
 import { createRoom } from './helpers.js';
 
 function setup(entry = 25) {
@@ -70,12 +71,12 @@ test('a knockout does not give an earlier passer a second pass',()=>{
 
 test('roulette poisons eliminate, prize grows and winner reward is paid exactly once',()=>{
   const {r,a,b}=setup(25); bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
-  const m=r.engine.match; assert.equal(m.roulette.pot,50); r.forced.push(0);
+  const m=r.engine.match; assert.equal(m.roulette.pot,40); r.forced.push(0);
   const loser=m.typerId;
   r.send(r.conns[loser],{t:'roulette',action:'drink',turnId:m.turnId});
   r.clock.advance(4800);
   assert.equal(m.phase,'ended');assert.notEqual(m.winnerId,loser);
-  assert.equal(r.conns[m.winnerId].last('rouletteReward').coins,50);
+  assert.equal(r.conns[m.winnerId].last('rouletteReward').coins,40);
   assert.equal(r.conns[loser].last('rouletteReward').coins,0);
   r.engine.endRoulette(m.winnerId);
   assert.equal(r.conns[m.winnerId].all('rouletteReward').length,1);
@@ -96,7 +97,7 @@ test('Double Sip uses a fixed 60% risk and adds the winner’s multiplied entry 
   r.clock.advance(4800);
   assert.equal(m.winnerId,first);
   const reward=r.conns[first].last('rouletteReward');
-  assert.equal(reward.coins,m.roulette.pot+Math.floor(25*m.roulette.multiplier));
+  assert.equal(reward.coins,Math.min(roulettePayoutCap(m.roulette.basePot),m.roulette.pot+Math.floor(25*m.roulette.multiplier)));
   assert.match(reward.bonuses[0].label,/double sip/);
   assert.equal(r.conns[first].all('rouletteReward').length,1);
   assert.deepEqual(r.errors,[]);
@@ -118,7 +119,7 @@ test('players choose independent entries; host entry changes are ignored and abo
   r.send(a,{t:'host',action:'settings',settings:{rouletteEntry:500}});
   assert.equal(a.all('stakeRefund').length,0);assert.equal(r.engine.rouletteEntry,25);
   assert.equal(r.engine.players.get('bob').rouletteBet.amount,100);
-  r.send(a,{t:'host',action:'start'});assert.equal(r.engine.match.roulette.pot,125);
+  r.send(a,{t:'host',action:'start'});assert.equal(r.engine.match.roulette.pot,40);
   r.engine.endMatch(null);
   assert.equal(a.last('rouletteReward').coins,25);assert.equal(b.last('rouletteReward').coins,100);
   assert.deepEqual(r.errors,[]);
@@ -145,8 +146,8 @@ test('disconnect forfeits after grace, awards remaining player and reconnect rep
   const {r,a,b}=setup(25);bet(r,a,'a');bet(r,b,'b');r.send(a,{t:'host',action:'start'});
   r.engine.random=()=>.99;
   r.engine.disconnect(a);r.clock.advance(20000);
-  assert.equal(b.last('rouletteReward').coins,50);
-  const again=r.join('bob');assert.equal(again.last('rouletteReward').coins,50);
+  assert.equal(b.last('rouletteReward').coins,40);
+  const again=r.join('bob');assert.equal(again.last('rouletteReward').coins,40);
   assert.equal(again.last('betResult').receipt,b.last('betResult').receipt);
   assert.deepEqual(r.errors,[]);
 });
@@ -190,14 +191,14 @@ test('prize and risk grow only after each living player acts',()=>{
  const m=r.engine.match;r.engine.random=()=>.999;
  const start=m.roulette.risk;
  r.send(r.conns[m.typerId],{t:'roulette',action:'pass',turnId:m.turnId});r.clock.advance(1700);
- assert.equal(m.roulette.pot,50);assert.equal(m.roulette.risk,start);
+ assert.equal(m.roulette.pot,40);assert.equal(m.roulette.risk,start);
  r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);
  assert.equal(m.roulette.risk,.1);
- assert.equal(m.roulette.pot,52);
+ assert.equal(m.roulette.pot,41);
  r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);
  assert.equal(m.roulette.risk,.1);
  for(let i=0;i<22;i++){r.send(r.conns[m.typerId],{t:'roulette',action:'drink',turnId:m.turnId});r.clock.advance(4800);}
- assert.equal(m.roulette.risk,.95);assert.ok(m.roulette.pot>75&&m.roulette.pot<100);assert.deepEqual(r.errors,[]);
+ assert.equal(m.roulette.risk,.95);assert.equal(m.roulette.pot,45);assert.deepEqual(r.errors,[]);
 });
 
 test('one full circuit gives the same multiplier with two or five players', () => {
@@ -223,24 +224,14 @@ test('one full circuit gives the same multiplier with two or five players', () =
   }
 });
 
-test('fire charges only after 5 continuous seconds on the ground inside a crater, stops on exit or disconnect',()=>{
- const r=createRoom(),a=r.join('alice');r.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});r.clock.advance(7000);
+test('fire charges every continuous second, stops on exit, jumping and disconnect',()=>{
+ const r=createRoom(),a=r.join('alice');r.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});r.clock.advance(17000);
  const move=(x=-20,y=0,z=4)=>r.send(a,{t:'move',x,y,z,ry:0,anim:'idle'});
- move();r.clock.advance(4999);assert.equal(a.all('hazardDebit').length,0);
- r.clock.advance(1);assert.equal(a.last('hazardDebit').amount,25);
- r.clock.advance(5000);assert.equal(a.all('hazardDebit').length,2);
- move(0,0,26);r.clock.advance(10000);assert.equal(a.all('hazardDebit').length,2);
- move();r.clock.advance(4000);move(0,0,26);r.clock.advance(1000);move();r.clock.advance(4999);assert.equal(a.all('hazardDebit').length,2);
- r.clock.advance(1);assert.equal(a.all('hazardDebit').length,3);
- move(-20,5,4);r.clock.advance(6000);assert.equal(a.all('hazardDebit').length,3);
- move();r.engine.disconnect(a);r.clock.advance(6000);assert.equal(a.all('hazardDebit').length,3);
- const again=r.join('alice');assert.equal(again.all('hazardDebit').length,3,'reconnect replays receipts, not additional charges');
- assert.equal(r.engine.settings.mode,'classic','an empty room starts fresh');
- r.send(again,{t:'host',action:'settings',settings:{mode:'roulette'}});
- r.send(again,{t:'move',x:-20,y:0,z:4,ry:0,anim:'idle'});
- r.clock.advance(11999);assert.equal(again.all('hazardDebit').length,3,'intro grants time before fire starts');
- r.clock.advance(1);assert.equal(again.all('hazardDebit').length,4);
- assert.deepEqual(r.errors,[]);
+ move();r.clock.advance(999);assert.equal(a.all('hazardDebit').length,0);r.clock.advance(1);assert.equal(a.last('hazardDebit').amount,50);assert.equal(a.last('hazardDebit').belowMinimum,'halve');
+ r.clock.advance(1000);assert.equal(a.all('hazardDebit').length,2);move(0,0,26);r.clock.advance(10000);assert.equal(a.all('hazardDebit').length,2);
+ move();r.clock.advance(500);move(0,0,26);r.clock.advance(1000);move();r.clock.advance(999);assert.equal(a.all('hazardDebit').length,2);r.clock.advance(1);assert.equal(a.all('hazardDebit').length,3);
+ move(-20,5,4);r.clock.advance(6000);assert.equal(a.all('hazardDebit').length,3);move();r.engine.disconnect(a);r.clock.advance(6000);assert.equal(a.all('hazardDebit').length,3);
+ const again=r.join('alice');assert.equal(again.all('hazardDebit').length,3);r.send(again,{t:'host',action:'settings',settings:{mode:'roulette'}});r.send(again,{t:'move',x:-20,y:0,z:4,ry:0,anim:'idle'});r.clock.advance(17999);assert.equal(again.all('hazardDebit').length,3);r.clock.advance(1);assert.equal(again.all('hazardDebit').length,4);assert.deepEqual(r.errors,[]);
 });
 
 test('pending Roulette settings do not create invisible fire during an active word match',()=>{
@@ -250,7 +241,7 @@ test('pending Roulette settings do not create invisible fire during an active wo
  r.send(c,{t:'move',x:-20,y:0,z:4,ry:0,anim:'idle'});
  r.clock.advance(7000);assert.equal(c.all('hazardDebit').length,0);assert.equal(r.engine.fireMode,false);
  r.engine.endMatch(null);r.clock.advance(7000);assert.equal(r.engine.fireMode,true);
- r.clock.advance(11999);assert.equal(c.all('hazardDebit').length,0);
+ r.clock.advance(17999);assert.equal(c.all('hazardDebit').length,0);
  r.clock.advance(1);assert.equal(c.all('hazardDebit').length,1);
  r.send(a,{t:'host',action:'settings',settings:{mode:'classic'}});r.clock.advance(6000);
  assert.equal(c.all('hazardDebit').length,1);assert.deepEqual(r.errors,[]);
@@ -259,9 +250,9 @@ test('pending Roulette settings do not create invisible fire during an active wo
 test('poison discount applies only above the table average',()=>{
  const {r,a,b}=setup();bet(r,a,'a',25);bet(r,b,'b',100);r.send(a,{t:'host',action:'start'});
  const m=r.engine.match;m.roulette.risk=.55;r.engine.rouletteTurn('bob');
- let view=r.engine.matchView().roulette;assert.equal(view.baseRisk,.55);assert.ok(view.reduction>0);assert.ok(view.risk<.55);
- r.engine.random=()=>.49;r.engine.rouletteAction('bob','drink');assert.equal(m.roulette.event.poisoned,false);
- r.clock.advance(4800);m.roulette.risk=.55;r.engine.rouletteTurn('alice');r.engine.rouletteAction('alice','drink');assert.equal(m.roulette.event.poisoned,true);
+ let view=r.engine.matchView().roulette;assert.equal(view.baseRisk,.55);assert.ok(view.reduction===0);assert.ok(view.risk===.55);
+ r.engine.random=()=>.56;r.engine.rouletteAction('bob','drink');assert.equal(m.roulette.event.poisoned,false);
+ r.clock.advance(4800);m.roulette.risk=.55;r.engine.random=()=>.49;r.engine.rouletteTurn('alice');r.engine.rouletteAction('alice','drink');assert.equal(m.roulette.event.poisoned,true);
  m.stakes.alice=100;m.stakes.bob=100;assert.equal(r.engine.matchView().roulette.reduction,0);
  m.stakes.alice=25;m.stakes.bob=1e9;m.typerId='bob';assert.ok(Math.abs(r.engine.matchView().roulette.risk-.44)<1e-8);
  assert.deepEqual(r.errors,[]);
@@ -278,11 +269,11 @@ test('Death Wish starts at 50 percent risk and grows its prize faster than The L
  bet(r,a,'a',25);bet(r,b,'b',100);r.send(a,{t:'host',action:'start'});
  const m=r.engine.match;
  assert.equal(m.mode,'roulette_deadly');assert.equal(m.roulette.risk,.5);
- assert.equal(m.roulette.pot,125);assert.equal(r.engine.roomTable(),'poker');
+ assert.equal(m.roulette.pot,40);assert.equal(r.engine.roomTable(),'poker');
  r.engine.rouletteTurn('bob');
- assert.ok(r.engine.matchView().roulette.risk<.5 && r.engine.matchView().roulette.risk>.4);
+ assert.ok(r.engine.matchView().roulette.risk===.5);
  r.engine.random=()=>.99;r.engine.rouletteAction('bob','drink');r.clock.advance(4800);
- assert.equal(m.roulette.multiplier,1);assert.equal(m.roulette.pot,125);
+ assert.equal(m.roulette.multiplier,1);assert.equal(m.roulette.pot,40);
  assert.equal(m.roulette.risk,.5);
  r.engine.endMatch(null);assert.equal(a.last('rouletteReward').coins,25);assert.equal(b.last('rouletteReward').coins,100);
  assert.deepEqual(r.errors,[]);
@@ -290,18 +281,33 @@ test('Death Wish starts at 50 percent risk and grows its prize faster than The L
 
 test('night meteor arrives every three minutes, requires landing and proximity and rewards only one collector',()=>{
  const r=createRoom(),a=r.join('alice'),b=r.join('bob');r.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});
- r.clock.advance(179999);assert.equal(r.engine.meteor,null);r.clock.advance(1);const meteor=r.engine.meteor;assert.ok(meteor);assert.equal(a.last('meteor').meteor.landsIn,2400);
+ r.clock.advance(179999);assert.equal(r.engine.meteor,null);r.clock.advance(1);const meteor=r.engine.meteor;assert.ok(meteor);assert.equal(a.last('meteor').meteor.landsIn,12400);
  assert.equal(a.last('chat').tone,'alert');assert.equal(b.last('chat').tone,'alert');
  r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.all('meteorReward').length,0);
  r.send(a,{t:'move',x:meteor.x,y:0,z:meteor.z,ry:0,anim:'idle'});r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.all('meteorReward').length,0);
- r.clock.advance(2400);r.send(b,{t:'collectMeteor',id:meteor.id});assert.equal(b.all('meteorReward').length,0);
+ r.clock.advance(12400);r.send(b,{t:'collectMeteor',id:meteor.id});assert.equal(b.all('meteorReward').length,0);
  r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.last('meteorReward').coins,150);assert.equal(r.engine.meteor,null);
  assert.deepEqual(b.last('meteor').collected,{id:meteor.id,x:meteor.x,z:meteor.z,by:'alice'});
  r.send(b,{t:'move',x:meteor.x,y:0,z:meteor.z,ry:0,anim:'idle'});r.send(b,{t:'collectMeteor',id:meteor.id});assert.equal(b.all('meteorReward').length,0);
  r.send(a,{t:'collectMeteor',id:meteor.id});assert.equal(a.all('meteorReward').length,1);
  const again=r.join('alice');assert.equal(again.last('meteorReward').receipt,meteor.id);
- r.clock.advance(177600);assert.ok(r.engine.meteor);assert.notEqual(r.engine.meteor.id,meteor.id);
+ r.send(again,{t:'activity'});r.send(b,{t:'activity'});r.clock.advance(167600);assert.ok(r.engine.meteor);assert.notEqual(r.engine.meteor.id,meteor.id);
  const c=r.join('carol');assert.equal(c.last('welcome').meteor.id,r.engine.meteor.id);
  r.send(again,{t:'host',action:'settings',settings:{mode:'classic'}});assert.equal(r.engine.meteor,null);r.clock.advance(180000);assert.equal(r.engine.meteor,null);
  assert.deepEqual(r.errors,[]);
+});
+
+test('all prize growth, Double Sip and pet bonuses stay inside the funded house cap',()=>{
+ for(const mode of ['roulette','roulette_deadly'])for(const pet of ['piggy','bear',null])for(const loops of [0,1,10,100]){
+  const {r,a,b}=setup();r.send(a,{t:'host',action:'settings',settings:{mode}});r.send(a,{t:'loadout',pet});bet(r,a,'a',100);bet(r,b,'b',100);r.send(a,{t:'host',action:'start'});
+  const m=r.engine.match;for(let i=0;i<loops;i++){m.roulette.cycle=new Set(['alice','bob']);r.engine.completeRouletteCircuit();}
+  m.roulette.doubleSurvivors=new Set(['alice']);r.engine.endRoulette('alice');const total=[a,b].reduce((sum,c)=>sum+c.last('rouletteReward').coins,0);assert.ok(total<=180,'total payouts are at most 90% of 200 deposited coins');assert.equal(b.last('rouletteReward').coins,0);assert.deepEqual(r.errors,[]);
+ }
+});
+test('fire halves small balances all the way to zero and charges 50 otherwise',()=>{
+ assert.equal(fireDamage(100),50);let balance=49;const values=[];while(balance){balance-=fireDamage(balance);values.push(balance)}assert.deepEqual(values,[24,12,6,3,1,0]);assert.equal(fireDamage(0),0);
+});
+test('purple meteor warns ten seconds before falling and damages its own footprint',()=>{
+ const r=createRoom(),a=r.join('alice');r.send(a,{t:'host',action:'settings',settings:{mode:'roulette'}});r.clock.advance(180000);const m=r.engine.meteor;assert.equal(a.last('meteor').meteor.fallsIn,10000);assert.match(a.last('chat').text,/10 seconds/);
+ r.send(a,{t:'move',x:m.x,y:0,z:m.z,ry:0,anim:'idle'});r.clock.advance(13399);assert.equal(a.all('hazardDebit').length,0);r.clock.advance(1);assert.equal(a.last('hazardDebit').amount,50);r.clock.advance(1000);assert.equal(a.all('hazardDebit').length,2);r.send(a,{t:'move',x:0,y:0,z:26,ry:0,anim:'idle'});r.clock.advance(2000);assert.equal(a.all('hazardDebit').length,2);
 });

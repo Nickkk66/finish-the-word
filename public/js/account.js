@@ -1,5 +1,5 @@
 // Optional cloud saves; guest play stays available even while the network is down.
-import { exportProfile, replaceProfile, onProfileChange } from './profile.js';
+import { exportProfile, freshGuestProfile, replaceProfile, onProfileChange } from './profile.js';
 import { apiUrl } from './net.js';
 
 const KEY = 'ftw_account_v1', GUEST = 'ftw_guest_v1';
@@ -20,8 +20,8 @@ export function createAccount({ onChange, beforeReplace }) {
     if (!response.ok) throw Object.assign(new Error(data.error || 'Could not connect to your account.'), { status: response.status });
     return data;
   }
-  function apply(profile) {
-    beforeReplace();
+  function apply(profile, preserveRoom = false) {
+    if (!preserveRoom) beforeReplace();
     applying = true;
     try { replaceProfile(profile); } finally { applying = false; }
   }
@@ -70,7 +70,7 @@ export function createAccount({ onChange, beforeReplace }) {
     state.busy = true; state.error = ''; emit();
     try {
       const data = await request(mode, 'POST', { ...credentials, ...(mode === 'register' ? { profile: exportProfile() } : {}) }, null);
-      if (!session) write(GUEST, exportProfile());
+      if (!session) write(GUEST, mode==='register'?freshGuestProfile():exportProfile());
       generation++; clearTimeout(timer);
       session = { username: data.username, token: data.token, revision: data.revision, createdAt: data.createdAt, dirty: false };
       write(KEY, session); state.username = data.username; state.createdAt = data.createdAt;
@@ -92,6 +92,16 @@ export function createAccount({ onChange, beforeReplace }) {
   setInterval(() => { if (session?.dirty && state.status === 'offline') save(); }, 30000);
   return {
     ready, save,
+    async applyAdminProfile(data) {
+      clearTimeout(timer);
+      generation++;
+      if (inFlight) await inFlight;
+      if (session && Number.isSafeInteger(data.revision)) {
+        session.revision = data.revision; session.dirty = false; write(KEY, session);
+        apply(data.profile, true); status('saved');
+      } else { apply(data.profile, true); }
+    },
+    identityToken:()=>session&&state.status!=='expired'?session.token:null,
     token: () => session && !['guest', 'expired', 'offline', 'conflict'].includes(state.status) ? session.token : null,
     register: credentials => authenticate('register', credentials),
     login: credentials => authenticate('login', credentials),

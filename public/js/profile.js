@@ -77,10 +77,12 @@ function normalize(raw) {
     settings: {
       sound: settings.sound !== false,
       prefillPrefix: settings.prefillPrefix !== false, cardStyle: settings.cardStyle === 'deck' ? 'deck' : 'pocket',
+      playerListStyle: ['classic', 'compact', 'portrait', 'ribbon'].includes(settings.playerListStyle) ? settings.playerListStyle : 'classic',
       view: settings.view === 'first' ? 'first' : 'third',
       quality: settings.quality === 'low' || settings.quality === 'high' ? settings.quality : (coarse ? 'low' : 'high'),
     },
     lastFreeClaim: count(p.lastFreeClaim),
+    freePlayMs: Math.min(FREE_COOLDOWN_MS, count(p.freePlayMs)),
   };
 }
 
@@ -120,6 +122,8 @@ export function replaceProfile(raw) {
   Object.assign(profile, normalize(raw));
   commit();
 }
+
+export function freshGuestProfile() { return normalize({...exportProfile(),id:null,name:null}); }
 
 export function exportProfile() { return JSON.parse(JSON.stringify(profile)); }
 
@@ -223,11 +227,11 @@ export function finishMatchProgress(id) {
   try { localStorage.removeItem(matchProgressKey(id)); } catch {}
 }
 
-export function recordMatch({ won, coins, matchId, practice = false, bestWpm = 0, bestCombo = 0 }) {
+export function recordMatch({ won, earnsTrophy = true, coins, matchId, practice = false, bestWpm = 0, bestCombo = 0 }) {
   if (matchId && !claimReceipt(`match:${matchId}`)) return false;
   if (practice) { profile.coins += count(coins); commit(); return true; }
   profile.gamesPlayed += 1;
-  if (won) profile.wins += 1;
+  if (won && earnsTrophy) profile.wins += 1;
   if (won) profile.xp += 50;
   profile.bestWpm = Math.max(profile.bestWpm, bestWpm);
   profile.bestCombo = Math.max(profile.bestCombo, bestCombo);
@@ -259,6 +263,7 @@ export function buyOrEquip(kind, id) {
   const owned = profile.ownedBacks;
   let result = 'equipped';
   if (!owned.includes(id)) {
+    if (item.secret) return 'invalid';
     if (!spend(item.price)) return 'poor';
     owned.push(id); result = 'bought';
   }
@@ -298,9 +303,8 @@ export function completeTrade({ outgoing, incoming, receipt, partner }) {
   if (!receipt || profile.receipts.includes(receipt)) return false;
   const before = tradeInventory(profile), giving = tradeOffer(outgoing), getting = tradeOffer(incoming);
   const after = transferInventory(before, giving, getting);
-  profile.coins = after.coins;
   profile.ownedChairs = ['wooden', ...after.chairs];
-  profile.ownedBacks = ['none', ...after.backs];
+  profile.ownedBacks = ['none', ...profile.ownedBacks.filter(id=>BACK_BLING.find(item=>item.id===id)?.secret), ...after.backs];
   if (!profile.ownedChairs.includes(profile.equippedChair)) profile.equippedChair = 'wooden';
   if (!profile.ownedBacks.includes(profile.equippedBack)) profile.equippedBack = 'none';
   for (const id of Object.keys(PETS_BY_ID)) {
@@ -373,14 +377,29 @@ export function setSetting(key, value) {
   commit();
 }
 
-export function freeReadyIn(now = Date.now()) {
-  return Math.max(0, profile.lastFreeClaim + FREE_COOLDOWN_MS - now);
+/** Only connected in-game time advances this saved reward; offline time adds nothing. */
+let freeSaveMs = 0;
+export function recordFreePlayTime(ms) {
+  if (!Number.isFinite(ms) || ms <= 0 || profile.freePlayMs >= FREE_COOLDOWN_MS) return;
+  profile.freePlayMs = Math.min(FREE_COOLDOWN_MS, profile.freePlayMs + Math.floor(ms));
+  freeSaveMs += ms;
+  write();
+  if (freeSaveMs >= 10000 || profile.freePlayMs === FREE_COOLDOWN_MS) { freeSaveMs = 0; commit(); }
 }
 
-/** Claims the free coins if the cooldown is over. */
+export function flushFreePlayTime() {
+  if (freeSaveMs > 0) { freeSaveMs = 0; commit(); }
+}
+
+export function freeReadyIn() {
+  return Math.max(0, FREE_COOLDOWN_MS - profile.freePlayMs);
+}
+
 export function claimFree(now = Date.now()) {
-  if (freeReadyIn(now) > 0) return false;
+  if (freeReadyIn() > 0) return false;
   profile.lastFreeClaim = now;
+  profile.freePlayMs = 0;
+  freeSaveMs = 0;
   profile.coins += FREE_COINS;
   commit();
   return true;

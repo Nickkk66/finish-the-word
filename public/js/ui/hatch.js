@@ -1,15 +1,17 @@
 // Lucky block hatch overlay: block drops in → shakes harder and harder → burst → pet card with rarity glow.
 
 import { h } from './dom.js';
+import { modelArt } from './art.js';
 import { sfx } from '../audio.js';
-import { PETS_BY_ID, RARITIES, abilityText } from '../shared/catalog.js';
+import { PETS_BY_ID, RARITIES } from '../shared/catalog.js';
+import { petAbilities } from './pet-abilities.js';
 import { closeOverlay } from './overlays.js';
 
 const SHAKES = [500, 1000, 1450];   // ms timeline of the three shakes
 const REVEAL_AT = 1950;
 
 /** count = how many of this pet you own now; onEquip() equips it. */
-export function playHatch(root, { block, petId, count, onEquip }) {
+export function playHatch(root, { block, petId, count, onEquip, onClose, thumbnail }) {
   const pet = PETS_BY_ID[petId];
   const rarity = RARITIES[pet.rarity];
   const timers = [];
@@ -20,10 +22,10 @@ export function playHatch(root, { block, petId, count, onEquip }) {
   const okBtn = h('button', { type: 'button', class: 'btn blue', onClick: () => close() }, 'Nice!');
   const card = h('div', { class: 'hatch-card', hidden: true },
     h('div', { class: 'hatch-badge stroke' }, count > 1 ? `×${count}` : 'NEW!'),
-    h('div', { class: 'hatch-emoji', 'aria-hidden': 'true' }, pet.emoji),
+    h('div', { class: 'hatch-pet-art' }, modelArt({ thumbnail }, 'pet', petId, pet.name, 256)),
     h('div', { class: 'hatch-name stroke' }, pet.name),
     h('span', { class: 'pill', style: { '--pc': rarity.color } }, pet.rarity),
-    h('p', { class: 'hatch-ability' }, abilityText(pet.ability)),
+    h('div', { class: 'hatch-ability' }, petAbilities(pet)),
     h('div', { class: 'overlay-buttons' }, equipBtn, okBtn));
   const el = h('div', { class: 'overlay hatch', style: { '--rc': rarity.color }, role: 'dialog', 'aria-label': `You hatched ${pet.name}!` },
     h('div', { class: 'hatch-title stroke' }, `Opening ${block.name}...`),
@@ -49,10 +51,12 @@ export function playHatch(root, { block, petId, count, onEquip }) {
     e.preventDefault();
     e.stopPropagation();
     if (skip) reveal();
-    else close();
+    // The revealed crate stays open until Nice! or Equip is activated.
   }
 
   function close() {
+    if (el.classList.contains('leaving')) return;
+    onClose?.();
     timers.forEach(clearTimeout);
     document.removeEventListener('keydown', onKey, true);
     closeOverlay(el);

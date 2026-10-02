@@ -51,6 +51,7 @@ export const PEDESTAL = { radius: 1.9, height: 0.8 };
 export const BLOCK_SPOTS = [
   { blockId: 'starter', x: -12.5, z: 18.5, ry: 0.5 },
   { blockId: 'secret', x: -19.5, z: 13.5, ry: 0.9 },
+  { blockId: 'mythic', x: -19.5, z: 5.5, ry: 1.2 },
 ];
 export const BLOCK_BASE = { radius: 2.5, height: 0.5 };
 

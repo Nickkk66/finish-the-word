@@ -45,7 +45,7 @@ export function buildPet(petId) {
 /** Lucky block (3-unit "?" cube): origin bottom-center, idle animation in userData.update. */
 export function buildLuckyBlock(blockId) {
   const block = BLOCKS.find((b) => b.id === blockId) || BLOCKS[0];
-  return block.id === 'secret' ? secretBlock(block) : starterBlock(block);
+  return ['secret','mythic'].includes(block.id) ? secretBlock(block) : starterBlock(block);
 }
 
 /** Frees geometries/materials/textures under obj that are not shared through the caches. */
@@ -1081,6 +1081,33 @@ const PET_KINDS = {
     },
   },
 
+  turtle: {
+    build(k,c){
+      k.add(geo.rbox(1.16,.72,.58,.26,3),c.accent,[0,.72,-.36]);
+      for(const x of [-.34,0,.34])k.add(geo.rbox(.22,.05,.48,.02,2),c.light,[x,1.09,-.36]);
+      k.add(geo.rbox(.68,.36,.25,.14,3),c.body,[0,.48,.57]);
+    }
+  },
+  rhino: {
+    build(k,c){
+      k.add(geo.rbox(.72,.44,.34,.13,3),c.dark,[0,.48,.61]);
+      k.add(geo.cone(.16,.45,10),c.accent,[0,.86,.69],[.2,0,0]);
+      k.pair(geo.cone(.15,.29,8),c.body,[.39,1.23,0],[0,0,.25]);
+    }
+  },
+  moth: {
+    build(k,c){
+      k.pair(geo.cyl(.025,.025,.35,8),c.dark,[.20,1.30,.06],[0,0,.3]);
+      k.pair(geo.sphere(.09,12,8),c.glow,[.26,1.47,.06]);
+    },
+    animate(bob,c,key){
+      const wings=pivotPair(bob,[.50,.81,-.18],key+':wing',k=>{
+        k.add(geo.rbox(.72,.83,.10,.25,3),c.accent,[.25,0,0]);
+        k.add(geo.rbox(.39,.42,.11,.17,3),c.glow,[.28,.12,.01]);
+      });
+      return tt=>{wings[0].rotation.y=Math.sin(tt*7)*.5;wings[1].rotation.y=-Math.sin(tt*7)*.5;};
+    }
+  },
   penguin: {
     feet: 'orange',
     eyeY: 0.76,
@@ -1259,7 +1286,7 @@ function wingGeometry() {
 
 function blockMaterial(block) {
   return cached(`mat:block:${block.id}`, () => {
-    if (block.id !== 'secret') return new THREE.MeshStandardMaterial({ map: blockFaceTexture(block), roughness: 0.45 });
+    if (block.id !== 'mythic') return new THREE.MeshStandardMaterial({ map: blockFaceTexture(block), roughness: 0.45 });
     return new THREE.MeshStandardMaterial({
       map: blockFaceTexture(block), emissive: '#ffffff', emissiveMap: secretGlowTexture(), emissiveIntensity: 1.2, roughness: 0.4,
     });
@@ -1285,20 +1312,22 @@ function secretBlock(block) {
   const material = blockMaterial(block);
   const cube = meshOf(geo.rbox(3, 3, 3, 0.16, 2), material);
   group.add(cube);
-  // faint purple aura around the block and a glow pool on the ground
+  if(block.id==='secret'){group.userData.glistening=false;group.userData.update=t=>{cube.position.y=1.8;cube.rotation.y=t*.5;};group.userData.update(0);return group;}
+  group.userData.glistening=true;
+  // Mythic glistens with a warm aura, glowing surface and twinkles.
   const auraMat = cached('mat:secretAura', () => new THREE.SpriteMaterial({
-    map: glowTexture(), color: '#b86bff', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5,
+    map: glowTexture(), color: '#ffad68', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5,
   }));
   const aura = new THREE.Sprite(auraMat);
   group.add(aura);
   const pool = new THREE.Mesh(geo.plane(), cached('mat:secretPool', () => new THREE.MeshBasicMaterial({
-    map: glowTexture(), color: '#a855f7', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55,
+    map: glowTexture(), color: '#ff994e', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55,
   })));
   pool.rotation.x = -HALF_PI;
   pool.position.y = 0.03;
   pool.scale.setScalar(5.6);
   group.add(pool);
-  const twinkle = addSparkles(group, '#f0d4ff', [[1.9, 3.4, 1.0], [-1.8, 2.6, 1.3], [1.2, 0.9, 1.9], [-1.4, 4.0, -1.2], [0.2, 4.3, 1.6]], 0.8);
+  const twinkle = addSparkles(group, '#fff2bf', [[1.9, 3.4, 1.0], [-1.8, 2.6, 1.3], [1.2, 0.9, 1.9], [-1.4, 4.0, -1.2], [0.2, 4.3, 1.6]], 0.8);
   const phase = nextPhase();
   group.userData.update = (t) => {
     const tt = t + phase;

@@ -3,7 +3,7 @@ import { Label } from './labels.js';
 import { buildPet } from './cosmetics.js';
 import { DECK, BOARDS, seatX, seatZ } from './layout.js';
 import { LAYOUT } from '../shared/constants.js';
-import { ROULETTE_HAZARDS, ROULETTE_INTRO_MS, sipLift } from '../shared/roulette.js';
+import { ROULETTE_HAZARDS, ROULETTE_INTRO_MS, MAX_PURPLE_METEORS, sipLift } from '../shared/roulette.js';
 import { createFire, createMeteorTrail, surfaceTexture } from './ember.js';
 import { sfx } from '../audio.js';
 
@@ -62,10 +62,10 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
     const pit=new THREE.Mesh(new THREE.CircleGeometry(h.r,24),new THREE.MeshStandardMaterial({color:'#110d16',roughness:1}));pit.rotation.x=-Math.PI/2;crater.add(pit);
     const rim=new THREE.Mesh(new THREE.TorusGeometry(h.r,.48,6,24),rockMat);rim.rotation.x=Math.PI/2;rim.position.y=.15;crater.add(rim);
     const meteor=new THREE.Mesh(new THREE.IcosahedronGeometry(1.55,1),rockMat);meteor.position.set(h.x,70,h.z);root.add(meteor);
-    const trail=createFire(1.05,5,8);trail.position.y=-.2;meteor.add(trail);
+    const trail=createFire(1.05,5,8,true);trail.position.y=-.2;meteor.add(trail);
     const core=new THREE.Mesh(new THREE.IcosahedronGeometry(1.57,1),new THREE.MeshBasicMaterial({color:'#d03d1b',wireframe:true,transparent:true,opacity:.45}));meteor.add(core);
     const flames=createFire(2.2,3.2,12);crater.add(flames);
-    const wake=createMeteorTrail(root);
+    const wake=createMeteorTrail(root,22,true);
     return{h,i,crater,meteor,trail,wake,flames,impacted:false,visualFall:0};
   });
   const burningTrees=trees.filter((_,i)=>i%7===3).slice(0,5).flatMap(tree=>{
@@ -83,8 +83,8 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
   const treasureRock=new THREE.Mesh(new THREE.IcosahedronGeometry(.9,1),new THREE.MeshStandardMaterial({color:'#ae64eb',map:surfaceTexture('rock'),emissive:'#7230b9',emissiveIntensity:.8,roughness:.8}));treasure.add(treasureRock);
   const treasureWake=createMeteorTrail(root,16,true);
   const descent=new THREE.Vector3(25,70,-32).normalize(),treasureDescent=new THREE.Vector3(28,65,-25).normalize();
-  const treasureFire=createFire(1.15,3.6,16,true);treasure.add(treasureFire);
-  const treasureHalo=createFire(1.9,2.4,18,true);treasure.add(treasureHalo);
+  const treasureFire=createFire(1.15,3.6,16,true);treasureFire.position.y=-1.25;treasure.add(treasureFire);
+  const treasureHalo=createFire(1.9,2.4,18,true);treasureHalo.position.y=-1.25;treasure.add(treasureHalo);
   const treasureGlow=new THREE.PointLight('#a44aff',12,12,2);treasureGlow.position.y=1.5;treasure.add(treasureGlow);
   const treasureLabel=new Label(labels,'w-meteor-reward',{maxDist:100,scaleRef:26});treasureLabel.el.textContent='+150 COINS';treasureLabel.visible=false;
   const pickup=new THREE.Group();pickup.visible=false;root.add(pickup);
@@ -92,9 +92,9 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
   const pickupPositions=new Float32Array(36*3),pickupGeo=new THREE.BufferGeometry();pickupGeo.setAttribute('position',new THREE.BufferAttribute(pickupPositions,3));
   const pickupSparks=new THREE.Points(pickupGeo,new THREE.PointsMaterial({color:'#ffe9ae',size:.36,transparent:true,depthWrite:false}));pickup.add(pickupSparks);
   const pickupLabel=new Label(labels,'w-meteor-reward',{maxDist:100,scaleRef:26});pickupLabel.el.textContent='+150 COINS';pickupLabel.visible=false;
-  let meteorDrop=null,meteorLands=0,meteorPrompt=null,pickupStarted=-Infinity,treasureImpacted=true,shakeAt=-Infinity;
+  let meteorDrop=null,meteorLands=0,meteorFalls=0,meteorPrompt=null,pickupStarted=-Infinity,treasureImpacted=true,shakeAt=-Infinity;
   const ghosts=[];
-  let active=false,match=null,players=null,previousEvent='',eventStart=0,event=null,knockoutPlayed=false,introStart=-Infinity,introMatchId=null;
+  let active=false,match=null,players=null,previousEvent='',eventStart=0,event=null,knockoutPlayed=false,introStart=-Infinity,introMatchId=null;let introMode=null;
   let cashCount=0,rimError=null,lastGhost='';
   const target=new THREE.Vector3(),from=new THREE.Vector3(),mouth=new THREE.Vector3(),lip=new THREE.Vector3(),normalCamera=new THREE.Vector3(),cinematicTarget=new THREE.Vector3();
   const y=DECK.top+LAYOUT.tableHeight+.16;cup.position.set(0,y,4.5);
@@ -111,20 +111,16 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
     ghosts.push({label:ghost,start:performance.now(),base:ghost.anchor.clone()});sfx.soul();
   }
   return {
-    set(on,m,entities,entry=25){
-      if(on && m?.startedAt && m.matchId !== introMatchId){
-        introMatchId=m.matchId;
-        introStart=performance.now()-Math.max(0,Date.now()-m.startedAt);
-        if(introAge()<ROULETTE_INTRO_MS)sfx.omen();
+    set(on,m,entities,entry=25,mode='roulette'){
+      // The asteroid ritual belongs to activating the mode, not individual matches.
+      if(on && (!active || mode!==introMode)){
+        introMode=mode;introMatchId='mode'; introStart=performance.now(); sfx.omen();
         hazards.forEach(h=>{h.impacted=false;h.visualFall=0;});
-      } else if(on && !m?.startedAt && introMatchId){
-        introMatchId=null;introStart=-Infinity;
-        hazards.forEach(h=>{h.impacted=false;h.visualFall=0;});
-      }
+      } else if(!on){ introMatchId=null;introStart=-Infinity; }
       active=on;root.visible=on;pot.visible=on;players=entities;match=m;
       if(!on){previousEvent='';event=null;meteorDrop=null;meteorPrompt=null;treasure.visible=false;treasureCrater.visible=false;treasureWake.mesh.visible=false;treasureLabel.visible=false;pickup.visible=false;pickupLabel.visible=false;for(const g of ghosts)g.label.destroy();ghosts.length=0;return;}
       const total=m?.roulette?.pot || [...entities.values()].reduce((sum,e)=>sum+(e.data.rouletteBet || (e.data.isBot?entry:0)),0);
-      pot.el.textContent=`${total.toLocaleString()} COINS${m?.roulette?' · ×'+m.roulette.multiplier.toFixed(2):''}`;
+      pot.el.textContent=`${total.toLocaleString()} COINS${m?.roulette?' · MATCHED POOL':''}`;
       cashCount=total?Math.min(144,18+Math.ceil(Math.log2(Math.max(1,total/25))*18)):0;
       for(const mesh of [bills,straps,notes])mesh.count=cashCount;
       cash.scale.setScalar(1+Math.min(.5,Math.log10(Math.max(1,total/25))*.1));
@@ -139,7 +135,7 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
         treasureImpacted=!drop?.landsIn;
         if(drop){treasureCrater.position.set(drop.x,.035,drop.z);treasureCrater.visible=false;}
       }
-      meteorDrop=drop;meteorLands=performance.now()+(drop?.landsIn||0);meteorPrompt=drop?{i:{type:'meteor',id:drop.id},x:drop.x,z:drop.z,y:3,range:3.2,stamp:0}:null;
+      meteorDrop=drop;meteorLands=performance.now()+(drop?.landsIn||0);meteorFalls=performance.now()+(drop?.fallsIn||0);meteorPrompt=drop?{i:{type:'meteor',id:drop.id},x:drop.x,z:drop.z,y:3,range:3.2,stamp:0}:null;
       treasure.visible=!!drop;treasureLabel.visible=!!drop;
     },
     meteorTarget:()=>active&&meteorDrop&&performance.now()>=meteorLands?meteorPrompt:null,
@@ -160,7 +156,7 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
         if(event.poisoned&&age>4.05&&age<4.42){const decay=1-(age-4.05)/.37;camera.position.x+=Math.sin(age*110)*.17*decay;camera.position.y+=Math.cos(age*87)*.12*decay;}
         return;
       }
-      const age=introAge()/1000;normalCamera.copy(camera.position);
+      const age=Math.max(0,introAge()/1000-8);normalCamera.copy(camera.position);
       if(age<2){camera.position.set(0,17,38);cinematicTarget.set(-5,38-age*5,-20);}
       else {camera.position.set(38,35,52);cinematicTarget.set(7,Math.max(2,46-(age-2)*25),-12);}
       if(age>5.7){const k=Math.min(1,(age-5.7)/1.3);camera.position.lerp(normalCamera,k*k*(3-2*k));const forward=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(25).add(normalCamera);cinematicTarget.lerp(forward,k);}
@@ -200,10 +196,13 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
       cup.visible=match?.phase!=='ended';
       for(const owl of owls)owl.userData.update?.(t,dt);
       for(const h of hazards){
-        const targetFall=introMatchId===null?0:Math.max(0,Math.min(1,(introAge()/1000-2.1-h.i*.4)/1.4));
+        // Reserve a slot for the special purple meteor; batch the falling trails so at most three exist.
+        const slots = MAX_PURPLE_METEORS - (meteorDrop ? 1 : 0);
+        const fallStart = 10 + Math.floor(h.i / slots) * 1.8 + (h.i % slots) * .4;
+        const targetFall=introMatchId===null?0:Math.max(0,Math.min(1,(introAge()/1000-fallStart)/1.4));
         h.visualFall=Math.min(targetFall,h.visualFall+dt/.9);
         const fall=h.visualFall;
-        h.meteor.visible=fall>0;h.crater.scale.setScalar(Math.max(.001,Math.min(1,(fall-.92)/.08)));
+        h.meteor.visible=fall>0;h.trail.visible=fall>0&&fall<1;h.crater.scale.setScalar(Math.max(.001,Math.min(1,(fall-.92)/.08)));
         h.meteor.position.set(h.h.x+(1-fall)*25,1.0+(1-fall)*70,h.h.z-(1-fall)*32);h.meteor.rotation.y=fall*2;h.trail.userData.update(t);h.trail.scale.y=1+(1-fall)*.7;
         h.wake.update(h.meteor.position,descent,fall,t);
         if(fall>=1&&!h.impacted){h.impacted=true;shakeAt=now;sfx.impact();}
@@ -214,8 +213,8 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
         if(!treasureImpacted&&now>=meteorLands){treasureImpacted=true;shakeAt=now;sfx.impact();}
         treasureCrater.visible=treasureImpacted;
         const remaining=Math.max(0,Math.min(1,(meteorLands-now)/2400));
-        treasure.visible=true;treasure.position.set(meteorDrop.x+remaining*28,.8+remaining*65,meteorDrop.z-remaining*25);
-        treasureWake.update(treasure.position,treasureDescent,1-remaining,t);
+        treasure.visible=now>=meteorFalls;treasure.position.set(meteorDrop.x+remaining*28,.8+remaining*65,meteorDrop.z-remaining*25);
+        treasureWake.update(treasure.position,treasureDescent,now>=meteorFalls?1-remaining:0,t);
         treasureRock.rotation.set(t*.4,t*.7,0);
         treasureFire.userData.update(t);treasureHalo.userData.update(t);
         treasureFire.scale.y=remaining>0?1.7:1.15;
@@ -233,6 +232,6 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
       }
       for(let i=ghosts.length-1;i>=0;i--){const g=ghosts[i],age=(now-g.start)/1000;g.label.anchor.copy(g.base).add(new THREE.Vector3(Math.sin(age*3)*.7,age*3.5,0));g.label.el.style.opacity=String(Math.max(0,1-age/4));if(age>4){g.label.destroy();ghosts.splice(i,1);}}
     },
-    debug:()=>({active,owlBoard:board.kind,restingCups:[],trails:hazards.filter(h=>h.wake.mesh.visible).length+(treasureWake.mesh.visible?1:0),meteor:meteorDrop,specialCrater:treasureCrater.visible,pickup:pickup.visible,burningTrees:burningTrees.length,cup:cup.position.toArray(),pot:pot.el.textContent,owls:owls.length,cashCount,rimError,ghosts:ghosts.length,craters:hazards.filter(h=>h.impacted).length,cinematic:active&&introMatchId!==null&&introAge()<ROULETTE_INTRO_MS}),
+    debug:()=>({active,owlBoard:board.kind,restingCups:[],trails:hazards.filter(h=>h.wake.mesh.visible).length+(treasureWake.mesh.visible?1:0),purpleMeteorCount:hazards.filter(h=>h.trail.visible&&h.meteor.visible).length+(treasure.visible?1:0),purpleMeteorLimit:MAX_PURPLE_METEORS,purpleTrails:hazards.every(h=>h.wake.mesh.material.uniforms.poisoned.value===1),purpleFireY:treasureFire.position.y,purpleHaloY:treasureHalo.position.y,treasureVisible:treasure.visible,meteor:meteorDrop,specialCrater:treasureCrater.visible,pickup:pickup.visible,burningTrees:burningTrees.length,cup:cup.position.toArray(),pot:pot.el.textContent,owls:owls.length,cashCount,rimError,ghosts:ghosts.length,craters:hazards.filter(h=>h.impacted).length,cinematic:active&&introMatchId!==null&&introAge()<ROULETTE_INTRO_MS}),
   };
 }

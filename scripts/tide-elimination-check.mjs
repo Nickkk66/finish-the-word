@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';
+import {browser,delay} from './browser.mjs';
+const b=await browser(),base=process.env.BASE||'http://127.0.0.1:8788';
+try{
+const p=await b.page('tide-live-elimination',1440,900);await p.nav(base+'/?debug=1');await p.wait('window.__ftw?.world');await p.clickText('Create Private');await p.wait('window.__ftw.state.inRoom');await p.send({t:'host',action:'settings',settings:{mode:'word_tide'}});await p.wait('window.__ftw.state.match.phase==="tideAnswer"',35000);await p.send({t:'stand'});await p.wait('window.__ftw.state.match.tide.towers[window.__ftw.state.you].wreck');
+await delay(1700);assert.ok(await p.eval('window.__ftw.world.debugSnapshot().tide.wrecks.events[0]'));await p.shot('fallen-body');await delay(14500);let e=await p.eval('window.__ftw.world.debugSnapshot().tide.wrecks.events[0]');assert.equal(e.bodyPieces,15);assert.equal(e.fish,8);const water=await p.eval('window.__ftw.world.debugSnapshot().tide.water');assert.ok(e.fishPositions.filter(x=>x[1]>water+.3).length>=2);assert.ok(await p.eval('window.__ftw.state.match.tide.endingHoldMs>18000'));await p.shot('piranhas-and-body');await delay(4000);assert.ok(Math.abs((await p.eval('window.__ftw.world.debugSnapshot().tide.water'))-water)<.01,'water holds while fish feed');assert.deepEqual(p.errors,[]);console.log('PASS real server elimination retains body, piranhas and waterline through finale hold.');
+}finally{await b.close()}

@@ -43,6 +43,9 @@ export class GameRoom extends DurableObject {
   }
 
   async fetch(request) {
+    if(new URL(request.url).pathname==='/handle-update'&&request.method==='POST'){
+      const {id,name,revision}=await request.json();this.engine?.updateHandle(id,name,revision);return Response.json({ok:true});
+    }
     if (new URL(request.url).pathname === '/shutdown' && request.method === 'POST') {
       const { code } = await request.json();
       this.engine?.shutdownRoom();
@@ -52,6 +55,10 @@ export class GameRoom extends DurableObject {
     }
     if (new URL(request.url).pathname === '/admin-edit' && request.method === 'POST') {
       const { action, data } = await request.json();
+      if (action.startsWith('profile-')) {
+        try { return Response.json(this.engine.adminProfile(action.slice(8), data)); }
+        catch (error) { return Response.json({ error: error.message }, { status: 400 }); }
+      }
       return Response.json({ ok: !!this.engine?.editPlayer(action, data) });
     }
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
@@ -71,7 +78,11 @@ export class GameRoom extends DurableObject {
         const account = await result.json();
         return account.id === playerId && Number.isSafeInteger(account.createdAt) ? account : null;
       },
-      onWin: ({ playerId, name }) => this.ctx.waitUntil(this.internal('LEADERBOARD', '/win', { playerId, name })),
+      onVerifyHandle: async(token,playerId)=>{
+        const result=await this.env.ACCOUNTS.get(this.env.ACCOUNTS.idFromName('global')).fetch(`https://internal/api/handle/verify?room=${code}`,{headers:{Authorization:`Bearer ${token}`}});
+        if(!result.ok)return null;const identity=await result.json();return identity.id===playerId?identity:null;
+      },
+      onWin: ({ playerId, name }) => this.ctx.waitUntil(this.internal('LEADERBOARD', '/win', { playerId, name,revision:this.engine?.players.get(playerId)?.handleRevision||0 })),
       onRemoveLeaderboard: playerId => this.ctx.waitUntil(this.internal('LEADERBOARD', '/remove', { playerId })),
       onSetWins: async (record) => {
         const result = await this.internal('LEADERBOARD', '/set', { playerId: record.id, name: record.name, wins: record.wins });
@@ -88,6 +99,12 @@ export class GameRoom extends DurableObject {
         if (!result.ok) throw new Error('Could not check Last Sip trophies.');
         return result.json();
       },
+      onAdminProfile: async (action, data) => {
+        const response = await this.internal('ACCOUNTS', '/admin-profiles', { ...data, action });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+        return result;
+      },
       onListRooms: async () => {
         const [roomsResult, leadersResult] = await Promise.all([
           this.env.MATCHMAKER.get(this.env.MATCHMAKER.idFromName('global')).fetch('https://internal/all'),
@@ -101,7 +118,9 @@ export class GameRoom extends DurableObject {
       },
       onAdminEdit: async (roomCode, action, data) => {
         const result = await this.env.ROOMS.get(this.env.ROOMS.idFromName(roomCode)).fetch('https://internal/admin-edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, data }) });
-        if (!result.ok || !(await result.json()).ok) throw new Error('Remote player edit failed');
+        const body = await result.json();
+        if (!result.ok || (!action.startsWith('profile-') && !body.ok)) throw new Error(body.error || 'Remote player edit failed');
+        return body;
       },
       onGlobalAnnouncement: notice => this.ctx.waitUntil(this.internal('ANNOUNCEMENTS', '/post', notice)),
       onListing: listing => this.report(listing),

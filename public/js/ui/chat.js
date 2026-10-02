@@ -2,7 +2,7 @@
 // On small screens it collapses behind a 💬 button with an unread badge.
 // Messages are rendered with textContent only.
 
-import { h, nameColor, isTextField, replay } from './dom.js';
+import { h, s, nameColor, isTextField, replay } from './dom.js';
 import { CHAT_MAX, EMOTES } from '../shared/constants.js';
 
 const MAX_MESSAGES = 60;
@@ -19,7 +19,7 @@ export function createChat({ onSend, onEmote }) {
   const badge = h('span', { class: 'chat-badge', hidden: true });
   const toggle = h('button', { type: 'button', class: 'chat-toggle', 'aria-label': 'Open chat' }, '💬', badge);
   const emotes = h('div', { class: 'emote-grid', hidden: true }, EMOTES.map((name) => h('button', { type: 'button', class: 'seg-btn', onClick: () => { onEmote(name); emotes.hidden = true; } }, name)));
-  const emoteButton = h('button', { type: 'button', class: 'emote-button', 'aria-label': 'Emotes', onClick: () => { emotes.hidden = !emotes.hidden; } }, '☺');
+  const emoteButton = h('button', { type: 'button', class: 'emote-button', 'aria-label': 'Emotes', onClick: () => { emotes.hidden = !emotes.hidden; } }, s('svg', { viewBox: '0 0 24 24', width: 22, height: 22, 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8 }, s('circle', { cx: 12, cy: 12, r: 9 }), s('path', { d: 'M8 14c1.5 3 6.5 3 8 0' }), s('circle', { cx: 8.5, cy: 9, r: .8, fill: 'currentColor', stroke: 'none' }), s('circle', { cx: 15.5, cy: 9, r: .8, fill: 'currentColor', stroke: 'none' })));
   const el = h('div', { class: 'chat' }, toggle, h('div', { class: 'chat-box' }, log, h('div', { class: 'chat-entry' }, input, emoteButton), emotes));
 
   const compact = matchMedia('(max-width: 720px), (max-height: 520px)');
@@ -27,6 +27,14 @@ export function createChat({ onSend, onEmote }) {
   let lastSent = 0;
   let idleTimer = 0;
   let fadeTimer = 0;
+
+  // Reserve the actual chat height, including the expanded mobile chat.
+  function placeSidebar() {
+    const rect = el.getBoundingClientRect();
+    if (rect.height) document.documentElement.style.setProperty('--sidebar-top', `${rect.bottom + 18}px`);
+  }
+  new ResizeObserver(placeSidebar).observe(el);
+  window.addEventListener('resize', placeSidebar);
 
   const engaged = () => document.activeElement === input || el.matches(':hover');
   const isHidden = () => compact.matches && !el.classList.contains('open');

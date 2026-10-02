@@ -1,8 +1,12 @@
+import { cloudProfile, restrictSecretBacks } from './accounts.js';
+import { handleKey } from '../public/js/shared/handles.js';
 import { wordTideMethods } from './word-tide.js';
-import { TIDE_PHASES } from '../public/js/shared/word-tide.js';
+import { observeMovement } from './movement-pattern.js';
+import { presenceMethods } from './presence.js';
+import { TIDE, TIDE_PHASES } from '../public/js/shared/word-tide.js';
 import { LIGHTHOUSE_ROOM, lighthouseSeat, lighthouseSeatPosition, TOTAL_WORLD_SEATS } from '../public/js/shared/lighthouse.js';
 import { portalRoute, zoneAt } from '../public/js/shared/travel.js';
-import { isRouletteMode, rouletteRules } from '../public/js/shared/roulette.js';
+import { isRouletteMode, rouletteRules, roulettePayoutCap } from '../public/js/shared/roulette.js';
 // Server-authoritative game logic for one room (docs/SPEC.md §3 and §4).
 // Pure and transport-agnostic: no Cloudflare or Node APIs. Time, timers and randomness
 // are injected so tests can drive a room with a fake clock, and a connection is any
@@ -12,9 +16,9 @@ import {
   COUNTDOWN_MS, ROULETTE_COUNTDOWN_MS, CHOOSE_MS, ROUND_END_MS, MATCH_END_MS,
   RECONNECT_GRACE_MS, DEFAULT_SETTINGS, MODES, REWARDS, FLAIRS, EMOTES, HINT_PRICE, OBBY, TRADE_ACCOUNT_AGE_MS,
 } from '../public/js/shared/constants.js';
-import { PETS_BY_ID, CARDS_BY_ID } from '../public/js/shared/catalog.js';
+import { PETS_BY_ID, CARDS_BY_ID, petAbility, SECRET_BACK_IDS } from '../public/js/shared/catalog.js';
 import { tradeInventory, tradeOffer, offerAvailable, canReceive, transferInventory } from '../public/js/shared/trade.js';
-import { ROULETTE_INTRO_MS, ROULETTE_DRINK_MS, ROULETTE_PASS_MS, inRouletteFire, rouletteOdds, METEOR_INTERVAL_MS, METEOR_FLIGHT_MS, METEOR_SITES } from '../public/js/shared/roulette.js';
+import { ROULETTE_INTRO_MS, ROULETTE_DRINK_MS, ROULETTE_PASS_MS, inRouletteFire, rouletteOdds, METEOR_INTERVAL_MS, METEOR_FLIGHT_MS, METEOR_WARNING_MS, METEOR_SITES } from '../public/js/shared/roulette.js';
 import { rules, TWISTS } from './modes.js';
 import { adminToken, constantTimeEqual } from './auth.js';
 import { filterText, ALLOWED_SWEARS } from './blocklist.js';
@@ -28,7 +32,7 @@ import {
 const HARD_LETTERS = [...'jkqvwxyz'];
 const CHAIN_LENGTH = 12; // accepted words kept in MatchState.chain
 const MOVES_INTERVAL_MS = 100; // `moves` batching, ~10 Hz
-const MAX_MESSAGE_LENGTH = 8192;
+const MAX_MESSAGE_LENGTH = 131072;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const CLOSE_REPLACED = 4000; // the same player id connected from another socket
 const CLOSE_REJECTED = 1008; // after error room_full / bad_hello
@@ -36,6 +40,7 @@ const ACTIVE_PHASES = new Set(['choosing', 'typing', 'cardReveal', 'roundEnd', '
 
 // Token buckets per player and message kind: [tokens refilled per second, burst].
 const RATE_LIMITS = {
+  activity: [1, 2],
   move: [15, 15],
   typing: [20, 20],
   submit: [5, 5],
@@ -91,7 +96,7 @@ const clearTurn = (m) =>
   Object.assign(m, { chooserId: null, options: null, typerId: null, prefix: null, mistakes: 0, maxMistakes: BASE_MISTAKES });
 
 export class GameEngine {
-  constructor({ code, dict, botDict, botDicts = {}, now, setTimeout, clearTimeout, random, adminCode = '', crypto = globalThis.crypto, onWin = () => {}, onListing = () => {}, onVerifyAccount = async () => null, onListRooms = async () => ({ rooms: [], leaders: [] }), onShutdownRoom = async () => {}, onAdminEdit = async () => {}, onSetWins = async () => ({ wins: 0, revision: 0 }), onSellWins = async () => ({ ok: false }), onCheckTrophies = () => ({ ok: true }), onRemoveLeaderboard = () => {}, onGlobalAnnouncement = () => {}, onError = (err) => console.error('[engine]', err) }) {
+  constructor({ code, dict, botDict, botDicts = {}, now, setTimeout, clearTimeout, random, adminCode = '', crypto = globalThis.crypto, onWin = () => {}, onListing = () => {}, onVerifyAccount = async () => null, onVerifyHandle = null, onListRooms = async () => ({ rooms: [], leaders: [] }), onShutdownRoom = async () => {}, onAdminEdit = async () => {}, onAdminProfile = async () => ({ guest: true }), onSetWins = async () => ({ wins: 0, revision: 0 }), onSellWins = async () => ({ ok: false }), onCheckTrophies = () => ({ ok: true }), onRemoveLeaderboard = () => {}, onGlobalAnnouncement = () => {}, onError = (err) => console.error('[engine]', err) }) {
     this.code = code;
     this.dict = dict;
     this.botDict = botDict;
@@ -105,6 +110,7 @@ export class GameEngine {
     this.onSellWins = onSellWins;
     this.onCheckTrophies = onCheckTrophies;
     this.onVerifyAccount = onVerifyAccount;
+    this.onVerifyHandle=onVerifyHandle;
     this.onRemoveLeaderboard = onRemoveLeaderboard;
     this.onGlobalAnnouncement = onGlobalAnnouncement;
     this.unlockIps = new Map();
@@ -114,6 +120,7 @@ export class GameEngine {
     this.trades = new Map();
     this.onShutdownRoom = onShutdownRoom;
     this.onAdminEdit = onAdminEdit;
+    this.onAdminProfile = onAdminProfile;
     this.turnSerial = 0;
     this.matchSerial = 0;
     this.now = now;
@@ -207,33 +214,38 @@ export class GameEngine {
       return this.closeConn(conn, 4002, 'banned');
     }
     // Token verification is asynchronous; reserve this socket against parallel hello attempts.
-    if (msg._internal !== this && ((msg.adminToken && this.adminCode) || msg.accountToken)) {
+    if (msg._internal !== this && ((msg.adminToken && this.adminCode) || msg.accountToken || this.onVerifyHandle)) {
       this.conns.set(conn, null);
       return Promise.all([
         msg.adminToken && this.adminCode ? adminToken(this.adminCode, id, this.crypto).then(token => constantTimeEqual(token, msg.adminToken)) : false,
         typeof msg.accountToken === 'string' && /^[a-f0-9]{64}$/.test(msg.accountToken) ? this.onVerifyAccount(msg.accountToken, id).catch(() => null) : null,
-      ]).then(([adminVerified, account]) => {
+        this.onVerifyHandle?this.onVerifyHandle(msg.accountToken||msg.handleToken,id).catch(()=>null):null,
+      ]).then(([adminVerified, account, handle]) => {
         if (!this.conns.has(conn)) return; // socket closed while its token was being checked
         this.conns.delete(conn);
-        this.hello(conn, { ...msg, adminToken: null, accountToken: null, _verified: adminVerified, _account: account, _internal: this });
+        if(this.onVerifyHandle&&!handle)return this.reject(conn,'handle_required','Claim an available handle before joining.');
+        this.hello(conn, { ...msg, adminToken: null, accountToken: null, _verified: adminVerified, _account: account, _handle: handle, _internal: this });
       });
     }
     const verified = msg._internal === this && msg._verified === true;
     const accountCreatedAt = msg._internal === this && msg._account?.id === id ? msg._account.createdAt : null;
+    const secretBacks = msg._internal===this ? msg._account?.secretBacks || this.players.get(id)?.secretBacks || [] : this.players.get(id)?.secretBacks || [];
     const loadout = {
-      name: sanitizeName(msg.name, this.settings.allowSwearing) || randomPlayerName(this.random),
+      name: (msg._internal===this&&msg._handle?.name)||sanitizeName(msg.name, this.settings.allowSwearing) || randomPlayerName(this.random),
       look: sanitizeLook(msg.look),
       chair: sanitizeChair(msg.chair),
       pet: sanitizePet(msg.pet),
       back: sanitizeBack(msg.back), capeColor: sanitizeCapeColor(msg.capeColor), level: sanitizeLevel(msg.level), petTier: sanitizeTier(msg.petTier), wins: this.safeWins(msg.wins),
     };
+    if(!this.onVerifyHandle&&[...this.players.values()].some(p=>p.id!==id&&handleKey(p.name)===handleKey(loadout.name)))return this.reject(conn,'handle_taken','That handle is taken. Choose another.');
+    if(SECRET_BACK_IDS.has(loadout.back)&&!secretBacks.includes(loadout.back))loadout.back='none';
     let player = this.players.get(id);
     const isNew = !player;
     if (player) {
       // Resume after a reconnect, or take over from another tab (whose socket is closed).
       if (player.conn) this.closeConn(player.conn, CLOSE_REPLACED, 'replaced');
       this.cancel(player.graceTimer);
-      Object.assign(player, loadout, { conn, connected: true, graceTimer: null, isAdmin: verified, accountCreatedAt, ipHash: conn.ipHash });
+      Object.assign(player, loadout, { conn, connected: true, graceTimer: null, isAdmin: verified, accountCreatedAt, secretBacks, ipHash: conn.ipHash });
       player.tradeInventory = tradeInventory(msg.inventory);
       if ((!ACTIVE_PHASES.has(this.match.phase) && this.match.phase !== 'ended') || !this.participant(id)?.alive) player.cards = sanitizeCards(msg.cards);
     } else {
@@ -245,11 +257,15 @@ export class GameEngine {
       player.tradeInventory = tradeInventory(msg.inventory);
       player.isAdmin = verified;
       player.accountCreatedAt = accountCreatedAt;
+      player.secretBacks=secretBacks;
       this.settings.public = this.code === PUBLIC_ROOM_CODE;
       this.hostId ??= id;
     }
+    if (msg.profile) player.profile = restrictSecretBacks(cloudProfile(msg.profile, id),secretBacks);
+    player.handleRevision=msg._internal===this?msg._handle?.revision||0:0;
+    player.inputDevice=msg.inputDevice==='desktop'?'desktop':'touch';
     this.conns.set(conn, id);
-    if (this.fireMode) player.fireReadyAt = this.now() + ROULETTE_INTRO_MS;
+    if (this.fireMode) player.fireReadyAt = this.rouletteHazardsAt;
     this.syncFire(player);
     this.send(player, {
       t: 'welcome',
@@ -263,10 +279,11 @@ export class GameEngine {
       rouletteEntry: this.rouletteEntry,
       meteor: this.meteorView(),
       tidePrivate: this.tidePrivate(id),
-      cardQueue: player.cardQueue || null, cards: { ...player.cards }, cardReceipts: this.match.cardHistory.filter(e => e.actorId === player.id).map(e => ({ cardId: e.cardId, requestId: e.requestId })),
+      cardQueue: player.cardQueue || null, cards: { ...player.cards }, cardReceipts: this.match.cardHistory.filter(e => e.actorId === player.id&&!e.returned).map(e => ({ cardId: e.cardId, requestId: e.requestId })),
     });
+    this.sendPresence(player);
     this.broadcast({ t: 'player', p: this.view(player) }, id);
-    for (const receipt of player.requests.values()) if (['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward', 'matchRefund', 'adminCard', 'petMergeGrant', 'tradeComplete', 'winsSold', 'tideReward'].includes(receipt.t)) this.send(player, receipt);
+    for (const receipt of player.requests.values()) if (['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward', 'matchRefund', 'cardReturned', 'adminCard', 'petMergeGrant', 'tradeComplete', 'winsSold', 'tideReward'].includes(receipt.t)) this.send(player, receipt);
     if (isNew) this.broadcast(systemChat(`${player.name} joined the game`));
     this.reportListing();
   }
@@ -294,8 +311,10 @@ export class GameEngine {
       conn, connected: true, graceTimer: null,
       moved: false, // has a position not yet sent in `moves`
       buckets: {}, // rate limiter state
+      lastActivityAt: this.now(), presence: null, presenceTimer: null,
     };
     this.players.set(id, player);
+    this.armPresence(player);
     return player;
   }
 
@@ -313,11 +332,12 @@ export class GameEngine {
     // A placed entry stays committed if its owner leaves the room.
     player.rouletteBet = null;
     this.cancel(player.graceTimer);
+    this.cancel(player.presenceTimer);
     this.cancel(player.fireTimer);
     this.cancelTrade(player, 'The other player left.');
     this.fail(id, 'left'); // knocked out if still playing
     if (!player.isBot) {
-      const receipts = [...player.requests].filter(([,value]) => ['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward', 'matchRefund', 'adminCard', 'petMergeGrant', 'tradeComplete', 'winsSold', 'tideReward'].includes(value.t));
+      const receipts = [...player.requests].filter(([,value]) => ['betResult', 'stakeRefund', 'rouletteReward', 'hazardDebit', 'meteorReward', 'matchRefund', 'cardReturned', 'adminCard', 'petMergeGrant', 'tradeComplete', 'winsSold', 'tideReward'].includes(value.t));
       if (receipts.length) this.rouletteReceipts.set(id, receipts.slice(-100));
       if (this.rouletteReceipts.size > 64) this.rouletteReceipts.delete(this.rouletteReceipts.keys().next().value);
     }
@@ -337,7 +357,7 @@ export class GameEngine {
 
   // No humans left: drop the bots, stop every timer, start from scratch.
   resetRoom() {
-    for (const p of this.players.values()) this.cancel(p.fireTimer);
+    for (const p of this.players.values()) { this.cancel(p.fireTimer); this.cancel(p.presenceTimer); }
     this.cancel(this.phaseTimer);
     this.cancel(this.movesTimer);
     this.cancel(this.meteorTimer);
@@ -349,12 +369,12 @@ export class GameEngine {
   }
 
   shutdownRoom() {
-    this.cancelMatch();
+    this.cancelMatch(false);
     for (const player of [...this.players.values()]) {
       this.refundStake(player);
       if (player.conn) {
         this.send(player, { t: 'kicked', reason: 'An admin shut down this room.' });
-        this.closeConn(player.conn, 4001, 'room_shutdown');
+        this.closeConn(player.conn, 4004, 'room_shutdown');
       }
     }
     this.resetRoom();
@@ -364,6 +384,8 @@ export class GameEngine {
 
   dispatch(player, msg) {
     switch (msg.t) {
+      case 'activity': return this.noteActivity(player);
+      case 'presenceReply': return this.onPresenceReply(player, msg);
       case 'move': return this.onMove(player, msg);
       case 'sit': return this.onSit(player, msg.seat);
       case 'stand': return this.onStand(player);
@@ -376,6 +398,7 @@ export class GameEngine {
       case 'tradeRequest': return this.onTradeRequest(player, msg);
       case 'tradeRespond': return this.onTradeRespond(player, msg);
       case 'tradeOffer': return this.onTradeOffer(player, msg);
+      case 'tradeUnaccept': return this.onTradeUnaccept(player, msg);
       case 'tradeAccept': return this.onTradeAccept(player, msg);
       case 'tradeCancel': return this.cancelTrade(player, 'Trade canceled.');
       case 'host': return this.onHost(player, msg);
@@ -418,7 +441,10 @@ export class GameEngine {
       player.zone=zone;
     }
     if(zone==='lighthouse' && (Math.hypot(pos.x-LIGHTHOUSE_ROOM.center.x,pos.z)>LIGHTHOUSE_ROOM.radius+.1 || pos.y < -.1 || pos.y > 12)) return;
+    const changed=!player.pos||Math.hypot(pos.x-player.pos.x,pos.y-player.pos.y,pos.z-player.pos.z)>.02||Math.abs(pos.ry-player.pos.ry)>.02;
     player.pos = pos;
+    if(observeMovement(player,pos,this.now()))return this.kickInactive(player,true);
+    if(changed)this.noteActivity(player,false,true);
     this.syncFire(player);
     player.moved = true;
     this.movesTimer ??= this.schedule(() => this.flushMoves(), MOVES_INTERVAL_MS);
@@ -463,12 +489,13 @@ export class GameEngine {
 
   onPick(player, letter) {
     const m = this.match;
-    if (m.phase === 'choosing' && player.id === m.chooserId && m.options.includes(letter) && this.allow(player, 'pick')) this.pick(letter);
+    if (m.phase === 'choosing' && player.id === m.chooserId && m.options.includes(letter) && this.allow(player, 'pick')) { this.noteActivity(player,true); this.pick(letter); }
   }
 
   onTyping(player, text) {
     const m = this.match;
     if (m.phase === 'typing' && player.id === m.typerId && this.allow(player, 'typing')) {
+      if (sanitizeTyping(text)) this.noteActivity(player,true);
       this.relayTyping(player, sanitizeTyping(text));
     }
   }
@@ -485,17 +512,28 @@ export class GameEngine {
       return this.send(player, { t: 'error', code: 'rate_limited', message: 'You are chatting too fast.' });
     }
     this.broadcast({ t: 'chat', id: player.id, name: player.name, text });
+    this.noteActivity(player);
+  }
+
+  updateHandle(id,name,revision=0){
+    const p=this.players.get(id);if(!p||p.isBot||revision<(p.handleRevision||0))return;
+    p.name=name;p.handleRevision=revision;this.broadcastPlayer(p);this.reportListing();
   }
 
   // Pet changes are cosmetic until the next match: abilities are locked in at match start.
   onLoadout(player, msg) {
     if (!this.allow(player, 'loadout')) return;
-    if ('name' in msg) player.name = sanitizeName(msg.name, this.settings.allowSwearing) || player.name;
+    if (msg.profile) player.profile = restrictSecretBacks(cloudProfile(msg.profile, player.id),player.secretBacks||[]);
+    if('name' in msg&&!this.onVerifyHandle){
+      const name=sanitizeName(msg.name,this.settings.allowSwearing);
+      if(name&&![...this.players.values()].some(p=>p.id!==player.id&&handleKey(p.name)===handleKey(name)))player.name=name;
+      else if(name)this.send(player,{t:'error',code:'handle_taken',message:'That handle is taken. Choose another.'});
+    }
     if ('look' in msg) player.look = sanitizeLook(msg.look);
     if ('chair' in msg) player.chair = sanitizeChair(msg.chair);
     if ('pet' in msg) player.pet = sanitizePet(msg.pet);
     if ('petTier' in msg) player.petTier = sanitizeTier(msg.petTier);
-    if ('back' in msg) player.back = sanitizeBack(msg.back);
+    if ('back' in msg) { const back=sanitizeBack(msg.back);player.back=SECRET_BACK_IDS.has(back)&&!player.secretBacks?.includes(back)?'none':back; }
     if ('capeColor' in msg) player.capeColor = sanitizeCapeColor(msg.capeColor);
     if ('level' in msg) player.level = sanitizeLevel(msg.level);
     if ('wins' in msg) player.wins = this.safeWins(msg.wins);
@@ -571,11 +609,20 @@ export class GameEngine {
     if (!trade || trade.id !== msg.id || trade.stage !== 'open') return;
     if (!this.tradeEligible(player)) return this.cancelTrade(player, 'Trading requires an account at least 24 hours old.');
     if (!this.allow(player, 'trade')) return this.send(player, { t: 'tradeError', message: 'Please wait a moment before changing your offer.' });
+    if(msg.offer?.coins!==undefined&&msg.offer.coins!==0)return this.send(player,{t:'tradeError',message:'Cash cannot be traded. Choose items from your collection.'});
     if ('inventory' in msg) player.tradeInventory = tradeInventory(msg.inventory);
     const offer = tradeOffer(msg.offer);
     if (!offerAvailable(player.tradeInventory, offer)) return this.send(player, { t: 'tradeError', message: 'You no longer own everything in that offer.' });
     trade.offers[player.id] = offer;
     this.resetTradeAcceptance(trade);
+    this.sendTradeState(trade);
+  }
+
+  onTradeUnaccept(player, msg) {
+    const trade = this.trades.get(player.id);
+    if (!trade || trade.id !== msg.id || trade.stage !== 'open' || !trade.accepted.has(player.id)) return;
+    trade.accepted.delete(player.id);
+    this.cancel(trade.timer); trade.timer = null; trade.countdown = null;
     this.sendTradeState(trade);
   }
 
@@ -589,13 +636,14 @@ export class GameEngine {
     if (!canReceive(player.tradeInventory, trade.offers[player.id], trade.offers[this.tradePeer(trade, player.id).id])) return this.send(player, { t: 'tradeError', message: 'You already own a chair or back item in their offer.' });
     trade.accepted.add(player.id);
     if (trade.accepted.size === 2 && !trade.timer) {
-      trade.countdown = this.now() + 2500;
-      trade.timer = this.schedule(() => this.completeTrade(trade), 2500);
+      trade.countdown = this.now() + 3000;
+      trade.timer = this.schedule(() => this.completeTrade(trade), 3000);
     }
     this.sendTradeState(trade);
   }
 
   completeTrade(trade) {
+    if (trade.accepted.size !== 2 || !trade.countdown || this.now() < trade.countdown) return;
     if (trade.ids.some(id => this.trades.get(id) !== trade || !this.players.get(id)?.connected || this.isPlaying(id))) return this.cancelTrade(this.players.get(trade.ids[0]) || this.players.get(trade.ids[1]), 'Trade could not finish.');
     const [a, b] = trade.ids.map(id => this.players.get(id));
     if (!this.tradeEligible(a) || !this.tradeEligible(b)) return this.cancelTrade(a, 'Trading requires an account at least 24 hours old.');
@@ -660,6 +708,7 @@ export class GameEngine {
     this.request(player, 'hint', msg, () => {
       const answer = { t: 'hint', ok: false, turnId: msg.turnId, requestId: msg.requestId };
       const m = this.match;
+      if (m.tide) return this.tideHint(player, msg, answer);
       if (m.phase !== 'typing' || m.typerId !== player.id || msg.turnId !== m.turnId || this.now() >= m.endsAt) return { ...answer, reason: 'turn_ended' };
       const p = this.participant(player.id);
       if (p.hintedTurn === m.turnId) return { ...answer, reason: 'already_bought' };
@@ -686,11 +735,19 @@ export class GameEngine {
       if (msg.matchId !== m.matchId || !['choosing', 'typing', 'cardReveal', 'roundEnd'].includes(m.phase) ||
           !this.participant(player.id)?.alive || !player.connected || player.travel ||
           (['typing', 'cardReveal'].includes(m.phase) && m.typerId === player.id)) return { ...answer, reason: 'locked' };
+      if (this.participant(player.id)?.jammed) return { ...answer, reason:'card_jammed' };
       if (msg.cardId === null) { this.clearCardQueue(player); return { ...answer, ok: true }; }
       const card = Object.hasOwn(CARDS_BY_ID, msg.cardId) ? CARDS_BY_ID[msg.cardId] : null;
       const target = this.participant(msg.targetId);
-      if (!card || !target?.alive || !this.players.get(target.id)?.connected || (target.id === player.id && card.effect !== 'skip')) return { ...answer, reason: 'invalid_target' };
+      if (!card || !target?.alive || !this.players.get(target.id)?.connected || (target.id === player.id && !['skip','heal','ward','reflect'].includes(card.effect))) return { ...answer, reason: 'invalid_target' };
       if (!(player.cards[card.id] > 0)) return { ...answer, reason: 'not_owned' };
+      if (['ward','reflect'].includes(card.effect)) {
+        if(target.defense)return {...answer,reason:'already_armed'};
+        player.cards[card.id]--; target.defense={cardId:card.id,ownerId:player.id,requestId:msg.requestId};
+        const event={t:'cardUsed',eventId:`${m.matchId}:arm:${msg.requestId}`,actorId:player.id,targetId:target.id,cardId:card.id,effect:'armed',requestId:msg.requestId};
+        m.cardHistory.push(event);this.broadcast(event);this.send(player,{t:'cardResult',ok:true,cardId:card.id,requestId:msg.requestId,turnId:m.turnId});this.broadcastMatch();
+        return {...answer,ok:true};
+      }
       player.cardQueue = { cardId: card.id, targetId: target.id, requestId: msg.requestId, matchId: m.matchId, style: msg.style === 'deck' ? 'deck' : 'pocket' };
       this.send(player, { t: 'cardQueue', queue: player.cardQueue });
       return { ...answer, ok: true };
@@ -705,20 +762,35 @@ export class GameEngine {
       const actor = this.participant(player.id);
       const target = this.participant(msg.targetId);
       const card = Object.hasOwn(CARDS_BY_ID, msg.cardId) ? CARDS_BY_ID[msg.cardId] : null;
-      if (!card || !target?.alive || !this.players.get(target.id)?.connected || (target.id === player.id && card.effect !== 'skip')) return { ...answer, reason: 'invalid_target' };
+      if (!card || !target?.alive || !this.players.get(target.id)?.connected || (target.id === player.id && !['skip','heal','ward','reflect'].includes(card.effect))) return { ...answer, reason: 'invalid_target' };
+      if (actor.jammed) return {...answer,reason:'card_jammed'};
       if (actor.cardTurn === m.turnId) return { ...answer, reason: 'one_per_turn' };
       if (!(player.cards[card.id] > 0)) return { ...answer, reason: 'not_owned' };
       actor.cardTurn = m.turnId;
       player.cards[card.id]--;
-      if (card.effect === 'skip') target.pending.skip = true;
-      if (card.effect === 'time') target.pending.time += card.value;
-      if (card.effect === 'mistakes') target.pending.mistakes += card.value;
-      const event = { t: 'cardUsed', eventId: `${m.matchId}:${m.turnId}`, requestId: msg.requestId, actorId: player.id, targetId: target.id, actorSeat: player.seat, targetSeat: this.players.get(target.id).seat, cardId: card.id, effect: card.effect, style: msg.style, shielded: card.effect === 'heart' && !!target.shield };
+      let actualTarget=target,blocked=false,reflected=false;
+      if (target.id!==player.id && !['heal'].includes(card.effect) && target.defense) {
+        const defense=target.defense;target.defense=null;
+        reflected=defense.cardId==='mirrored_shield';blocked=!reflected;
+        if(reflected)actualTarget=actor;
+        this.broadcast({t:'cardDefense',targetId:target.id,actorId:player.id,cardId:defense.cardId,reflected});
+      }
+      if(!blocked && card.effect==='mistakes' && actualTarget.ability?.type==='mistakeGuard'&&!actualTarget.mistakeGuardUsed){actualTarget.mistakeGuardUsed=true;blocked=true;}
+      const hit=card.effect!=='heart'&&card.effect!=='heal'||this.random()<.5;
+      if (!blocked && hit) {
+        if (card.effect === 'skip') actualTarget.pending.skip = true;
+        if (card.effect === 'time') actualTarget.pending.time += card.value;
+        if (card.effect === 'mistakes') actualTarget.mistakePenalty=card.value;
+        if (card.effect === 'burn') {actualTarget.burns??=[];actualTarget.burns.push(2);}
+        if (card.effect === 'heal') actualTarget.hearts=Math.min(actualTarget.maxHearts,actualTarget.hearts+1);
+        if (card.effect === 'jam') {actualTarget.jammed=true;this.clearCardQueue(this.players.get(actualTarget.id),'card_jammed');}
+      }
+      const event = { t: 'cardUsed', eventId: `${m.matchId}:${m.turnId}`, requestId: msg.requestId, actorId: player.id, targetId: target.id, actorSeat: player.seat, targetSeat: this.players.get(target.id).seat, cardId: card.id, effect: card.effect, style: msg.style, blocked, reflected, hit, actualTargetId:actualTarget.id, shielded: card.effect === 'heart' && !!actualTarget.shield };
       m.cardHistory.push(event);
       const { requestId, ...publicEvent } = event;
       this.broadcast(publicEvent);
-      if (card.effect === 'heart') {
-        const matchId = m.matchId, turnId = m.turnId, targetId = target.id;
+      if (card.effect === 'heart' && !blocked && hit) {
+        const matchId = m.matchId, turnId = m.turnId, targetId = actualTarget.id;
         this.schedule(() => {
           if (this.match.matchId === matchId && this.match.turnId === turnId && this.match.phase === 'cardReveal') this.fail(targetId, 'card');
         }, 4700);
@@ -726,6 +798,19 @@ export class GameEngine {
       else this.broadcastMatch();
       return { ...answer, ok: true };
     }, queued);
+  }
+
+  returnArmedCards() {
+    const m=this.match;
+    for(const part of m.participants){
+      const defense=part.defense;if(!defense)continue;part.defense=null;
+      const owner=this.players.get(defense.ownerId);
+      if(owner)owner.cards[defense.cardId]=(owner.cards[defense.cardId]||0)+1;
+      const event=m.cardHistory.find(e=>e.requestId===defense.requestId);if(event)event.returned=true;
+      const receipt={t:'cardReturned',cardId:defense.cardId,receipt:`armed-return:${m.matchId}:${defense.requestId}`};
+      if(owner){this.remember(owner,receipt.receipt,receipt);this.send(owner,receipt);}
+      else {const receipts=this.rouletteReceipts.get(defense.ownerId)||[];receipts.push([receipt.receipt,receipt]);this.rouletteReceipts.set(defense.ownerId,receipts.slice(-100));}
+    }
   }
 
   onEmote(player, name) {
@@ -811,10 +896,34 @@ export class GameEngine {
 
   denied(player) { this.send(player, { t: 'error', code: 'not_allowed', message: 'You cannot do that.' }); }
 
+  adminProfile(action, msg) {
+    const target = this.players.get(msg.id);
+    if (!target || target.isBot || !target.connected) throw new Error('That player is no longer online.');
+    if (action === 'get') {
+      if (!target.profile) throw new Error('Reconnect this player to load their full profile.');
+      return { profile: { ...target.profile, name: target.name }, guest: true };
+    }
+    if (action === 'save') {
+      return { profile: cloudProfile(msg.profile, target.id), guest: true };
+    }
+    throw new Error('Unknown profile operation.');
+  }
+
   editPlayer(action, msg) {
     const target = this.players.get(msg.id);
     if (!target || target.isBot) return false;
-    if (action === 'coins' && ['set', 'add'].includes(msg.operation) && Number.isSafeInteger(msg.amount)
+    if (action === 'profile') {
+      this.cancelTrade(target, 'An admin updated your profile.');
+      target.profile = cloudProfile(msg.profile, target.id);
+      target.secretBacks=target.profile.ownedBacks.filter(id=>SECRET_BACK_IDS.has(id));
+      Object.assign(target, { look: target.profile.look, chair: target.profile.equippedChair, back: target.profile.equippedBack,
+        capeColor: target.profile.capeColor, pet: target.profile.equippedPet, petTier: target.profile.equippedPetTier,
+        wins: target.profile.wins, cards: sanitizeCards(target.profile.cards), tradeInventory: tradeInventory(target.profile) });
+      this.send(target, { t: 'profileAdjusted', profile: target.profile, revision: msg.revision });
+      this.broadcastPlayer(target);
+      return true;
+    }
+    if (action === 'coins'  && ['set', 'add'].includes(msg.operation) && Number.isSafeInteger(msg.amount)
       && msg.amount >= (msg.operation === 'set' ? 0 : -1000000000) && msg.amount <= 1000000000) {
       this.send(target, { t: 'coinAdjust', operation: msg.operation, amount: msg.amount, receipt: globalThis.crypto.randomUUID() });
       return true;
@@ -832,11 +941,31 @@ export class GameEngine {
     if (!this.allow(player, 'admin')) return;
     if (!player.isAdmin) return this.denied(player);
     switch (msg.action) {
+      case 'listProfiles':
+      case 'getProfile':
+      case 'saveProfile': {
+        const action = { listProfiles: 'list', getProfile: 'get', saveProfile: 'save' }[msg.action];
+        return this.onAdminProfile(action, msg).then(async result => {
+          if (action !== 'list' && result.guest) {
+            result = msg.roomCode && msg.roomCode !== this.code
+              ? await this.onAdminEdit(msg.roomCode, `profile-${action}`, msg)
+              : this.adminProfile(action, msg);
+          }
+          if (action === 'save' && result.guest) {
+            const wins = await this.onSetWins({ id: msg.id, name: result.profile.name, wins: result.profile.wins });
+            result.profile.winsRevision = wins.revision;
+            const fields = { ...msg, profile: result.profile };
+            if (msg.roomCode && msg.roomCode !== this.code) await this.onAdminEdit(msg.roomCode, 'profile', fields);
+            else this.editPlayer('profile', fields);
+          }
+          this.send(player, { t: action === 'list' ? 'adminProfiles' : 'adminProfile', id: msg.id, saved: action === 'save', ...result });
+        }).catch(error => this.send(player, { t: 'error', code: 'profile_edit_failed', message: error.message || 'Could not edit that profile.' }));
+      }
       case 'takeHost': this.hostId = player.id; this.broadcastRoom(); break;
       case 'forceStart': this.hostStart(); break;
       case 'endMatch': this.cancelMatch(); break;
       case 'reset':
-        if (ACTIVE_PHASES.has(this.match.phase)) this.cancelMatch();
+        if (ACTIVE_PHASES.has(this.match.phase)) this.cancelMatch(false);
         for (const player of this.players.values()) this.refundStake(player);
         this.cancel(this.phaseTimer); this.stopBot();
         for (const p of this.players.values()) { p.seat = -1; this.broadcastPlayer(p); }
@@ -922,7 +1051,7 @@ export class GameEngine {
   roomTable() {
     const settings = ACTIVE_PHASES.has(this.match.phase) ? this.match.settings : this.settings;
     const mode = settings?.mode;
-    const tables = { classic: 'classic', blitz: 'lava', long: 'royal', double: 'glass', sudden: 'ice', random: 'galaxy', chaos: 'donut', roulette: 'poker', roulette_deadly: 'poker' };
+    const tables = { classic: 'classic', blitz: 'lava', long: 'royal', sudden: 'ice', random: 'galaxy', chaos: 'donut', roulette: 'poker', roulette_deadly: 'poker' };
     return tables[mode === 'custom' ? settings.baseMode : mode] ?? 'classic';
   }
   reportListing() {
@@ -942,7 +1071,7 @@ export class GameEngine {
     if (this.players.size >= MAX_PLAYERS || seat < 0) return this.send(host, systemChat('The room is full.'));
     const names = new Set([...this.players.values()].map((p) => p.name));
     const id = `bot-${(++this.botSerial).toString(36).padStart(4, '0')}`;
-    const bot = this.addPlayer({ id, isBot: true, conn: null, ...botProfile(this.random, names, this.settings.botLevel) });
+    const bot = this.addPlayer({ id, isBot: true, conn: null, ...botProfile(this.random, names, this.settings.botLevel),name:`bot-${this.code}-${this.botSerial}` });
     bot.seat = seat;
     this.broadcastPlayer(bot);
     this.broadcast(systemChat(`${bot.name} joined the game`));
@@ -995,6 +1124,7 @@ export class GameEngine {
     m.phase = phase;
     m.duration = duration;
     m.endsAt = duration === null ? null : this.now() + duration;
+    this.refreshPresencePhase();
     this.phaseTimer = onEnd ? this.schedule(onEnd, duration) : null;
   }
 
@@ -1034,17 +1164,21 @@ export class GameEngine {
     const seated = this.readyPlayers();
     if (seated.length < (this.settings.mode === 'word_tide' ? 1 : 2)) return;
     const settings = { ...this.settings };
-    const paidCandidate = isRouletteMode(settings.mode) && seated.every(p => !p.isBot && p.accountCreatedAt != null && this.now() - p.accountCreatedAt >= TRADE_ACCOUNT_AGE_MS);
-    if (paidCandidate && trophyCheck === undefined) {
+    const trophyCandidate=isRouletteMode(settings.mode)&&seated.some(p=>!p.isBot);
+    if (trophyCandidate && trophyCheck === undefined) {
       this.trophyCheckPending = true;
       const pendingMatch = this.match;
-      const playerIds = seated.map(p => p.id);
+      const playerIds = seated.filter(p=>!p.isBot).map(p => p.id);
       const finish = result => {
         this.trophyCheckPending = false;
         const unchanged = this.match === pendingMatch && ['lobby', 'countdown'].includes(this.match.phase) && this.settings.mode === settings.mode
-          && JSON.stringify(this.readyPlayers().map(p => p.id)) === JSON.stringify(playerIds);
+          && JSON.stringify(this.readyPlayers().filter(p=>!p.isBot).map(p => p.id)) === JSON.stringify(playerIds);
         if (!unchanged) return;
-        return this.startMatch(result?.ok ? {} : { practiceReason: result?.error || 'Trophy check unavailable.' });
+        if(!result?.ok){
+          for(const p of seated)if(!p.isBot){this.refundStake(p);this.send(p,{t:'error',code:'trophy_required',message:result?.error||'Earn 1 trophy before playing The Last Sip. Your trophy is never spent.'});}
+          this.enterLobby();this.broadcastMatch();return;
+        }
+        return this.startMatch({});
       };
       try {
         const result = this.onCheckTrophies(playerIds);
@@ -1064,7 +1198,7 @@ export class GameEngine {
     this.match.practice = this.match.humans < 2 || botAtTable || (isRouletteMode(settings.mode) && (signedIn < 2 || signedIn !== this.match.humans || youngAccount)) || !!trophyCheck?.practiceReason;
     this.match.practiceReason = botAtTable ? 'Bots are at the table.' : this.match.humans < 2 ? 'Two real players are required.' : isRouletteMode(settings.mode) && signedIn < 2 ? 'Two signed-in players are required.' : isRouletteMode(settings.mode) && signedIn !== this.match.humans ? 'Everyone at the table must sign in.' : youngAccount ? 'An account at the table is less than 24 hours old.' : trophyCheck?.practiceReason || '';
     this.match.participants = seated.map((p) => {
-      const ability = (settings.petAbilities && PETS_BY_ID[p.pet]?.ability) || null;
+      const ability = settings.petAbilities ? petAbility(p.pet, settings.mode) : null;
       return {
         id: p.id,
         hearts: settings.hearts,
@@ -1135,7 +1269,7 @@ export class GameEngine {
     }
     // A skip grants relief without losing a heart. Consume queued skips only once.
     for (let i = 0; i < m.participants.length && this.participant(typerId)?.pending.skip; i++) {
-      this.participant(typerId).pending.skip = false;
+      this.participant(typerId).pending.skip = false;this.participant(typerId).jammed=false;
       this.broadcast({ t: 'cardUsed', actorId: null, targetId: typerId, cardId: 'skip', effect: 'skipped' });
       return this.startTurn(this.nextAlive(typerId), sabotageMs, dragon);
     }
@@ -1145,15 +1279,20 @@ export class GameEngine {
     const modeRules = rules(m.settings.baseMode || m.mode, m);
     const bonus = (type) => (ability?.type === type ? ability.value : 0);
     const shrunk = modeRules.turnMs(m.wordCount);
-    let turnMs = Math.max(modeRules.floor, shrunk + bonus('time') * 1000 - sabotageMs - participant.pending.time * 1000);
+    const burnPenalty=(participant.burns||[]).length;
+    participant.burns=(participant.burns||[]).map(n=>n-1).filter(n=>n>0);
+    const reduction=Math.max(0,sabotageMs/1000+participant.pending.time+burnPenalty-bonus('penaltyResist'));
+    let turnMs = Math.max(burnPenalty?Math.max(6000,modeRules.floor):modeRules.floor, shrunk + bonus('time') * 1000 - reduction*1000);
+    if(dragon&&ability?.type==='dragonGuard'&&!participant.dragonGuardUsed){participant.dragonGuardUsed=true;dragon=false;this.broadcast({t:'petCounter',id:typerId,kind:'Blaze blocked'});}
     if (dragon) turnMs = Math.min(turnMs, 3000);
+    if(ability?.type==='timeFloor'&&(reduction>0||dragon))turnMs=Math.max(turnMs,Math.min(shrunk,ability.value*1000));
     m.typerId = typerId;
     if (!revealed) m.turnId = ++this.turnSerial;
     m.turnStartAt = this.now();
     m.firstKeyAt = null;
     m.minLength = modeRules.minLength(m.wordCount);
     m.mistakes = 0;
-    m.maxMistakes = Math.max(1, modeRules.maxMistakes + (modeRules.maxMistakes === 1 ? 0 : bonus('mistakes')) - participant.pending.mistakes);
+    m.maxMistakes = Math.max(1, modeRules.maxMistakes + (modeRules.maxMistakes === 1 ? 0 : bonus('mistakes')) - participant.pending.mistakes - (participant.mistakePenalty||0));
     participant.pending.time = participant.pending.mistakes = 0;
     this.setPhase('typing', turnMs, () => this.fail(typerId, 'timeout'));
     this.broadcastMatch();
@@ -1174,6 +1313,7 @@ export class GameEngine {
     if (m.phase !== 'typing' || player.id !== m.typerId || this.now() >= m.endsAt) return;
     const word = normalizeWord(raw);
     if (!word) return; // an empty submit is not a mistake
+    this.noteActivity(player,true);
 
     const reason = this.rejectReason(word);
     if (reason) {
@@ -1215,6 +1355,7 @@ export class GameEngine {
     m.wordCount++;
     this.broadcast({ t: 'result', id: player.id, word, ok: true, wpm, combo: participant.combo, paidAnswer: participant.hintedTurn === m.turnId, coins: m.practice ? 0 : coins + flairs.reduce((n, f) => n + f.coins, 0), flairs });
     m.prefix = this.nextPrefix(word);
+    participant.jammed=false;
     const { ability } = participant;
     this.startTurn(this.nextAlive(player.id), ability?.type === 'sabotage' ? ability.value * 1000 : 0, ability?.type === 'dragon' && this.random() < .5);
   }
@@ -1242,7 +1383,7 @@ export class GameEngine {
     m.prefixIndex = word.length - 1;
     // Require familiar unused answers, and do not repeat a two-letter prompt.
     const common = this.botDicts.normal || this.botDict;
-    const minCommon = (m.settings.baseMode || m.mode) === 'double' ? 5 : 8;
+    const minCommon = 8;
     const viable = !new Set(['ol', 'py', 'up', 'ty']).has(two)
       && !m.twoLetterPrefixes.has(two)
       && common.countPrefix(two, m.used) >= minCommon
@@ -1264,7 +1405,7 @@ export class GameEngine {
     const endsRound = id === m.typerId || id === m.chooserId; // the round cannot go on without them
 
     let shielded = false;
-    participant.combo = 0;
+    participant.combo = 0;if(id===m.typerId)participant.jammed=false;
     if (cause === 'forfeit' || cause === 'left') {
       participant.hearts = 0;
     } else if (participant.shield) {
@@ -1298,7 +1439,8 @@ export class GameEngine {
     if (m.paid || !ACTIVE_PHASES.has(m.phase)) return;
     if (m.mode === 'word_tide') return this.endTide(winnerId ? [winnerId] : []);
     if (isRouletteMode(m.mode)) return this.endRoulette(winnerId);
-    m.paid = true;
+    if (!this.canAward(winnerId)) winnerId = null;
+    m.paid = true;this.returnArmedCards();
     for (const p of this.players.values()) this.clearCardQueue(p);
     const durationMs = Math.max(0, this.now() - m.startedAt);
     const contributors = m.participants.filter(p => !p.isBot && p.words > 0).length;
@@ -1329,7 +1471,7 @@ export class GameEngine {
       const { id, words, bestWpm, bestCombo } = part;
       part.pending = { skip: false, time: 0, mistakes: 0 };
       const player = this.players.get(id);
-      if (!player || player.isBot) continue;
+      if (!player || player.isBot || !this.canAward(part.id)) continue;
       const won = !m.practice && id === winnerId;
       const bonuses = [...part.bonuses, ...(won ? [{ label: 'Time played', coins: winBonus }] : [])];
       const coins = m.practice ? 0 : REWARDS.participation + part.coins + bonuses.reduce((n, b) => n + b.coins, 0);
@@ -1338,7 +1480,7 @@ export class GameEngine {
     this.broadcastMatch();
   }
 
-  cancelMatch() {
+  cancelMatch(animate = true) {
     const m = this.match;
     if (!ACTIVE_PHASES.has(m.phase) || m.paid) return;
     this.cancel(this.phaseTimer); this.stopBot();
@@ -1346,14 +1488,21 @@ export class GameEngine {
     for (const part of m.participants) {
       const player = this.players.get(part.id);
       if (!player || player.isBot) continue;
-      const cards = m.cardHistory.filter(event => event.actorId === part.id).map(event => event.cardId);
+      const cards = m.cardHistory.filter(event => event.actorId === part.id&&!event.returned).map(event => event.cardId);
       for (const id of cards) player.cards[id]++;
-      const coins = (isRouletteMode(m.mode) ? m.stakes[part.id] || 0 : 0) + (part.hintSpent || 0);
+      const coins = (isRouletteMode(m.mode) ? (m.stakes[part.id] || 0)+(m.excessStakes?.[part.id]||0) : 0) + (part.hintSpent || 0);
       const receipt = { t: 'matchRefund', matchId: m.matchId, coins, cards, receipt: `cancel:${m.matchId}:${part.id}` };
       this.remember(player, receipt.receipt, receipt); this.send(player, receipt);
     }
     m.paid = true;
+    m.cancelled = true;
     this.broadcast(systemChat('The room owner ended the game. Entries, answers, and played cards were refunded.'));
+    if (m.tide && animate) {
+      m.tide.winners = []; m.winnerId = null;
+      this.prepareTideFinale();
+      this.setPhase('ended', TIDE.outro + m.tide.endingHoldMs, () => { this.enterLobby(); this.broadcastRoom(); this.broadcastMatch(); });
+      this.broadcastRoom(); this.broadcastMatch(); return;
+    }
     this.enterLobby(); this.broadcastRoom(); this.broadcastMatch();
   }
 
@@ -1362,7 +1511,7 @@ export class GameEngine {
   syncHazards() {
     const mode = ACTIVE_PHASES.has(this.match.phase) || this.match.phase === 'ended' ? this.match.mode : this.settings.mode;
     const on = isRouletteMode(mode);
-    if (on && !this.fireMode) this.rouletteHazardsAt = this.now() + ROULETTE_INTRO_MS;
+    if (on && !this.fireMode) { this.rouletteHazardsAt = this.now() + ROULETTE_INTRO_MS; this.broadcast({t:'chat',id:null,name:'System',text:'☄️ Meteors will begin falling in 10 seconds! Stay clear of the burning craters.',tone:'alert'}); }
     if (on && !this.fireMode) this.scheduleMeteor();
     if (!on && this.fireMode) { this.cancel(this.meteorTimer); this.meteorTimer=null; this.meteor=null; this.broadcast({t:'meteor',meteor:null}); }
     this.fireMode = on;
@@ -1370,7 +1519,7 @@ export class GameEngine {
   }
 
   meteorView() {
-    return this.meteor ? {...this.meteor, landsIn:Math.max(0,this.meteor.landAt-this.now())} : null;
+    return this.meteor ? {...this.meteor, fallsIn:Math.max(0,this.meteor.fallAt-this.now()), landsIn:Math.max(0,this.meteor.landAt-this.now())} : null;
   }
 
   scheduleMeteor() {
@@ -1378,9 +1527,10 @@ export class GameEngine {
       this.meteorTimer = null;
       if (!this.fireMode) return;
       const site = pickRandom(METEOR_SITES, this.random);
-      this.meteor = {...site,id:`meteor:${this.code}:${this.now()}:${++this.matchSerial}`,landAt:this.now()+METEOR_FLIGHT_MS};
+      this.meteor = {...site,id:`meteor:${this.code}:${this.now()}:${++this.matchSerial}`,fallAt:this.now()+METEOR_WARNING_MS,landAt:this.now()+METEOR_WARNING_MS+METEOR_FLIGHT_MS};
       this.broadcast({t:'meteor',meteor:this.meteorView()});
-      this.broadcast({ t: 'chat', id: null, name: 'System', text: '☄️ Meteor falling from the sky! Watch for the impact.', tone: 'alert' });
+      this.broadcast({ t: 'chat', id: null, name: 'System', text: '☄️ A purple meteor will fall in 10 seconds! Stay clear of the impact.', tone: 'alert' });
+      for (const p of this.players.values()) this.syncFire(p);
       this.scheduleMeteor();
     }, METEOR_INTERVAL_MS);
   }
@@ -1397,19 +1547,20 @@ export class GameEngine {
   }
 
   fireActive(player) {
-    return player.connected && !player.isBot && player.seat < 0 && inRouletteFire(player.pos)
+    return player.connected && !player.isBot && player.seat < 0 && (inRouletteFire(player.pos) || this.meteor && player.pos && Math.abs(player.pos.y)<2 && Math.hypot(player.pos.x-this.meteor.x,player.pos.z-this.meteor.z)<2.1)
       && this.fireMode;
   }
 
   syncFire(player) {
     if (!this.fireActive(player)) { this.cancel(player.fireTimer); player.fireTimer = null; return; }
     if (player.fireTimer != null) return;
-    const wait = Math.max(0, this.rouletteHazardsAt - this.now(), (player.fireReadyAt || 0) - this.now()) + 5000;
+    const special = this.meteor && Math.hypot(player.pos.x-this.meteor.x,player.pos.z-this.meteor.z)<2.1;
+    const wait = Math.max(0, (special ? this.meteor.landAt : this.rouletteHazardsAt) - this.now(), (player.fireReadyAt || 0) - this.now()) + 1000;
     player.fireTimer = this.schedule(() => {
       player.fireTimer = null;
       if (!this.fireActive(player)) return;
       const receipt = `fire:${this.code}:${player.id}:${this.now()}:${++this.matchSerial}`;
-      const debit = {t:'hazardDebit',amount:25,receipt};
+      const debit = {t:'hazardDebit',amount:50,belowMinimum:'halve',receipt};
       this.remember(player,receipt,debit); this.send(player,debit);
       this.syncFire(player);
     }, wait);
@@ -1441,17 +1592,21 @@ export class GameEngine {
 
   startRoulette(seated) {
     const m = this.match;
-    m.roulette = { pot: 0, basePot: 0, multiplier: 1, risk: rouletteRules(m.mode).startingRisk, turns: 0, loops: 0, cycle: new Set(), passed: new Set(), event: null, serial: 0 };
-    m.stakes = {};
+    m.roulette = { houseEdge: .10, payoutCap: 0, pot: 0, basePot: 0, multiplier: 1, risk: rouletteRules(m.mode).startingRisk, turns: 0, loops: 0, cycle: new Set(), passed: new Set(), event: null, serial: 0 };
+    m.stakes = {};m.excessStakes={};
+    const matched=Math.min(...seated.map(player=>player.isBot?this.rouletteEntry:player.rouletteBet?.amount||0));
+    m.roulette.matchedStake=matched;
     for (const player of seated) {
       const amount = player.isBot ? this.rouletteEntry : player.rouletteBet?.amount || 0;
-      m.stakes[player.id] = amount;
-      m.roulette.pot += amount;
+      m.stakes[player.id] = matched; m.excessStakes[player.id]=amount-matched;
+      m.roulette.pot += matched;
       player.rouletteBet = null;
       this.broadcastPlayer(player);
     }
     m.roulette.basePot = m.roulette.pot;
-    for (const p of m.participants) { p.hearts = p.maxHearts = 1; p.shield = false; p.ability = null; }
+    m.roulette.payoutCap = roulettePayoutCap(m.roulette.basePot);
+    m.roulette.pot = Math.floor(m.roulette.basePot * .8);
+    for (const p of m.participants) { p.hearts = p.maxHearts = 1; p.shield = p.ability?.type === 'antidote'; }
     this.resetBottle();
     this.rouletteTurn(pickRandom(m.participants, this.random).id);
   }
@@ -1465,7 +1620,8 @@ export class GameEngine {
     if (!this.participant(id)?.alive) id = m.participants.find(p => p.alive)?.id;
     m.typerId = id;
     m.turnId = ++this.turnSerial;
-    this.setPhase('roulette', 10000, () => this.rouletteAction(id, 'drink'));
+    const ability = this.participant(id)?.ability;
+    this.setPhase('roulette', 10000 + (ability?.type === 'sipTime' ? ability.value * 1000 : 0), () => this.rouletteAction(id, 'drink'));
     this.broadcastMatch();
     if (this.players.get(id)?.isBot) this.runBot([{ wait: 1500 + this.random() * 2000, run: () => this.rouletteAction(id, this.random() < .35 && !m.roulette.passed.has(id) ? 'pass' : 'drink') }]);
   }
@@ -1473,6 +1629,8 @@ export class GameEngine {
   onRoulette(player, msg) {
     if (!this.allow(player, 'roulette') || this.match.phase !== 'roulette' || this.match.typerId !== player.id || msg.turnId !== this.match.turnId) return;
     if (!['drink', 'pass', 'double'].includes(msg.action)) return;
+    if(msg.action==='pass'&&this.match.roulette.passed.has(player.id)||msg.action==='double'&&this.match.roulette.doubleSurvivors?.has(player.id))return;
+    this.noteActivity(player,true);
     this.rouletteAction(player.id, msg.action);
   }
 
@@ -1483,13 +1641,17 @@ export class GameEngine {
     if (action === 'pass' && r.passed.has(id)) return;
     if (action === 'double' && r.doubleSurvivors?.has(id)) return;
     const next = this.nextAlive(id);
-    if (action === 'pass') r.passed.add(id);
-    const stakes = Object.values(m.stakes);
-    const { risk } = rouletteOdds(r.risk, m.stakes[id], stakes.reduce((sum, amount) => sum + amount, 0) / stakes.length);
-    const poisoned = action !== 'pass' && this.random() < (action === 'double' ? .6 : risk);
+    const part = this.participant(id), ability = part.ability;
+    if (action === 'pass') {
+      r.passCounts ??= {}; r.passCounts[id] = (r.passCounts[id] || 0) + 1;
+      if (r.passCounts[id] >= 1 + (ability?.type === 'extraPass' ? ability.value : 0)) r.passed.add(id);
+    }
+    const { risk } = this.sipOdds(id, action);
+    let poisoned = action !== 'pass' && this.random() < risk, shielded = false;
+    if (poisoned && part.shield) { part.shield = false; poisoned = false; shielded = true; }
     if (action === 'double') r.doubleSurvivors ??= new Set();
     if (action === 'double' && !poisoned) r.doubleSurvivors.add(id);
-    r.event = { id, action, poisoned, risk, serial: ++r.serial, next };
+    r.event = { id, action, poisoned, shielded, risk, serial: ++r.serial, next };
     this.setPhase('rouletteReveal', action !== 'pass' ? ROULETTE_DRINK_MS : ROULETTE_PASS_MS, () => {
       r.turns++;
       r.cycle.add(id);
@@ -1510,7 +1672,7 @@ export class GameEngine {
     r.cycle.clear();
     r.loops++;
     r.multiplier = Math.min(2, rouletteRules(m.mode).prizeGrowth ** r.loops);
-    r.pot = Math.floor(r.basePot * r.multiplier);
+    r.pot = Math.min(roulettePayoutCap(r.basePot), Math.floor(r.basePot * .8 * r.multiplier));
     r.risk = Math.min(.95, r.risk + rouletteRules(m.mode).riskStep);
     this.resetBottle();
   }
@@ -1528,21 +1690,32 @@ export class GameEngine {
   endRoulette(winnerId) {
     const m = this.match;
     if (m.paid) return;
+    if (!this.canAward(winnerId)) winnerId = null;
     m.paid = true; m.winnerId = winnerId;
     this.setPhase('ended', MATCH_END_MS, () => { this.enterLobby(); this.broadcastRoom(); this.broadcastMatch(); });
     this.broadcast({ t: 'win', id: winnerId, flairs: [], practice: m.practice, practiceReason: m.practiceReason });
     for (const part of m.participants) {
       const player = this.players.get(part.id);
-      if (!player || player.isBot) continue;
+      if (!player || player.isBot || !this.canAward(part.id)) continue;
       const doubleBonus = part.id === winnerId && m.roulette.doubleSurvivors?.has(part.id) ? Math.floor((m.stakes[part.id] || 0) * m.roulette.multiplier) : 0;
-      const coins = m.practice ? m.stakes[part.id] || 0 : winnerId ? (part.id === winnerId ? m.roulette.pot + doubleBonus : 0) : m.stakes[part.id] || 0;
-      const receipt = { t: 'rouletteReward', matchId: m.matchId, coins, won: !m.practice && part.id === winnerId, practice: m.practice, words: 0, bestWpm: 0, bestCombo: 0, bonuses: [{ label: m.practice ? 'Practice entry returned' : winnerId ? doubleBonus ? 'Cursed cup pool + double sip' : 'Cursed cup pool' : 'Entry returned', coins }] };
+      const petBonus = part.id === winnerId && part.ability?.type === 'prizeBonus' ? Math.floor(m.roulette.pot * part.ability.value) : 0;
+      const excess=m.excessStakes?.[part.id]||0;
+      const coins = excess+(m.practice ? m.stakes[part.id] || 0 : winnerId ? (part.id === winnerId ? Math.min(roulettePayoutCap(m.roulette.basePot), m.roulette.pot + doubleBonus + petBonus) : 0) : m.stakes[part.id] || 0);
+      const receipt = { t: 'rouletteReward', matchId: m.matchId, coins, won: !m.practice && part.id === winnerId, earnsTrophy:false, excessReturned:excess, practice: m.practice, words: 0, bestWpm: 0, bestCombo: 0, bonuses: [{ label: m.practice ? 'Practice entry returned' : winnerId ? `Cursed cup pool${doubleBonus ? ' + double sip' : ''}${petBonus ? ' + pet bonus' : ''} · 10%+ house fee${excess ? ` · ${excess} unmatched coins returned` : ''}` : 'Entry returned', coins }] };
       this.remember(player, `roulette:${m.matchId}`, receipt);
       this.send(player, receipt);
     }
     const winner = this.players.get(winnerId);
-    if (winner && !m.practice && !winner.isBot) { winner.wins++; this.broadcastPlayer(winner); this.onWin({ playerId: winner.id, name: winner.name, humans: m.humans }); }
+    // Last Sip wins do not mint sellable trophies; otherwise cheap alt rounds can farm coin sales.
     this.broadcastMatch();
+  }
+
+  sipOdds(id, action = 'drink') {
+    const m = this.match, stakes = Object.values(m.stakes);
+    const base = action === 'double' ? { risk: .6, reduction: 0 } : rouletteOdds(m.roulette.risk, m.stakes[id], stakes.reduce((sum, amount) => sum + amount, 0) / stakes.length);
+    const ability = this.participant(id)?.ability;
+    const petReduction = ability?.type === 'poisonResist' ? base.risk * ability.value : 0;
+    return { risk: base.risk - petReduction, reduction: base.reduction + petReduction, petReduction };
   }
 
   // ---- Turn order & seats -------------------------------------------------------------
@@ -1641,7 +1814,7 @@ export class GameEngine {
       practiceReason: m.practiceReason || '',
       phaseEndsIn: m.endsAt === null ? null : Math.max(0, m.endsAt - this.now()),
       phaseDuration: m.duration,
-      participants: m.participants.map(({ id, hearts, maxHearts, alive, words, shield, combo, pending }) => ({ id, hearts, maxHearts, alive, words, shield, combo, pending: { ...pending } })),
+      participants: m.participants.map(({ id, hearts, maxHearts, alive, words, shield, combo, pending,defense,jammed,dragonGuardUsed,mistakeGuardUsed }) => ({ id, hearts, maxHearts, alive, words, shield, combo,defense:defense?{cardId:defense.cardId,ownerId:defense.ownerId}:null,jammed:!!jammed,dragonGuardUsed:!!dragonGuardUsed,mistakeGuardUsed:!!mistakeGuardUsed,pending: { ...pending } })),
       turnId: m.turnId, mode: m.mode, minLength: m.minLength, prefixIndex: m.prefixIndex, twist: m.twist, startedAt: m.startedAt,
       chooserId: m.chooserId,
       options: m.options,
@@ -1653,8 +1826,9 @@ export class GameEngine {
       wordCount: m.wordCount,
       round: m.round,
       winnerId: m.winnerId,
+      cancelled: !!m.cancelled,
       ...(m.tide ? { tide: this.tideView() } : {}),
-      ...(m.roulette ? { roulette: { ...m.roulette, cycle: [...m.roulette.cycle], doubleSurvivors: [...(m.roulette.doubleSurvivors || [])], stakes: { ...m.stakes }, ...rouletteOdds(m.roulette.risk, m.stakes[m.typerId], Object.values(m.stakes).reduce((sum, amount) => sum + amount, 0) / Object.values(m.stakes).length), baseRisk: m.roulette.risk, passed: [...m.roulette.passed] } } : {}),
+      ...(m.roulette ? { roulette: { ...m.roulette, cycle: [...m.roulette.cycle], doubleSurvivors: [...(m.roulette.doubleSurvivors || [])], stakes: { ...m.stakes },excessStakes:{...m.excessStakes}, ...this.sipOdds(m.typerId, m.phase === 'rouletteReveal' ? m.roulette.event?.action : 'drink'), doubleRisk: this.sipOdds(m.typerId, 'double').risk, passLimit: 1 + (this.participant(m.typerId)?.ability?.type === 'extraPass' ? this.participant(m.typerId).ability.value : 0), baseRisk: m.phase === 'rouletteReveal' && m.roulette.event?.action === 'double' ? .6 : m.roulette.risk, passed: [...m.roulette.passed] } } : {}),
     };
   }
 
@@ -1687,4 +1861,4 @@ export class GameEngine {
   }
 }
 
-Object.assign(GameEngine.prototype, wordTideMethods);
+Object.assign(GameEngine.prototype, wordTideMethods, presenceMethods);

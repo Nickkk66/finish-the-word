@@ -14,9 +14,9 @@ export function profilePanel({ actions, state }) {
       let tab = 'Look';
       const preview = createAvatarPreview(profile.look);
       const editor = createAvatarEditor({ look: profile.look, onChange: (look) => { preview.set(look); actions.setLook(look); } });
-      const name = h('input', { class: 'field', type: 'text', maxlength: NAME_MAX, value: profile.name, autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Your name' });
+      const name = h('input', { class: 'field', type: 'text', maxlength: NAME_MAX, value: profile.name, autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Your handle' });
       name.addEventListener('input', () => { name.value = cleanName(name.value); });
-      name.addEventListener('change', () => { actions.rename(name.value); name.value = profile.name; });
+      name.addEventListener('change', async () => {const value=name.value;name.disabled=true;try{await actions.rename(value);}finally{name.disabled=false;name.value=profile.name;}});
       name.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') name.blur(); });
       const levelText = h('span');
       const progress = h('progress', { max: 100, 'aria-label': 'Level progress' });
@@ -25,7 +25,7 @@ export function profilePanel({ actions, state }) {
       const tabContent = h('div', { class: 'profile-tab-content scroll' });
       const tabs = ['Look', 'Back Bling', 'Pets', 'Chairs'].map((label) => h('button', { type: 'button', class: 'seg-btn', onClick: () => { tab = label; updateTab(); } }, label));
       body.append(h('div', { class: 'profile-columns' },
-        h('div', { class: 'profile-summary' }, h('div', { class: 'avatar-stage' }, preview.el), h('label', { class: 'field-label' }, 'Name', name), h('div', { class: 'level-progress' }, levelText, progress), stats, sellWins),
+        h('div', { class: 'profile-summary' }, h('div', { class: 'avatar-stage' }, preview.el), h('label', { class: 'field-label' }, 'Handle', name), h('div', { class: 'level-progress' }, levelText, progress), stats, sellWins),
         h('div', { class: 'profile-customize' }, h('div', { class: 'seg profile-tabs' }, tabs), tabContent)));
       function updateTab() {
         hidePetTooltip();

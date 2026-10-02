@@ -489,3 +489,22 @@ export function reactionFaceTexture(kind) {
     return canvasTexture(c);
   });
 }
+
+
+/** Keep the player's eyes; replace the mouth with one of six sung vowel shapes. */
+export function singingFaceTexture(index, frame) {
+  return cached(`singing:${index}:${frame}`, () => {
+    const c = makeCanvas(256), g = c.getContext('2d');
+    g.drawImage(faceTexture(index).image, 0, 0, 256, 134, 0, 0, 256, 134);
+    const heights = [7, 13, 22, 27, 19, 11], widths = [24, 21, 18, 17, 23, 26];
+    g.fillStyle = '#311421'; g.beginPath();
+    g.ellipse(128, 174, widths[frame], heights[frame], 0, 0, Math.PI * 2); g.fill();
+    if (frame > 0) {
+      g.save(); g.clip();
+      g.fillStyle = '#fff4e6'; g.fillRect(99, 174 - heights[frame], 58, 6);
+      g.fillStyle = '#e16b89'; g.beginPath(); g.ellipse(128, 174 + heights[frame], 14, 8, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+    return canvasTexture(c);
+  });
+}

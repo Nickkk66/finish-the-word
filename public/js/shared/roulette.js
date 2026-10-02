@@ -1,5 +1,5 @@
 // Shared presentation timing and server-checked hazard footprints.
-export const ROULETTE_INTRO_MS = 7000;
+export const ROULETTE_INTRO_MS = 17000;
 export const ROULETTE_DRINK_MS = 4800;
 export const ROULETTE_PASS_MS = 1700;
 export const ROULETTE_HAZARDS = [
@@ -18,6 +18,11 @@ export function rouletteOdds(baseRisk, stake, averageStake = 25) {
 }
 export const METEOR_INTERVAL_MS = 180000;
 export const METEOR_FLIGHT_MS = 2400;
+export const METEOR_WARNING_MS = 10000;
+export const MAX_PURPLE_METEORS = 3;
+export const ROULETTE_HOUSE_EDGE = .10;
+export const roulettePayoutCap = total => Math.floor(total * (1 - ROULETTE_HOUSE_EDGE));
+export const fireDamage = balance => balance >= 50 ? 50 : Math.ceil(Math.max(0,balance) / 2);
 export const METEOR_SITES = [{x:0,z:22},{x:0,z:-18},{x:15,z:-10}];
 
 export const isRouletteMode = mode => mode === 'roulette' || mode === 'roulette_deadly';

@@ -1,18 +1,7 @@
 import { h } from './dom.js';
-import { abilityText } from '../shared/catalog.js';
+import { petAbilities } from './pet-abilities.js';
 
 let tooltip, timer, owner;
-
-function stat(ability) {
-  switch (ability?.type) {
-    case 'time': return `+${ability.value} sec on your turn`;
-    case 'mistakes': return `+${ability.value} guesses on your turn`;
-    case 'sabotage': return `Next player: −${ability.value} sec`;
-    case 'shield': return 'Block 1 lost heart per match';
-    case 'dragon': return '50% chance: next player has 3 sec';
-    default: return 'No game ability';
-  }
-}
 
 export function hidePetTooltip() {
   clearTimeout(timer);
@@ -29,8 +18,7 @@ export function attachPetTooltip(element, pet) {
     hidePetTooltip();
     owner = element;
     tooltip = h('div', { id: 'pet-stat-tooltip', class: 'pet-stat-tooltip', role: 'tooltip' },
-      h('strong', {}, pet.name), h('span', { class: 'pet-stat-line' }, stat(pet.ability)),
-      h('span', {}, abilityText(pet.ability)));
+      h('strong', {}, pet.name), petAbilities(pet));
     document.body.append(tooltip);
     const rect = element.getBoundingClientRect(), width = tooltip.offsetWidth, height = tooltip.offsetHeight;
     tooltip.style.left = `${Math.max(8, Math.min(innerWidth - width - 8, rect.left + rect.width / 2 - width / 2))}px`;

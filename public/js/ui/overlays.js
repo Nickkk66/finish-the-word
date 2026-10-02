@@ -113,10 +113,14 @@ export function noticeDialog(title, message) {
   return new Promise(resolve => {
     const previousFocus = document.activeElement;
     const done = () => { document.removeEventListener('keydown', onKey, true); closeOverlay(el); previousFocus?.isConnected && previousFocus.focus({ preventScroll: true }); resolve(); };
-    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(); } };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.stopPropagation(); done(); }
+      if (e.key === 'Tab') { e.preventDefault(); el.querySelector('button').focus(); }
+    };
     const el = overlay('notice', h('div', { class: 'overlay-title stroke' }, title),
-      h('p', { class: 'overlay-text' }, message),
+      h(message instanceof Node ? 'div' : 'p', { class: 'overlay-text' }, message),
       h('button', { type: 'button', class: 'btn blue', onClick: done }, 'Got it'));
+    el.querySelector('[role=dialog]').setAttribute('aria-label', title);
     document.addEventListener('keydown', onKey, true);
     el.querySelector('button').focus();
   });

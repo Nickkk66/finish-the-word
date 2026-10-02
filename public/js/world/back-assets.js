@@ -1,6 +1,7 @@
 // Bundled CC0 models replace the simple block back accessories once loaded.
 // The old geometry remains visible if an asset fails to load.
 import * as THREE from 'three';
+import { guitarPose } from '../shared/guitar-motion.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
@@ -26,7 +27,7 @@ function copyModel(source, tint = null, glow = null) {
       const copy = material.clone();
       for (const key of Object.keys(copy)) if (copy[key]?.isTexture && !(tint && key === 'map')) copy[key] = copy[key].clone();
       if (tint) { copy.color.set(tint); copy.map = null; copy.vertexColors = false; copy.metalness = 0; }
-      if (glow && 'emissive' in copy) { copy.emissive.set(glow); copy.emissiveIntensity = 1.45; }
+      if (glow && 'emissive' in copy) { copy.emissive.set(glow); copy.emissiveIntensity = 3.5; node.userData.bloom = true; }
       copy.side = THREE.DoubleSide;
       return copy;
     });
@@ -97,7 +98,11 @@ export function attachBackModel(group, id, capeColor = null) {
   group.userData.ready = Promise.all(names.map(model)).then(sources => {
     if (group.userData.disposed) return;
     const next = new THREE.Group();
-    if (id === 'backpack') next.add(fitted(sources[0], { width: 2.5, height: 2.5, center: [0, 0, -.76], rotation: [0, Math.PI, 0] }));
+    if (id.startsWith('secret_goggles_')) next.add(fitted(sources[0], {width:1.40,height:.44,center:[0,0,.09]}));
+    else if (id === 'secret_crown') next.add(fitted(sources[0], {width:2.0,height:1.0,center:[0,2.4,0]}));
+    else if (id === 'secret_scythe') next.add(fitted(sources[0], {width:2.6,height:4.2,center:[0,.25,-.82],rotation:[0,0,-.35]}));
+    else if (id === 'secret_helmet') next.add(fitted(sources[0], {width:3.0,height:1.65,center:[0,2.75,0]}));
+    else if (id === 'backpack') next.add(fitted(sources[0], { width: 2.5, height: 2.5, center: [0, 0, -.76], rotation: [0, Math.PI, 0] }));
     else if (id === 'cape') {
       const cape = fitted(sources[0], { width: 1.85, height: 2.65, center: [0, -.65, -.69], tint: /^#[0-9a-f]{6}$/i.test(capeColor || '') ? capeColor : null });
       next.add(cape);
@@ -108,41 +113,61 @@ export function attachBackModel(group, id, capeColor = null) {
     }
     else if (id === 'sword') next.add(fitted(sources[0], { width: 2.3, height: 3.35, center: [0, .08, -.58], rotation: [0, 0, -.52] }));
     else if (id === 'guitar') {
-      next.add(fitted(sources[0], { width: 3.5, height: 4.4, center: [0, .12, -.86], rotation: [0, Math.PI, -.4], tint: '#bc7c43' }));
-      const details = new THREE.Group(); details.position.z = -1.11; details.rotation.z = -.4; next.add(details);
-      const dark = new THREE.MeshBasicMaterial({ color: '#442715', side: THREE.DoubleSide });
-      const strings = new THREE.MeshBasicMaterial({ color: '#f8ddb0', side: THREE.DoubleSide });
-      const hole = new THREE.Mesh(new THREE.CircleGeometry(.24, 24), dark); hole.position.set(0, -.69, .005); details.add(hole);
-      const rim = new THREE.Mesh(new THREE.TorusGeometry(.26, .035, 8, 24), strings); rim.position.set(0, -.69, .01); details.add(rim);
+      // Fit the complete instrument before adding details in the GLB's own coordinates.
+      const instrument = fitted(sources[0], { width: 2, height: 3.3, center: [0, 0, 0], tint: '#bc7c43' });
+      instrument.traverse(node => {
+        if (!node.isMesh) return;
+        if (node.name.endsWith('_string')) {
+          // The imported string surfaces sink through the fretboard. Hide only those meshes.
+          node.visible = false;
+        } else if (node.name.startsWith('tuning_peg')) {
+          node.material.color.set('#cdb281'); node.material.metalness = .6; node.material.roughness = .4;
+        } else node.material.roughness = .7;
+      });
+      const asset = instrument.children[0];
+      const stringMaterial = new THREE.MeshStandardMaterial({ color: '#e5dfcc', metalness: .35, roughness: .5 });
+      // Native model landmarks: bridge y=.19, nut y=.855; the fretboard face is z=.053..055.
+      // All endpoints inherit the model fit, carry rotation and playing pose together.
       for (let i = 0; i < 6; i++) {
-        const string = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, 2.7, 5), strings);
-        string.position.set((i - 2.5) * .043, .31, .02); details.add(string);
+        const bridge = new THREE.Vector3((i - 2.5) * .0088, .19, .058);
+        const nut = new THREE.Vector3((i - 2.5) * .0068, .855, .057);
+        const string = new THREE.Mesh(new THREE.CylinderGeometry(.00115, .00115, bridge.distanceTo(nut), 6), stringMaterial);
+        string.name = `guitar-string-${i + 1}`; string.userData.guitarString = true;
+        string.position.copy(bridge).add(nut).multiplyScalar(.5);
+        string.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), nut.clone().sub(bridge).normalize());
+        asset.add(string);
       }
-      const bridge = new THREE.Mesh(new THREE.BoxGeometry(.5, .09, .04), dark); bridge.position.set(0, -1.48, .025); details.add(bridge);
-      group.userData.update = (t, dt, seated = false, speed = 0) => {
-        const playing = !seated && speed > 1;
-        next.position.z += ((playing ? .45 : 0) - next.position.z) * Math.min(1, dt * 8);
-        next.position.y += ((playing ? .35 : 0) - next.position.y) * Math.min(1, dt * 8);
-        next.rotation.y += ((playing ? Math.PI : 0) - next.rotation.y) * Math.min(1, dt * 8);
-        next.rotation.z = playing ? Math.sin(t * 7) * .025 : 0;
+      // Darken the existing sound-hole cavity, behind the wooden soundboard.
+      const cavity = new THREE.Mesh(new THREE.CircleGeometry(.058, 32), new THREE.MeshBasicMaterial({ color: '#35251d' }));
+      cavity.position.set(0, .34, -.04); asset.add(cavity);
+      next.add(instrument);
+      let blend = 0;
+      group.userData.update = (t, dt, seated = false, speed = 0, active = true, playingBlend = null) => {
+        blend = playingBlend ?? THREE.MathUtils.damp(blend, !seated && speed > 1 && active ? 1 : 0, 8, dt);
+        const pose = guitarPose(t, blend);
+        next.position.set(pose.x, pose.y, pose.z);
+        next.rotation.set(0, pose.yaw, pose.roll);
+        group.userData.playingBlend = blend;
       };
+      group.userData.update(0, 0);
     }
     else if (['angel', 'devil', 'dragon', 'halo'].includes(id)) {
       const color = id === 'angel' ? '#f8f8ff' : id === 'devil' ? '#b83454' : id === 'dragon' ? '#8a52c8' : '#ffe4a6';
-      const glow = id === 'dragon' ? '#932aff' : id === 'halo' ? '#ffe3a0' : id === 'angel' ? '#ddefff' : null;
+      const glow = id === 'dragon' ? '#932aff' : id === 'halo' ? '#ffe3a0' : id === 'angel' ? '#ddefff' : '#ff284f';
       const pivots = [-1, 1].map(sign => wing(next, sources[0], sign, color, glow));
+      const wingLight = new THREE.PointLight(glow, 3, 6, 2); wingLight.position.set(0, .7, -.6); next.add(wingLight);
       if (id === 'halo') {
         const halo = new THREE.Group(); halo.position.y = 3.16; next.add(halo);
         const ring = new THREE.Mesh(new THREE.TorusGeometry(.72, .045, 12, 64), new THREE.MeshBasicMaterial({ color: '#fff6c8', transparent: true, opacity: .96 }));
-        const aura = new THREE.Mesh(new THREE.TorusGeometry(.72, .19, 12, 64), new THREE.MeshBasicMaterial({ color: '#ffe182', transparent: true, opacity: .26, depthWrite: false, blending: THREE.AdditiveBlending }));
-        ring.rotation.x = aura.rotation.x = Math.PI / 2; halo.add(ring, aura);
+        ring.rotation.x = Math.PI / 2; ring.material.toneMapped = false; ring.userData.bloom = true; halo.add(ring);
+        const lamp = new THREE.PointLight('#ffe3a0', 4, 7, 2); halo.add(lamp);
         group.userData.halo = halo;
       }
       group.userData.update = (t, dt, seated = false) => pivots.forEach((pivot, i) => {
         const sign = i ? 1 : -1;
         pivot.rotation.y = sign * (.08 + Math.sin(t * 1.7) * .13 + (seated ? .28 : 0));
         pivot.rotation.z = sign * Math.sin(t * 1.2) * .045;
-        if (group.userData.halo) group.userData.halo.scale.setScalar(1 + .035 * Math.sin(t * 3));
+
       });
     } else if (id === 'jetpack') {
       next.add(fitted(sources[0], { width: 1.1, height: 1.25, center: [0, .12, -.84] }));

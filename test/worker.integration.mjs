@@ -20,8 +20,9 @@ const secret = 'integration-test-only';
 let worker;
 let workerLogs = '';
 const clients = [];
+const handleTokens=new Map();
 async function start() {
-  worker = spawn(process.execPath, [join(root, 'node_modules/wrangler/bin/wrangler.js'), 'dev', '--port', String(port), '--persist-to', storage, '--var', `ADMIN_CODE:${secret}`], { cwd: snapshot, stdio: ['ignore', 'pipe', 'pipe'] });
+  worker = spawn(process.execPath, [join(root, 'node_modules/wrangler/bin/wrangler.js'), 'dev', '--port', String(port), '--inspector-port', String(port + 100), '--persist-to', storage, '--var', `ADMIN_CODE:${secret}`], { cwd: snapshot, stdio: ['ignore', 'pipe', 'pipe'] });
   let logs = '';
   worker.stdout.on('data', data => { logs = (logs + data).slice(-12000); workerLogs = logs; });
   worker.stderr.on('data', data => { logs = (logs + data).slice(-12000); workerLogs = logs; });
@@ -43,6 +44,13 @@ async function api(path, alternateOrigin = false) {
   return response.json();
 }
 async function connect(id, code, extra = {}) {
+  if(!extra.accountToken){
+    if(!handleTokens.has(id)){
+      const r=await fetch(`${base}/api/handle/claim`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,handle:id.slice(0,16)})});
+      assert.equal(r.status,200);handleTokens.set(id,(await r.json()).token);
+    }
+    extra={...extra,handleToken:handleTokens.get(id)};
+  }
   const ws = new WebSocket(`${base.replace('http', 'ws')}/api/room/${code}`);
   const inbox = [];
   ws.addEventListener('message', e => inbox.push(JSON.parse(e.data)));
@@ -80,19 +88,21 @@ try {
     return response.json();
   }
   const credentials = { username: 'integration_user', password: 'disposable-test-password' };
-  const registered = await account('register', 'POST', { ...credentials, profile: { id: 'guestintegration', coins: 777, pets: { cat: 3 }, settings: { prefillPrefix: false } } });
-  assert.equal(registered.profile.coins, 777);
+  const registered = await account('register', 'POST', { ...credentials, profile: { id: 'guestintegration', coins: 777, freePlayMs:300000, ownedBacks:['none','secret_crown'], equippedBack:'secret_crown', pets: { cat: 3 }, settings: { prefillPrefix: false } } });
+  assert.equal(registered.profile.coins, 777);assert.deepEqual(registered.profile.ownedBacks,['none']);assert.equal(registered.profile.equippedBack,'none');
   assert.equal(registered.profile.settings.prefillPrefix, false);
+  assert.equal(registered.profile.freePlayMs,300000);
   assert.ok(registered.token && !registered.password && !registered.password_hash);
   assert.match(registered.recoveryCode, /^[a-f0-9]{40}$/);
   await account('register', 'POST', { ...credentials, profile: {} }, null, 409);
   await account('login', 'POST', { ...credentials, password: 'incorrect-password' }, null, 401);
   const device = await account('login', 'POST', credentials);
   assert.deepEqual(device.profile, registered.profile);
-  await account('profile', 'PUT', { revision: 1, profile: { ...device.profile, coins: 999, id: 'cannotchangeid', receipts: Array.from({length:512}, (_,i) => `receipt-${i}`.padEnd(150, 'x')) } }, device.token);
+  await account('profile', 'PUT', { revision: 1, profile: { ...device.profile, coins: 999, ownedBacks:['none','secret_scythe'], equippedBack:'secret_scythe', id: 'cannotchangeid', receipts: Array.from({length:512}, (_,i) => `receipt-${i}`.padEnd(150, 'x')) } }, device.token);
   const saved = await account('me', 'GET', null, registered.token);
-  assert.equal(saved.profile.coins, 999);
+  assert.equal(saved.profile.coins, 999);assert.deepEqual(saved.profile.ownedBacks,['none']);
   assert.equal(saved.profile.receipts.length, 512);
+  assert.equal(saved.profile.freePlayMs,300000);
   assert.equal(saved.profile.id, 'guestintegration');
   await account('profile', 'PUT', { revision: 1, profile: registered.profile }, registered.token, 409);
   await account('profile', 'PUT', { revision: 2, profile: {} }, '0'.repeat(64), 401);
@@ -120,13 +130,54 @@ try {
   const listing = await api('/api/public');
   assert.ok(listing.rooms.some(r => r.code === quick.code && r.humans === 2));
   console.log('ok public matchmaking and CORS');
+  const noTrophyA=await connect('NoTrophyOne','NOTRP',{wins:999}),noTrophyB=await connect('NoTrophyTwo','NOTRP',{wins:999});
+  noTrophyA.send({t:'host',action:'settings',settings:{mode:'roulette'}});
+  noTrophyA.send({t:'sit',seat:0});noTrophyB.send({t:'sit',seat:1});
+  for(const c of [noTrophyA,noTrophyB]){c.send({t:'bet',requestId:'trophy-entry-'+c.id,amount:25,balance:100});await c.next(m=>m.t==='betResult'&&m.ok);}
+  noTrophyA.send({t:'host',action:'start'});
+  assert.match((await noTrophyA.next(m=>m.t==='error'&&m.code==='trophy_required')).message,/trophy/);
+  for(const c of [noTrophyA,noTrophyB])assert.equal((await c.next(m=>m.t==='stakeRefund')).coins,25);
+  assert.equal((await noTrophyA.next(m=>m.t==='match'&&m.m.phase==='lobby')).m.participants.length,0);
+  assert.ok(!noTrophyA.inbox.some(m=>m.t==='match'&&m.m.phase==='roulette'));
+  noTrophyA.ws.close();noTrophyB.ws.close();
+  console.log('ok Last Sip rejects missing recorded trophies despite forged local wins and refunds coin entries');
+
 
   host.send({ t: 'unlock', code: secret });
   const unlocked = await host.next(m => m.t === 'unlock');
   assert.equal(unlocked.ok, true);
   assert.ok(unlocked.token);
   assert.ok(!other.inbox.some(m => m.t === 'unlock' || m.p?.isAdmin));
+  // Full profiles stay behind the unlocked admin WebSocket, including offline saves.
+  const forbiddenAt = other.inbox.length;
+  other.send({ t: 'admin', action: 'listProfiles' });
+  assert.equal((await other.next(m => m.t === 'error', forbiddenAt)).code, 'not_allowed');
+  host.send({ t: 'admin', action: 'listProfiles', search: 'integration_user' });
+  const users = await host.next(m => m.t === 'adminProfiles');
+  assert.ok(users.users.some(user => user.id === 'guestintegration'));
+  host.send({ t: 'admin', action: 'getProfile', id: 'guestintegration' });
+  const full = await host.next(m => m.t === 'adminProfile' && m.id === 'guestintegration');
+  assert.equal(full.profile.coins, 999);
+  assert.ok(!('password_hash' in full) && !('recovery_hash' in full));
+  const editAt = host.inbox.length;
+  host.send({ t: 'admin', action: 'saveProfile', id: 'guestintegration', revision: full.revision,
+    profile: { ...full.profile, coins: 12345, ownedBacks:['none','secret_helmet'], equippedBack:'secret_helmet', petTiers: { piggy: { 1: 2, 2: 3, 3: 1 } }, cards: { shield: 4 }, wins: 11 } });
+  const edited = await host.next(m => m.t === 'adminProfile' && m.saved, editAt);
+  assert.equal(edited.profile.coins, 12345);assert.ok(edited.profile.ownedBacks.includes('secret_helmet'));assert.deepEqual((await account('verify','GET',null,fresh.token)).secretBacks,['secret_helmet']);
+  assert.equal(edited.profile.petTiers.piggy[2], 3);
+  assert.equal((await account('me', 'GET', null, fresh.token)).revision, edited.revision);
+  assert.equal((await api('/api/wins?id=guestintegration')).wins, 11);
+  const conflictAt = host.inbox.length;
+  host.send({ t: 'admin', action: 'saveProfile', id: 'guestintegration', revision: full.revision, profile: full.profile });
+  assert.match((await host.next(m => m.t === 'error' && m.code === 'profile_edit_failed', conflictAt)).message, /Reload/);
   const seller = await connect('guestintegration', 'SALE1', { accountToken: fresh.token });
+  const onlineEditAt = host.inbox.length;
+  host.send({ t: 'admin', action: 'saveProfile', id: seller.id, revision: edited.revision, profile: { ...edited.profile, coins: 54321 } });
+  const adjusted = await seller.next(m => m.t === 'profileAdjusted');
+  assert.equal(adjusted.profile.coins, 54321);
+  await host.next(m => m.t === 'adminProfile' && m.saved, onlineEditAt);
+  assert.equal((await account('me', 'GET', null, fresh.token)).profile.coins, 54321);
+  console.log('ok admin-only full profiles, offline persistent edits, conflict protection and cross-room profile delivery');
   host.send({ t: 'admin', action: 'setWins', id: seller.id, name: seller.id, wins: 7 });
   await host.next(m => m.t === 'winsSetResult' && m.id === seller.id);
   seller.send({ t: 'sellWins', requestId: 'sale0001' });
@@ -137,7 +188,7 @@ try {
   seller.send({ t: 'sellWins', requestId: 'sale0001' });
   assert.equal((await seller.next(m => m.t === 'winsSold' && m.requestId === 'sale0001', soldCount)).receipt, sold.receipt);
   assert.equal((await api(`/api/wins?id=${seller.id}`)).wins, 2);
-  const second = await account('register', 'POST', { username: 'entry_player', password: 'entry-password', profile: { id: 'guestentrytwo' } });
+  const second = await account('register', 'POST', { username: 'entry_player', password: 'entry-password', profile: { id: 'guestentrytwo', name: 'EntryPlayer' } });
   const entrantHost = await connect('guestintegration', 'ENTRY1', { accountToken: fresh.token });
   const entrant = await connect('guestentrytwo', 'ENTRY1', { accountToken: second.token });
   host.send({ t: 'admin', action: 'setWins', id: entrant.id, name: entrant.id, wins: 3 });
@@ -228,9 +279,12 @@ try {
   actor.send({ t: 'submit', word: hint.word });
   const result = await target.next(m => m.t === 'cardResult');
   assert.equal(result.ok, true);
+  await actor.next(m => m.t === 'cardUsed');
+  // Heartbreaker has a 50% hit chance. Forfeit the target of the card to
+  // verify the winner/leaderboard path without assuming a successful roll.
+  actor.send({t:'stand'});
   await host.next(m => m.t === 'win');
   await target.next(m => m.t === 'reward');
-  await actor.next(m => m.t === 'cardUsed');
   assert.equal(target.inbox.filter(m => m.t === 'reward').length, 1);
   assert.equal(actor.inbox.filter(m => m.t === 'cardUsed').length, 1);
   const board = await api('/api/leaderboard');

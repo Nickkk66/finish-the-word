@@ -15,8 +15,8 @@ export function rules(mode, match) {
       return time;
     },
     minLength: n => mode === 'long' ? Math.min(8, 5 + Math.floor(n / 6)) : mode === 'chaos' && twist === 'long' ? 6 : 3,
-    twoLetterChance: n => mode === 'double' || (mode === 'chaos' && twist === 'two') ? 1 : Math.min(.3, .04 + .012 * n),
-    twoLetterMinimum: mode === 'double' || (mode === 'chaos' && twist === 'two') ? 10 : 25,
+    twoLetterChance: n => (mode === 'chaos' && twist === 'two') ? 1 : Math.min(.3, .04 + .012 * n),
+    twoLetterMinimum: (mode === 'chaos' && twist === 'two') ? 10 : 25,
     maxMistakes: mode === 'sudden' || (mode === 'chaos' && twist === 'perfect') ? 1 : BASE_MISTAKES,
     randomLetter: mode === 'random' || (mode === 'chaos' && twist === 'random'),
     floor: mode === 'blitz' || (mode === 'chaos' && twist === 'half') ? 3000 : 4000,

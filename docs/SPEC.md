@@ -439,7 +439,7 @@ mistake circles `#ff4d4d` with white ✕, highlight green `#3ddc54`.
 ## September 25 revisions: Roulette and cosmetics
 
 Roulette (`mode: roulette`) is the custom cursed-cup game. Protocol 5 adds Double Sip.
-The normal Mode picker includes Roulette. Confirming closes settings. When the match begins, seated players see a seven-second asteroid
+The normal Mode picker includes Roulette. Confirming closes settings. When the match begins, seated players see a 17-second asteroid
 cinematic; the camera returns with a darker map, crater fires, a lit table, tree/leaderboard owls and
 mode-specific How to Play instructions.
 
@@ -453,15 +453,15 @@ players, so the reference never jumps mid-match. Only above-average entries rece
 is 40% of base risk. Match views expose `baseRisk`, current actor's `risk` and `reduction`, and stakes.
 The HUD strikes out base risk and subtracts percentage points to show the effective probability.
 Passes count toward the current circuit. Each player has one pass per match; timeout drinks. A knockout
-does not restore passes or reset risk/prize. Last awake wins `floor(basePot * multiplier)`; owner cancelled
+does not restore passes or reset risk/prize. Prize starts at `floor(basePot * .8)` and grows with completed circuits. Last awake wins at most `floor(basePot * .9)`, including every Double Sip and pet bonus; owner cancelled
 rounds refund original stakes. Bots use house-funded entries; their winnings aren't credited to a human account.
 
 The host cannot set entry amounts. Each seated human chooses any affordable whole-number entry of at least 25 coins and sends
 `{t: bet, requestId, amount, balance}` for an idempotent `betResult` debit receipt.
 Standing before play or changing mode sends `stakeRefund`; paid rounds never auto-rebet.
 Two human entries start a 15-second countdown; bots do not count toward auto-start.
-`{t: roulette, action: drink|pass|double, turnId}` commits an action. Double Sip has a fixed 60% poison
-chance; surviving it adds the winner's multiplied entry once more to the pool payout. `rouletteReward`
+`{t: roulette, action: drink|pass|double, turnId}` commits an action. Double Sip starts at 60% poison
+chance, reduced by an equipped poison-resistance pet; surviving it adds a stake bonus within the shared 90% payout cap. `rouletteReward`
 settles the match once. Paid play requires at least two signed-in humans with accounts aged 24 hours, no bots, and at least one
 recorded win for every player at the table. The wins are checked against the leaderboard and not spent.
 Otherwise the match explains why it is practice: human entries are returned, with no pool payout or wins.
@@ -469,10 +469,10 @@ Receipts replay after reconnect, bounded to 128/player and 64 departed players w
 profiles remember 512 receipts. Economy remains client-trusted; no real-money stakes.
 The owner can opt into ordinary swearing for room chat, names, live typing, and accepted game words. Slurs and abuse terms remain filtered.
 
-Shared crater footprints live in `shared/roulette.js`. The server charges `{t: hazardDebit, amount:25,
-receipt}` for each 5 continuous seconds a connected, unseated player stands at ground level inside one.
+Shared crater footprints live in `shared/roulette.js`. The server charges `{t: hazardDebit, amount:50, belowMinimum:'halve',
+receipt}` for each continuous second a connected, unseated player stands at ground level inside one.
 Exit/jumping/disconnect cancels the timer. Fire starts after the intro and follows the active mode (pending
-next-match settings never cause invisible damage). Balances floor at zero. Cup movement and arm pose share
+next-match settings never cause invisible damage). Balances below 50 are halved per tick, rounded down; all balances floor at zero. Purple fire is lowered only on its Y axis. The special purple meteor uses one replaceable map slot (always below the maximum of three). Cup movement and arm pose share
 wall-clock timing; the rim is positioned against the animated head's mouth transform during the hold.
 Skull ghosts rise from that player's head. The border pulses with heartbeat audio only on the local
 player's action turn; taking damage produces a separate transient red flash. Meteor and flame surfaces
@@ -503,7 +503,7 @@ Leaving Roulette or resetting an empty room cancels the timer and removes the co
 
 ## September 26 follow-up: Roulette presentation and variant
 
-The in-game mode picker groups Classic, Blitz, Long Words, Double Trouble, Sudden Death,
+The in-game mode picker groups Classic, Blitz, Long Words, Sudden Death,
 Random Letter, Chaos and Custom under Finish the Word. The Last Sip and Death Wish are under
 Roulette. Both Roulette variants share the cursed table, paid individual entry, server-checked
 meteor reward and fire hazard. The Last Sip begins at 2% poison chance, grows base risk by 8
@@ -532,21 +532,21 @@ borders remain separate effects.
 
 ## Word Tide — September 30, 2026
 
-Protocol 7 includes the Word Tide presentation and room-entry revision and requires older clients to refresh.
+Protocol 9 includes the inactivity check and mode-specific pet abilities and requires older clients to refresh.
 `mode: word_tide` is tropical, simultaneous category-answer survival. Five hearts, up to forty
-room participants, 12-round limit, fixed 20-second answers, no pet/card abilities or stakes.
+room participants, 12-round limit, fixed 20-second answers, optional mode-specific pet abilities, no cards or stakes.
 Bots make the match practice under the existing rules. The original server-only bank contains
 60 categories and 2,370 accepted forms. Category membership uses explicit normalized forms;
 aliases earn their actual letters, with no spaces/punctuation or adjective padding.
 
-Phases: `tideIntro` (24s), `tideAnswer` (20s), `tideReveal` (4s), `tideFlood` (3s including 1s warning),
-`tideResolve` (2.2s), `ended` (16s). The intro flattens the island behind tsunami spray; all participants
+Phases: `tideIntro` (24s), `tideAnswer` (20s), `tideReveal` (4s), `tideFlood` (3s, following an 18s hold if anyone is eliminated),
+`tideResolve` (2.2s), `ended` (14s plus any unfinished elimination). The intro flattens the island behind tsunami spray; all participants
 have separate platforms. Answers lock privately and build only at the round deadline. Each letter
-pops into a colored block. Water damage resolves once after construction and flood animation.
-Submerged platforms lose one heart; survivors receive a rescue lift to two units above water.
+pops into a colored block. Damage uses one shared waterline and the full avatar head height. Ordinary lost hearts resolve after the visual rise has submerged the avatar; fatal losses predicted by that rise hold the old waterline while elimination plays.
+Low platforms lose one heart; survivors keep their chair and lift with the water to two units above it.
 Rescue height never adds to earned letter score. Last survivor wins; round-cap rankings compare
-hearts then earned letters. Simultaneous final drownings compare pre-flood hearts then letters;
-exact ties share the win. Forfeits are excluded from tied drowning candidates.
+hearts then earned letters. If everyone would lose their last heart simultaneously, earned letters select the winners;
+exact ties share the win and those winners are kept alive for the celebration. Forfeits are excluded from tied drowning candidates.
 
 C→S `tideAnswer {matchId,round,requestId,answer}`. Private `tideAnswerResult` returns `ok`, `locked`
 (the latest valid word/letters/length), and optional `error`. Invalid replacements preserve the
@@ -554,10 +554,10 @@ last valid answer. Late/replayed requests cannot build twice. Welcome includes o
 player's `tidePrivate`. Public `match.tide` exposes category prompt/id, water levels/rise, seed,
 tower geometry/history, revealed answers and winners; it never exposes private answers or the bank.
 `tideReward` uses existing bounded receipt replay and client match-receipt deduplication. Standard
-participation + 10/accepted round + 25/winner is capped at 150 coins; practice grants no coins/wins.
+participation + 10/accepted round + 100/winner is capped at 300 coins; practice grants no coins/wins.
 
 Visual assets are original Three.js geometry plus the existing licensed lucky blocks/card crates.
-No external model pack is required for Word Tide. Shader water/waves, instanced letter blocks and
+Licensed shark and piranha GLBs are bundled locally with attribution. Shader water/waves, instanced letter blocks and
 spray, palms, wreckage, rain, lightning, and synthesized audio form its presentation. Reduced-motion
 preferences remove shake/flashes and block overshoot. Leaving/canceling restores original scenery,
 seated poses, input and camera. The browser check is `node scripts/word-tide-check.mjs` against a
@@ -580,3 +580,112 @@ Back accessories retain their normal scale. Spacing/hyphen variants and common a
 (e.g. T-rex) are accepted without expanding their scores; vail is an explicit veil spelling alias.
 Velvet is accepted as a requested game color label. The bank remains curated, not an arbitrary
 semantic classifier; unlisted answers can still be rejected.
+
+
+### Inactivity checks and mode-specific pets
+
+Each connected human receives a server-selected inactivity delay between 2 minutes 15 seconds and five minutes.
+Fresh interaction draws another delay without consuming the game random stream. Passive key/camera
+activity cannot postpone the check past five minutes without meaningful movement or turn interaction;
+pings, identical movement packets and loadout updates do not establish presence.
+At the deadline the server sends `presenceCheck {token,remainingMs:30000}`. The client displays a clock
+and acknowledgement button at a random position, moving every six seconds. Matching `presenceReply`
+before expiry clears it; reconnect preserves the token and remaining time. Active turns and cinematic
+phases pause the check (`presencePaused`) and all inactivity removals; it resumes during the next safe
+lobby/countdown period. Valid turn input clears a paused check. Pending/overdue/disqualified AFK players cannot receive wins or match money while removals wait
+for a safe phase. Players who made a valid turn interaction within the last five minutes retain
+reward eligibility while waiting for other players and animations.
+
+Desktop movement is checked on the server for four repeated cycles of at least eight different samples,
+matching positions/orientation to centimetre resolution and cadence within 40ms. Evidence must remain
+consistent for a further 60 seconds. Stationary packets, held directions, varied paths/timing and touch
+controls are exempt. Confirmed sustained loops close with code 4005 (`automated_activity`); idle
+non-response closes with 4003 (`inactive`). Neither automatically reconnects. This is a conservative
+AFK-farming heuristic, not a guarantee of detecting every macro. All timers clear when players leave;
+bots are exempt.
+Admin shutdown closes sockets with code 4004 (`room_shutdown`), displaying "Room shut down"
+instead of the individual-kick message. It never triggers automatic reconnect.
+
+Pets lock `petAbility(petId, mode)` at match start. Classic retains existing effects. The Last Sip
+and Death Wish support reduced poison risk (relative reduction, including Double Sip), extra decision
+time, an extra pass, one antidote, or a winner-pot bonus. The HUD uses the same odds as the hidden draw.
+Word Tide pets grant a 5–25% heart protection chance per submerged round, or prevent one lost heart. Each answer adds exactly its entered letter count, with no bonus blocks. Pet power stays the same at every tier.
+Pet inventory cards, dictionary entries, hatch reveals and tooltips show compact rows for each mode.
+The room owner can disable abilities in all modes.
+
+Word Tide animal plurals share accepted category membership but retain the entered spelling and letter count.
+Rocks/debris become visible behind the wave front. Block growth, chair/platform lift and rider position
+share one construction clock, with clearance below the platform. Owner cancellation keeps the
+`ended` tide phase for its 14-second celebration and retreat (after any already active elimination), marks `cancelled:true`, and grants refunds once without
+winners or match rewards. One recorded trophy is required for every human to play Last Sip, including practice; it is never spent. A failed check refunds any committed coin entry and does not start a round.
+
+Verification: `test/presence.test.js`, `test/pet-modes.test.js`, `scripts/presence-pets-check.mjs` and
+`scripts/word-tide-check.mjs` cover the new rules and desktop/mobile presentation.
+
+
+### Unique editable handles
+
+The existing profile name becomes the sole visible handle (1–16 existing supported characters).
+The global Accounts SQLite object owns a case-insensitive unique handle key and a unique identity owner.
+Handles stay reserved offline, including guests on their saved device. `POST /api/handle/claim {id,handle}`
+issues a guest capability on first claim; later changes require that capability or an account session.
+Availability checks and writes are atomic, and rename frees the old key immediately. There is no rename
+cooldown. Changing nick → nick2, jack → nick, nick2 → jack is supported.
+
+`GET /api/handle/verify` supplies the canonical handle for room entry; production rooms require proof
+and ignore client-supplied loadout names. Registered accounts adopt a verified guest identity and keep
+one visible handle; the private login ID remains a credential. Existing account names migrate in creation
+order with numbered suffixes for collisions. Rename broadcasts to joined rooms and updates leaderboard
+names. Monotonic handle revisions discard stale rename notifications. Profile saves cannot rename or
+steal handles. Registration creates a fresh guest identity for subsequent logout.
+
+Trading is items-only. Offers and trade inventory contain no coin fields, the server rejects nonzero
+cash offers, and client settlement never modifies the cash balance even for a forged/old receipt.
+Pets, cards, chairs and back accessories retain ordinary ownership, acceptance and replay checks.
+
+### Tide chair wreck and shark sequence
+
+Only zero hearts or forfeits carry a server-timed `tower.wreck {id,ageMs,height,water,rescue:false}` event.
+The scene uses its age across reconnects: restrained chair shake, actual geometry fracture, direct fall,
+swimming, a diagonal fin approach from 58 units away, a separate warning jump, circling swim,
+attack/breach, head capture, flailing, drag and dive. An 18-second hold completes the loss at the old
+waterline before the three-second rise. The wave crest is lowered for round rises.
+The bundled existing CC BY 3.0 shark and piranha assets are documented in `public/assets/word-tide/`
+with visible HUD credits. Piranhas swarm 15 colored block-avatar pieces. A wispy blood plume expands and dilutes around the debris, following the same displaced water surface. The pieces, chair fragments, and detached back accessories float for the rest of the game.
+Fish arrive at 13.4s, before the bite at 14s. Their enlarged models breach and dart toward actual fragments until 26s. Blood appears at the bite and rapidly expands. The camera returns from the carried head to the debris, holds until 23s (five seconds after the shark dives), then follows a living participant. The animated wake advects and churns foam and fades older tiles, following the ocean displacement. Shark clearance checks use actual model vertices against platform supports, including the tail during turns.
+Ordinary lost hearts lift the intact chair after the rise and never run this sequence. Winner and
+End All preserve any existing death events, create none, and restore the island after the celebration
+and retreat. Pending deaths retain their remaining hold and waterline when ending early.
+Cleanup restores avatar visibility, head, back accessories, seating and the normal island camera.
+
+Word Tide reuses Classic's SVG heart art above each avatar and charges 500 coins for Answer. A private `hint` response uses the
+existing per-request replay protection, alive round/turn deadline and balance checks; cancellation
+refunds purchased hints. The server directly locks the validated purchased answer and returns its private receipt. Enter animates into a checkmark; no separate saved-answer checkmark is shown.
+Invalid answers retain the saved valid answer but only bounce the input with a red ring; editing
+restores blue. The extra secret-answer and more-height instructional lines are removed.
+Last Sip's 17-second asteroid intro starts at mode activation, not match start; switching between
+Last Sip variants activates a new intro. The sidebar tracks actual chat bounds via ResizeObserver,
+including expanded mobile chat. Ordinary profanity, plurals and stretched spelling are permitted
+when Swearing is on; switching it off restores filtering.
+Desktop/mobile tests: `scripts/tide-wreck-check.mjs`, `scripts/handles-check.mjs`,
+`scripts/presence-pets-check.mjs`, `scripts/trade-check.mjs`, and `scripts/word-tide-check.mjs`.
+
+The intro quake launches participants at 3s; parachutes deploy at approximately 10.35s and sway during descent, with landing at approximately 21.68s. Seated avatars fit their leg geometry to the chair seat on every construction frame. Head hearts animate a break on loss and the local screen flashes red at the edges; no duplicate HUD heart row or survivor count is shown. `Stand up · Give up` asks with the shared forfeit dialog, then sends the existing `stand` forfeit and runs elimination before spectating. The admin Settings panel exposes a show/hide animation tester for intro, shark, and retreat, with playback and seeking. It renders a local synthetic match without changing the authoritative match, room, coins, or rewards. `scripts/animation-tester-check.mjs` verifies these local previews.
+
+Tide flight shares its drag/gravity trajectory between riders and camera. The avatar transitions into its seated joints at 18.93–20.43s and fits its legs to the chair throughout final descent. The premade CC BY parachute is documented in `public/assets/word-tide/SOURCES.md`; runtime thick cylinder ropes replace its thin lines, and the canopy folds after contact. Space opens the shared Finish the Word forfeit confirmation outside text fields, panels, overlays, and local animation previews. Cancelling keeps the participant alive; confirming sends `stand` only if still in the same match. Repeated keydown does not create repeated confirmations. The admin panel has a Test animations button and a separate show/hide checkbox. Shark motion uses one continuous mouth trajectory with cubic Hermite position and velocity joins; heading follows its tangent, and head contact matches the avatar bone position before detaching. Fragment and accessory positions start from their actual world transforms at breakup. Head labels omit the YOU suffix.
+
+Free fall runs 30% faster after the apex. Opening still occurs at the previous altitude, the shortened catch preserves the previous stopping distance, and the unchanged 10.7-second canopy curve retains its descent speed.
+
+## Accumulated free reward and player-list styles
+
+Free reward progress is `freePlayMs`, bounded to 900000, saved locally and in cloud profiles. Only a connected room advances it, with 1000ms ticks and a 2000ms cap per tick to avoid credit for sleeping/offline gaps. Claiming 100 coins consumes the progress; clock time and `lastFreeClaim` do not unlock it. Settings stores `playerListStyle` as classic/compact/cards/scoreboard; old styles migrate to classic; all four reuse the same hearts, wins, seated, Last Sip, eliminated and reconnecting status data. Pet hatch cards use rendered model thumbnails.
+
+## Unified review and real ski goggles
+
+`/review` (public/review.html) is self-contained and combines accessories, four roster previews, pets/cards, victory emotes, imported user feedback and export/import/autosave. Older review pages redirect to the corresponding hash section. Build inputs are docs/review-template.html, docs/review-feedback.json and rendered docs/review-visuals.json; scripts/build-review.py builds the page. User feedback remains proposed until explicitly approved for live changes. The 12-card plan now has four open slots, with Arcane Ward and Mirrored Shield replacing rejected defenses.
+
+Three actual black 3D ski-goggle meshes use distinct frame/lens geometry and a modified CC0 strap: secret_goggles_shield, secret_goggles_split, secret_goggles_racer. They attach to the avatar head pivot at local y=.77 and follow its full rotation. Head-mounted thumbnails remain isolated UI renderings. All three use existing admin-only secret-grant restrictions, cannot be purchased/traded/forged. Crown/scythe are retired from the unowned shop. secret_helmet is renamed Bug Hunter Horns while preserving its inventory ID and attribution.
+
+Approved October balance update: Mystic Block replaces the visible Secret Block name, keeping its saved ID. Sixteen pets include Shellback, Frostbite (ice penguin), Ironhide (rhino), and Moon Moth. Nine cards include Nope (Royal 3%) and Mirrored Shield (Royal 2%), both Legendary, plus Slow Burn, Lifeline and Card Jam. Echo Cast, Letter Lock, Double Take and victory emotes are excluded. Last Sip matches every entry to the smallest stake, returns unmatched coins even to losers, and funds its 80–90% shared prize only from matched entries. Last Sip wins do not award sellable trophies; word games still do.
+
+October polish: Double Trouble removed from presets, server rules and table-card display. Mythic block spins with sparkle/aura; Mystic block only spins. Crate icons use 512px multisampled renders. Profile summary scrolls within its rounded card. Admin pet editor uses model icons, rarity badges, tier steppers, search and owned-only filter. Original two-lens Cool face restored in SVG and world texture; singing-face animation retained.

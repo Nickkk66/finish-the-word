@@ -49,7 +49,7 @@ export function createWordInput({ onSubmit, onTyping }) {
     if (clean !== input.value) input.value = clean;
     // Warn (without blocking) when the word no longer matches the required start.
     form.classList.toggle('mismatch', !clean.startsWith(prefix.slice(0, clean.length)));
-    form.classList.remove('ok');
+    form.classList.remove('ok', 'invalid');
     sfx.key();
     scheduleTyping();
   });
@@ -97,7 +97,7 @@ export function createWordInput({ onSubmit, onTyping }) {
       sentText = '';
       input.value = profile.settings.prefillPrefix !== false ? pfx : '';
       input.placeholder = `${pfx.toUpperCase()}...`;
-      form.classList.remove('ok', 'mismatch');
+      form.classList.remove('ok', 'mismatch', 'invalid');
       form.hidden = false;
       input.focus({ preventScroll: true });
       input.setSelectionRange(input.value.length, input.value.length);
@@ -117,7 +117,8 @@ export function createWordInput({ onSubmit, onTyping }) {
       if (ok) {
         form.classList.add('ok');
       } else {
-        replay(form, 'shake');
+        form.classList.add('invalid');
+        replay(form, 'answer-bounce');
         input.select();
       }
     },

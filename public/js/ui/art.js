@@ -3,7 +3,7 @@ import { h, s } from './dom.js';
 /** A model thumbnail, intentionally no emoji placeholder. */
 export function modelArt(actions, kind, id, name, size = 160) {
   const img = h('img', { class: 'model-thumb', alt: name, width: size, height: size });
-  actions.thumbnail(kind, id, size).then((url) => { img.src = url; }).catch(() => { img.alt = name; });
+  actions.thumbnail(kind, id, kind==='cardBox'?512:Math.min(512,Math.ceil(size*Math.max(1,globalThis.devicePixelRatio||1)))).then((url) => { img.src = url; }).catch(() => { img.alt = name; });
   return img;
 }
 

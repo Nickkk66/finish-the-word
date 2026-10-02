@@ -196,7 +196,7 @@ describe('seats and countdown', () => {
     m = lastMatch(a);
     assert.equal(m.phase, 'choosing');
     assert.deepEqual(m.participants.map((p) => p.id), ['bob', 'alice']);
-    assert.deepEqual(m.participants[0], { id: 'bob', hearts: 2, maxHearts: 2, alive: true, words: 0, shield: false, combo: 0, pending: { skip: false, time: 0, mistakes: 0 } });
+    assert.deepEqual(m.participants[0], { id: 'bob', hearts: 2, maxHearts: 2, alive: true, words: 0, shield: false, combo: 0, defense:null,jammed:false,dragonGuardUsed:false,mistakeGuardUsed:false,pending: { skip: false, time: 0, mistakes: 0 } });
     assert.equal(m.phaseEndsIn, CHOOSE_MS);
     assert.equal(m.round, 1);
   });
@@ -532,7 +532,7 @@ describe('match end', () => {
     assert.equal(m.phase, 'ended');
     assert.equal(m.winnerId, winner);
     assert.equal(m.phaseDuration, MATCH_END_MS);
-    assert.deepEqual(participant(a, loser), { id: loser, hearts: 0, maxHearts: 1, alive: false, words: 1, shield: false, combo: 0, pending: { skip: false, time: 0, mistakes: 0 } });
+    assert.deepEqual(participant(a, loser), { id: loser, hearts: 0, maxHearts: 1, alive: false, words: 1, shield: false, combo: 0, defense:null,jammed:false,dragonGuardUsed:false,mistakeGuardUsed:false,pending: { skip: false, time: 0, mistakes: 0 } });
 
     room.clock.advance(MATCH_END_MS);
     m = lastMatch(a);
@@ -706,7 +706,7 @@ describe('bots', () => {
     const room = createRoom({ seed: 7 });
     const host = room.join('host1');
     for (let i = 0; i < 3; i++) room.send(host, { t: 'host', action: 'addBot' });
-    for (let t = 0; t < 30 * 60_000 && !host.last('win'); t += 250) room.clock.advance(250);
+    for (let t = 0; t < 30 * 60_000 && !host.last('win'); t += 250){room.clock.advance(250);if(room.engine.players.get('host1')?.presence)room.send(host,{t:'presenceReply',token:room.engine.players.get('host1').presence.token});}
     const win = host.last('win');
     assert.ok(win, 'the match ended');
 
@@ -778,7 +778,7 @@ describe('chat, moves and misc', () => {
 
     room.clock.advance(1000);
     assert.equal(c.all('moves').length, 1, 'nothing changed, nothing sent');
-    assert.equal(room.clock.pending, 0);
+    assert.equal(room.clock.pending, 3, 'only the three inactivity timers remain');
 
     room.send(a, { t: 'sit', seat: 0 });
     room.send(a, { t: 'move', x: 9, y: 9, z: 9, ry: 0, anim: 'walk' });

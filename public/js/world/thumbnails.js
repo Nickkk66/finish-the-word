@@ -43,14 +43,18 @@ export function createThumbnails(renderer) {
       studio.add(model);
       model.updateMatrixWorld(true);
       // Frame the Secret Block itself; its large world glow should not shrink the icon.
-      const box = new THREE.Box3().setFromObject(req.kind === 'block' && req.id === 'secret' ? model.children[0] : model);
+      const box = new THREE.Box3();
+      if (req.kind === 'pet') {
+        // Hidden animation particles can be far away; frame the visible pet itself.
+        model.traverseVisible(part => { if (part.isMesh) box.union(new THREE.Box3().setFromObject(part, true)); });
+      } else box.setFromObject(req.kind === 'block' && ['secret','mythic'].includes(req.id) ? model.children[0] : model);
       if (box.isEmpty()) box.set(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
       const center = box.getCenter(new THREE.Vector3());
       const extent = box.getSize(new THREE.Vector3()).length() * 0.58;
       const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 500);
       camera.position.copy(center).add(new THREE.Vector3(1, 0.65, 1.4).normalize().multiplyScalar(extent / Math.sin(THREE.MathUtils.degToRad(17.5))));
       camera.lookAt(center);
-      target = new THREE.WebGLRenderTarget(req.size, req.size, { depthBuffer: true });
+      target = new THREE.WebGLRenderTarget(req.size, req.size, { depthBuffer: true, samples:4 });
       target.texture.colorSpace = THREE.SRGBColorSpace;
       renderer.setRenderTarget(target);
       renderer.setScissorTest(false);

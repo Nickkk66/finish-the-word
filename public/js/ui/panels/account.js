@@ -20,7 +20,7 @@ export function accountPanel({ state, actions }) {
       const note = h('p', { class: 'account-help' });
       const tabs = ['login', 'register', 'reset'].map((id) => h('button', { type: 'button', class: 'seg-btn', onClick: () => { mode = id; localError = ''; password.value = confirm.value = ''; update(); } }, id === 'login' ? 'Log in' : id === 'register' ? 'Create account' : 'Reset password'));
       const form = h('form', { class: 'account-form' }, h('div', { class: 'seg' }, tabs),
-        h('label', { class: 'field-label' }, 'Username', username),
+        h('label', { class: 'field-label' }, 'Login ID', username),
         recoveryLabel, h('label', { class: 'field-label' }, mode === 'reset' ? 'New password' : 'Password', password), confirmLabel, note, submit);
       const recoveryCode = h('code', { class: 'recovery-code' });
       const recoveryBox = h('div', { class: 'recovery-box', hidden: true },
@@ -69,14 +69,14 @@ export function accountPanel({ state, actions }) {
         cloud.hidden = !signedIn || account.status !== 'conflict';
         status.classList.toggle('error', !!(localError || account.error));
         status.textContent = localError || account.error || (busy ? 'Connecting…' : signedIn
-          ? `Signed in as ${account.username} · ${account.status === 'saving' ? 'Saving…' : account.status === 'conflict' ? 'Newer progress exists on another device. Load the cloud save to continue.' : account.status === 'expired' ? 'Session expired — log out and log in again.' : account.status === 'offline' ? 'Offline — reconnect to save.' : 'Progress saved to your account'}`
+          ? `Account ${account.username} · ${account.status === 'saving' ? 'Saving…' : account.status === 'conflict' ? 'Newer progress exists on another device. Load the cloud save to continue.' : account.status === 'expired' ? 'Session expired — log out and log in again.' : account.status === 'offline' ? 'Offline — reconnect to save.' : 'Progress saved to your account'}`
           : 'Playing as a guest — progress is saved in this browser.');
         tabs.forEach((tab, i) => { tab.setAttribute('aria-pressed', String(['login', 'register', 'reset'][i] === mode)); tab.disabled = busy; });
         confirmLabel.hidden = mode === 'login'; confirm.required = mode !== 'login';
         recoveryLabel.hidden = mode !== 'reset'; recoveryInput.required = mode === 'reset';
         password.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
         submit.textContent = busy ? 'Please wait…' : mode === 'register' ? 'Create & save my progress' : mode === 'reset' ? 'Set new password' : 'Log in';
-        note.textContent = mode === 'register' ? 'Use 3–20 letters, numbers or underscores for your username and at least 5 characters for your password. Save the recovery code shown after signup.' : mode === 'reset' ? 'Enter the recovery code you saved when signing up, then choose a new password (at least 5 characters).' : 'Logging in loads this account’s collection and progress. Your current guest save stays on this device.';
+        note.textContent = mode === 'register' ? 'Use 3–20 letters, numbers or underscores for your login ID and at least 5 characters for your password. Save the recovery code shown after signup.' : mode === 'reset' ? 'Enter the recovery code you saved when signing up, then choose a new password (at least 5 characters).' : 'Logging in loads this account’s collection and progress. Your current guest save stays on this device.';
         for (const control of [username, password, confirm, recoveryInput, submit, logout, cloud, newRecovery]) control.disabled = busy;
       }
       update(); return { update };
