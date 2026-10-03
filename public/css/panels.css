@@ -108,6 +108,40 @@
 .item-count { position: absolute; top: 6px; right: 9px; font: 700 19px / 1 var(--font); }
 .item-card .btn { margin-top: auto; }
 
+/* ---------------------------------------------------------------- pet card enhancements */
+.pet-card-header { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
+.pet-rarity-badge { padding: 2px 8px; font: 700 11px / 1.4 var(--font); color: #fff; border-radius: 999px; border: 2px solid rgba(0,0,0,.18); text-transform: uppercase; letter-spacing: .04em; -webkit-text-stroke: .4px rgba(0,0,0,.3); }
+.pet-tier-row { display: flex; align-items: center; gap: 5px; }
+.pet-tier-dot { width: 10px; height: 10px; border-radius: 50%; background: #dde3eb; border: 2px solid #b0bcc9; }
+.pet-tier-dot.filled { background: var(--rc); border-color: color-mix(in srgb, var(--rc) 60%, black); }
+.pet-tier-label { font: 700 12px / 1 var(--font); color: #6b7684; }
+.pet-merge-bar { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px; background: #f5f7fa; border: 2px solid #dde3eb; border-radius: 10px; }
+.pet-merge-info { font: 600 12px / 1 var(--font); color: #4a5563; }
+.pet-merge-pips { display: flex; gap: 5px; }
+.pet-merge-pip { width: 14px; height: 14px; border-radius: 4px; background: #dde3eb; border: 2px solid #b0bcc9; transition: background .15s; }
+.pet-merge-pip.filled { background: var(--rc); border-color: color-mix(in srgb, var(--rc) 60%, black); }
+
+/* ---------------------------------------------------------------- pet dictionary */
+.pet-dictionary-button { margin-bottom: 8px; }
+.dict-title { margin-top: 4px; }
+.pet-dictionary { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.pet-dict-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--rc) 18%, white) 0%, #ffffff 100%);
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 3px 0 var(--ink);
+}
+.pet-dict-card.locked { opacity: .72; filter: grayscale(.4); }
+.pet-dict-art { flex: none; display: grid; place-items: center; width: 64px; height: 64px; background: radial-gradient(circle, color-mix(in srgb, var(--rc) 40%, white), #f0f0f0); border: 3px solid var(--ink); border-radius: 50%; }
+.pet-dict-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pet-dict-name { font: 700 15px / 1.1 var(--font); }
+.pet-dict-desc { font: 600 12px / 1.3 var(--font); color: #4a5563; }
+.pet-dict-desc.locked-hint { font-style: italic; color: #8a95a3; }
+
 /* ---------------------------------------------------------------- lucky blocks */
 .block-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .block-card {

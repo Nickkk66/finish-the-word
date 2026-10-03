@@ -65,7 +65,7 @@ export function createRouletteScene(scene, labels, trees, onShock = () => {}) {
     const trail=createFire(1.05,5,8,true);trail.position.y=-.2;meteor.add(trail);
     const core=new THREE.Mesh(new THREE.IcosahedronGeometry(1.57,1),new THREE.MeshBasicMaterial({color:'#d03d1b',wireframe:true,transparent:true,opacity:.45}));meteor.add(core);
     const flames=createFire(2.2,3.2,12);crater.add(flames);
-    const wake=createMeteorTrail(root,22,true);
+    const wake=createMeteorTrail(root,22,false);
     return{h,i,crater,meteor,trail,wake,flames,impacted:false,visualFall:0};
   });
   const burningTrees=trees.filter((_,i)=>i%7===3).slice(0,5).flatMap(tree=>{

@@ -44,11 +44,13 @@ export function createRouletteHud({ onAction, onEnter, onStart }) {
     const lobby = ['lobby', 'countdown'].includes(m?.phase);
     const mine = st.players.get(st.you);
     const turn = m?.phase === 'roulette' && m.typerId === st.you;
-    const pooled = m?.practice && r ? Object.values(r.stakes||{}).reduce((n,v)=>n+v,0) : lobby ? [...st.players.values()].reduce((n,p) => n + (p.rouletteBet || (p.isBot?st.rouletteEntry:0)), 0) : r?.pot || 0;
-    const entries=[...st.players.values()].filter(p=>p.seat>=0&&p.seat<SEAT_COUNT&&(p.rouletteBet||p.isBot)).map(p=>p.rouletteBet||(p.isBot?st.rouletteEntry:0));
-    const matchedPool=entries.length?Math.min(...entries)*entries.length:0;
+    const humanEntries=[...st.players.values()].filter(p=>p.seat>=0&&p.seat<SEAT_COUNT&&p.rouletteBet&&!p.isBot).map(p=>p.rouletteBet);
+    const allEntries=[...st.players.values()].filter(p=>p.seat>=0&&p.seat<SEAT_COUNT&&(p.rouletteBet||p.isBot)).map(p=>p.rouletteBet||(p.isBot?st.rouletteEntry:0));
+    const pooled = m?.practice && r ? Object.values(r.stakes||{}).reduce((n,v)=>n+v,0) : lobby ? allEntries.reduce((n,v)=>n+v,0) : r?.pot || 0;
+    const matchedPool=allEntries.length?Math.min(...allEntries)*allEntries.length:0;
     const excess=r?.excessStakes?.[st.you]||0;
-    pot.textContent = m?.practice ? `PRACTICE · ${m.practiceReason || 'Entries returned.'} · ${fmt(pooled)} COINS RETURNED` : r ? `${fmt(r.pot)} COINS IN POT · ${fmt(r.matchedStake)} MATCHED EACH${excess?` · ${fmt(excess)} RETURNED AT END`:''}` : `${fmt(Math.floor(matchedPool*.9))} COINS MATCHED WINNER POOL · 10% HOUSE FEE`;
+    const humanTotal=humanEntries.reduce((n,v)=>n+v,0);
+    pot.textContent = m?.practice ? `PRACTICE · ${m.practiceReason || 'Entries returned.'} · ${fmt(pooled)} COINS RETURNED` : r ? `${fmt(r.pot)} COINS IN POT · ${fmt(r.matchedStake)} MATCHED EACH${excess?` · ${fmt(excess)} RETURNED AT END`:''}` : humanEntries.length ? `${fmt(humanTotal)} COINS ENTERED · ${fmt(Math.floor(matchedPool*.9))} MATCHED PRIZE · 10% FEE` : `Place your bet to enter · Min 25 coins · 10% house fee`;
     drink.hidden = double.hidden = pass.hidden = !turn;
     double.disabled = !!r?.doubleSurvivors?.includes(st.you) || !!r && r.pot>=r.payoutCap;
     double.textContent = r?.pot>=r?.payoutCap ? 'Pool bonus filled' : double.disabled ? 'Double Sip won ✓' : `Double Sip · ${((r?.doubleRisk ?? .6)*100).toFixed(0)}%`;

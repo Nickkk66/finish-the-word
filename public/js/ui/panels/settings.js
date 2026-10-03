@@ -47,7 +47,7 @@ export function settingsPanel({ state, actions }) {
         const host = state.hostId === state.you || state.isAdmin;
         notice.textContent = host ? 'Change match rules in Game Settings.' : 'Only the host can change game rules. Your personal settings above are always yours to change.';
         notice.classList.toggle('restricted', !host);
-        version.textContent = `v2.0 · ${actions.ping() ?? '—'} ms`;
+        version.textContent = `v2.0 · Room: ${state.code || '—'} · ${actions.ping() ?? '—'} ms`;
         if (state.unlockFailed) { replay(version, 'shake'); state.unlockFailed = false; }
         adminToggle.hidden = !state.isAdmin;
 
@@ -83,7 +83,8 @@ export function gameSettingsPanel({ state, actions }) {
       const banned = state.bannedPlayers;
       const unban = h('div', { class: 'moderation-list' });
       const tools = h('div', { class: 'host-tools' }, button('Add Bot', () => { custom({}); actions.host('addBot'); }), button('Remove Bot', () => { custom({}); actions.host('removeBot'); }, 'orange'), button('Start now', () => actions.host('start'), 'green'), button('End game · refund all', () => actions.host('endMatch'), 'red'));
-      body.append(notice, h('div', { class: 'set-group' }, row('Mode', mode), row('Hearts', hearts.el), row('Turn time', turn.el), row('Pet abilities', pets.el), row('Swearing', swearing.el), row('Bots', bot.el), row('Room visibility', visibility)), tools,
+      const roomCodeEl = h('span', { class: 'set-value' }, state.code || '—');
+      body.append(notice, h('div', { class: 'set-group' }, row('Room code', roomCodeEl), row('Mode', mode), row('Hearts', hearts.el), row('Turn time', turn.el), row('Pet abilities', pets.el), row('Swearing', swearing.el), row('Bots', bot.el), row('Room visibility', visibility)), tools,
         h('h3', { class: 'section-title stroke' }, 'Players'), players, unban);
       function update() {
         const allowed = state.hostId === state.you || state.isAdmin;

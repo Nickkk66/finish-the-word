@@ -1331,10 +1331,6 @@ function isMyTurn(m) {
   return (m.phase === 'tideAnswer' && m.participants?.some(p => p.id === state.you && p.alive)) || (['typing', 'roulette'].includes(m.phase) && m.typerId === state.you) || (m.phase === 'choosing' && m.chooserId === state.you);
 }
 
-// `?debug` exposes internals for automated tests and troubleshooting.
-if (new URLSearchParams(location.search).has('debug')) {
-  window.__ftw = { state, net, actions, profile, hud, get world() { return world; } };
-}
 
 function phaseEffects(prev, m) {
   if (m.twist && (m.round !== prev.round || m.twist.id !== prev.twist?.id)) banner(`TWIST: ${m.twist.name.toUpperCase()}!`, { tone: 'win', ms: 3000 });

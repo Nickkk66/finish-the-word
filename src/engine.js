@@ -496,7 +496,7 @@ export class GameEngine {
   onTyping(player, text) {
     const m = this.match;
     if (m.phase === 'typing' && player.id === m.typerId && this.allow(player, 'typing')) {
-      if (sanitizeTyping(text)) this.noteActivity(player,true);
+      if (sanitizeTyping(text)) this.noteActivity(player, false, true);
       this.relayTyping(player, sanitizeTyping(text));
     }
   }
@@ -1320,10 +1320,18 @@ export class GameEngine {
     if (m.phase !== 'typing' || player.id !== m.typerId || this.now() >= m.endsAt) return;
     const word = normalizeWord(raw);
     if (!word) return; // an empty submit is not a mistake
-    this.noteActivity(player,true);
 
     const reason = this.rejectReason(word);
     if (reason) {
+      // Wrong submissions don't grant game-activity credit so AFK checks still fire.
+      // Track consecutive bad submissions to detect robotic alts.
+      player.badSubmits = (player.badSubmits || 0) + 1;
+      player.badSubmitAt = this.now();
+      if (player.badSubmits >= 15 && player.presence == null) {
+        // Force a presence check after sustained wrong-word spam.
+        player.idleCheckAt = this.now();
+        this.armPresence(player);
+      }
       this.participant(player.id).combo = 0;
       m.mistakes++;
       this.broadcast({ t: 'result', id: player.id, word: displayWord(word, m.settings?.allowSwearing), ok: false, reason, mistakes: m.mistakes });
@@ -1331,6 +1339,9 @@ export class GameEngine {
       else this.broadcastMatch();
       return;
     }
+    // Valid word — clear bad-submission counter and grant game activity.
+    player.badSubmits = 0;
+    this.noteActivity(player,true);
 
     const participant = this.participant(player.id);
     const wpm = Math.min(250, Math.round((word.length / 5) * 60000 / Math.max(250, this.now() - (m.firstKeyAt ?? m.turnStartAt))));
